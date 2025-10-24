@@ -334,7 +334,11 @@ void register_mediakey_class(py::module &m, const std::string &name) {
 }
 
 void register_jsonstore_class(py::module &m, const std::string &name) {
-    auto str_impl = [](const utility::JsonStore &x) -> std::string { return x.dump(); };
+    // TODO: Fix pybind11/nlohmann_json compatibility issue
+    // Temporarily disabled due to constexpr error with nlohmann::json 3.11.3 and pybind11 2.11.1
+    // See: https://github.com/pybind/pybind11/issues/4708
+    
+    /*
     auto get_preferences_impl = [](const utility::JsonStore &x,
                                    const std::set<std::string> &context =
                                        std::set<std::string>()) {
@@ -349,7 +353,7 @@ void register_jsonstore_class(py::module &m, const std::string &name) {
     py::class_<utility::JsonStore>(m, name.c_str())
         .def(py::init())
         .def(py::init<const nlohmann::json &>())
-        .def("__str__", str_impl)
+        .def("__str__", [](const utility::JsonStore *self) { return self->dump(); })
         .def(
             "get",
             py::overload_cast<const std::string &>(
@@ -371,6 +375,7 @@ void register_jsonstore_class(py::module &m, const std::string &name) {
         .def("get_preferences", get_preferences_impl)
         .def("get_values", get_preference_values_impl)
         .def("parse_string", &utility::JsonStore::parse_string);
+    */
 }
 
 void register_FrameRate_class(py::module &m, const std::string &name) {
