@@ -1,0 +1,5 @@
+<RCC>
+	<qresource prefix="/mikros_shotbrowser_icons">
+		<file alias="mikros_shotbrowser.svg">mikros_shotbrowser.svg</file>
+	</qresource>
+</RCC>
