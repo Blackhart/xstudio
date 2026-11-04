@@ -2,7 +2,7 @@
 *.sublime-project
 *.sublime-workspace
 ._*
-.vscode/
+# .vscode/
 .vs/
 .cursor/
 .DS_Store
@@ -18,7 +18,7 @@ docs/conf.py
 # Local debug / IDE artefacts
 .cache/
 .ci-cache/
-devenv/
+# devenv/
 compile_commands.json
 
 # vcpkg manifest install tree (created under the repo by CI / devenv)

@@ -1,0 +1,103 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug xStudio (Ubuntu 24.04)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/__build/ubuntu2404/bin/xstudio.bin",
+      "args": [],
+      "cwd": "${workspaceFolder}/__build/ubuntu2404",
+      "environment": [
+        {
+          "name": "LD_LIBRARY_PATH",
+          "value": "${workspaceFolder}/vcpkg_installed/x64-xstudio-linux-ubuntu2404/lib:${userHome}/.cache/xstudio-devenv/qt/6.5.3/gcc_64/lib:${env:LD_LIBRARY_PATH}"
+        },
+        {
+          "name": "QT_PLUGIN_PATH",
+          "value": "${userHome}/.cache/xstudio-devenv/qt/6.5.3/gcc_64/plugins"
+        },
+        {
+          "name": "QML2_IMPORT_PATH",
+          "value": "${userHome}/.cache/xstudio-devenv/qt/6.5.3/gcc_64/qml"
+        },
+        {
+          "name": "PYTHONPATH",
+          "value": "${workspaceFolder}/__build/ubuntu2404/bin/python/lib/python3.11/site-packages:${env:PYTHONPATH}"
+        },
+        {
+          "name": "DISPLAY",
+          "value": "${env:DISPLAY}"
+        }
+      ],
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "pretty print",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "pending breaks for plugin .so",
+          "text": "set breakpoint pending on",
+          "ignoreFailures": true
+        },
+        {
+          "description": "find plugin libs",
+          "text": "set solib-search-path ${workspaceFolder}/__build/ubuntu2404/bin/plugin",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "xstudio: build (Ubuntu 24.04)"
+    },
+    {
+      "name": "Debug xStudio (Rocky 9)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/__build/rocky9/bin/xstudio.bin",
+      "args": [],
+      "cwd": "${workspaceFolder}/__build/rocky9",
+      "environment": [
+        {
+          "name": "LD_LIBRARY_PATH",
+          "value": "${workspaceFolder}/vcpkg_installed/x64-xstudio-linux-rocky9/lib:${userHome}/.cache/xstudio-devenv/qt/6.5.3/gcc_64/lib:${env:LD_LIBRARY_PATH}"
+        },
+        {
+          "name": "QT_PLUGIN_PATH",
+          "value": "${userHome}/.cache/xstudio-devenv/qt/6.5.3/gcc_64/plugins"
+        },
+        {
+          "name": "QML2_IMPORT_PATH",
+          "value": "${userHome}/.cache/xstudio-devenv/qt/6.5.3/gcc_64/qml"
+        },
+        {
+          "name": "PYTHONPATH",
+          "value": "${workspaceFolder}/__build/rocky9/bin/python/lib/python3.11/site-packages:${env:PYTHONPATH}"
+        },
+        {
+          "name": "DISPLAY",
+          "value": "${env:DISPLAY}"
+        }
+      ],
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "pretty print",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "pending breaks for plugin .so",
+          "text": "set breakpoint pending on",
+          "ignoreFailures": true
+        },
+        {
+          "description": "find plugin libs",
+          "text": "set solib-search-path ${workspaceFolder}/__build/rocky9/bin/plugin",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "xstudio: build (Rocky 9)"
+    }
+  ]
+}

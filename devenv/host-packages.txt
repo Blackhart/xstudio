@@ -1,0 +1,55 @@
+# One-shot host packages for F5 debug with vcpkg (Ubuntu 24.04 host).
+#
+#   sudo apt-get update && sudo apt-get install -y $(grep -v '^#' host-packages.txt | tr '\n' ' ')
+#   bash devenv/bootstrap-vcpkg.sh
+#   bash devenv/install-qt.sh
+#
+# Optional: export GITHUB_TOKEN + FEED_URL + NUGET_OWNER and run
+#   bash ci/linux/scripts/setup-nuget.sh
+# so vcpkg can reuse the CI NuGet binary cache.
+
+build-essential
+git
+curl
+pkg-config
+cmake
+ninja-build
+gdb
+python3
+python3-pip
+python3-venv
+python3-dev
+python-is-python3
+libpython3-dev
+zip
+unzip
+autoconf
+automake
+autoconf-archive
+libtool
+nasm
+libssl-dev
+zlib1g-dev
+libasound2-dev
+uuid-dev
+libglu1-mesa-dev
+libglut-dev
+mesa-common-dev
+libfreetype-dev
+libgl1-mesa-dev
+libegl1-mesa-dev
+libpulse-dev
+libtiff-dev
+libpng-dev
+libgif-dev
+libexpat-dev
+libxkbcommon-dev
+libfontconfig-dev
+libxcb-cursor0
+libxcb-xinerama0
+libxcb-icccm4
+libxcb-image0
+libxcb-keysyms1
+libxcb-render-util0
+libxcb-shape0
+libxkbcommon-x11-0

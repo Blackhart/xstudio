@@ -1,0 +1,70 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "xstudio: format (clang-format)",
+      "type": "shell",
+      "command": "bash",
+      "args": ["devenv/format.sh"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false
+      }
+    },
+    {
+      "label": "xstudio: build (Ubuntu 24.04)",
+      "type": "shell",
+      "command": "bash",
+      "args": ["devenv/debug-prelaunch.sh", "ubuntu24"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false
+      }
+    },
+    {
+      "label": "xstudio: build (Rocky 9)",
+      "type": "shell",
+      "command": "bash",
+      "args": ["devenv/debug-prelaunch.sh", "rocky9"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": ["$gcc"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false
+      }
+    },
+    {
+      "label": "xstudio: clean host build",
+      "type": "shell",
+      "command": "bash",
+      "args": ["devenv/clean-cache.sh"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
+    }
+  ]
+}
