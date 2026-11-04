@@ -36,6 +36,21 @@
       }
     },
     {
+      "label": "xstudio: deps (Rocky 9, docker)",
+      "type": "shell",
+      "command": "bash",
+      "args": ["devenv/rocky9-docker-deps.sh"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
+    },
+    {
       "label": "xstudio: build (Rocky 9)",
       "type": "shell",
       "command": "bash",

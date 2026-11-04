@@ -30,7 +30,8 @@ case "$DISTRO" in
     TAG="rocky9"
     TRIPLET="x64-xstudio-linux-rocky9"
     PRESET="HostRocky9NinjaRelWithDebInfo"
-    echo "WARNING: Rocky triplet on a non-Rocky host is an ABI compromise." >&2
+    # Studio Rocky hosts often cannot install kernel-headers; deps are Docker-only.
+    SKIP_VCPKG_DEPS=1
     ;;
   *)
     echo "ERROR: distro must be ubuntu24 or rocky9 (got '${DISTRO:-}')" >&2
@@ -68,8 +69,25 @@ export VCPKG_TARGET_TRIPLET="${TRIPLET}"
 export XSTUDIO_SRC="${REPO_ROOT}"
 export JOBS
 
-echo "==> Installing vcpkg ports (${TRIPLET})"
-bash "${REPO_ROOT}/ci/linux/scripts/build-deps.sh"
+INSTALLED_MARKER="${REPO_ROOT}/vcpkg_installed/${TRIPLET}/lib/libssl.so"
+if [ "${SKIP_VCPKG_DEPS:-0}" = "1" ]; then
+  echo "==> Using existing vcpkg_installed/${TRIPLET} (no host deps install)"
+  if [ ! -e "${INSTALLED_MARKER}" ]; then
+    echo "ERROR: missing ${INSTALLED_MARKER}" >&2
+    if [ "${DISTRO}" = "rocky9" ]; then
+      echo "  Run VS Code task « xstudio: deps (Rocky 9, docker) » first:" >&2
+      echo "    bash devenv/rocky9-docker-deps.sh" >&2
+    else
+      echo "  Install deps on the host, or unset SKIP_VCPKG_DEPS." >&2
+    fi
+    exit 1
+  fi
+elif [ -e "${INSTALLED_MARKER}" ] && [ "${FORCE_VCPKG_DEPS:-0}" != "1" ]; then
+  echo "==> vcpkg ports already present (${TRIPLET}) — skip install (FORCE_VCPKG_DEPS=1 to rebuild)"
+else
+  echo "==> Installing vcpkg ports (${TRIPLET})"
+  bash "${REPO_ROOT}/ci/linux/scripts/build-deps.sh"
+fi
 
 mkdir -p "${BUILD_DIR}"
 
