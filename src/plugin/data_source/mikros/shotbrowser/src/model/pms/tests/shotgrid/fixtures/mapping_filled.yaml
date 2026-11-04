@@ -1,0 +1,55 @@
+# Complete mapping fixture for unit tests (invented ShotGrid names).
+entities:
+  project:
+    shotgrid: Project
+    fields:
+      id:            { shotgrid: id }
+      name:          { shotgrid: name }
+      code:          { shotgrid: code }
+      start_date:    { shotgrid: start_date }
+      delivery_date: { shotgrid: sg_delivery_date }
+      status:        { shotgrid: sg_status_list }
+    links: {}
+
+  sequence:
+    shotgrid: Sequence
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      project: { shotgrid: project, target: project }
+
+  shot:
+    shotgrid: Shot
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      sequence: { shotgrid: sg_sequence, target: sequence }
+
+  asset:
+    shotgrid: Asset
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      project: { shotgrid: project, target: project }
+
+  playlist:
+    shotgrid: Playlist
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      project: { shotgrid: project, target: project }
+
+  version:
+    shotgrid: Version
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      shot:     { shotgrid: entity, target: shot }
+      sequence: { shotgrid: entity, target: sequence }
+      asset:    { shotgrid: entity, target: asset }
+      playlist: { shotgrid: playlists, target: playlist }

@@ -1,0 +1,55 @@
+# Domain schema for this slice. Project, sequence, shot, asset, playlist, version.
+types:
+  string: { ops: [eq, ne] }
+  int:    { ops: [eq, ne] }
+  date:   { ops: [eq, ne] }
+
+entities:
+  project:
+    creatable: false
+    fields:
+      id:            { type: int,    filter: true, set: false }
+      name:          { type: string, filter: true, set: true }
+      code:          { type: string, filter: true, set: true }
+      start_date:    { type: date,   filter: true, set: true }
+      delivery_date: { type: date,   filter: true, set: true }
+      status:        { type: string, filter: true, set: true }
+    scope: []
+
+  sequence:
+    creatable: false
+    fields:
+      id:   { type: int,    filter: true, set: false }
+      name: { type: string, filter: true, set: true }
+    scope: [project]
+
+  shot:
+    creatable: false
+    fields:
+      id:   { type: int,    filter: true, set: false }
+      name: { type: string, filter: true, set: true }
+    scope: [sequence]
+
+  asset:
+    creatable: false
+    fields:
+      id:   { type: int,    filter: true, set: false }
+      name: { type: string, filter: true, set: true }
+    scope: [project]
+
+  playlist:
+    creatable: false
+    fields:
+      id:   { type: int,    filter: true, set: false }
+      name: { type: string, filter: true, set: true }
+    scope: [project]
+
+  version:
+    creatable: false
+    fields:
+      id:   { type: int,    filter: true, set: false }
+      name: { type: string, filter: true, set: true }
+    # Direct parents for In(). Ownership (shot|sequence|asset) is strong;
+    # playlist is a weak many-to-many link: a version may sit in several playlists.
+    # Ancestors (sequence via shot, project via sequence|asset|playlist) inherit.
+    scope: [shot, sequence, asset, playlist]

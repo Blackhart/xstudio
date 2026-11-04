@@ -1,0 +1,73 @@
+# ShotGrid mapping for the domain entities in schema.yaml.
+# Fill every empty `shotgrid:` string with the studio's REST entity / field / link name.
+# Domain keys (left) stay stable; only the ShotGrid side changes per site.
+#
+# Scope links:
+#   - `shotgrid` is the field on the *queried* entity that points at the parent.
+#   - `target` is the domain parent entity (must exist in this file).
+#   - When In(parent == name), the filter uses
+#     `<link>.<TargetEntity>.<target name field>` (see name field of `target`).
+#   - When In(parent == id), the filter uses `<link>` with
+#     {"type":"<TargetEntity>","id":N}.
+#
+# Version ownership is strong on one of shot | sequence | asset (often SG `entity`).
+# Playlist is a weak many-to-many: fill `links.playlist` with the Version↔Playlist field.
+
+entities:
+  project:
+    shotgrid: "" # e.g. Project
+    fields:
+      id:            { shotgrid: "id" }
+      name:          { shotgrid: "" } # e.g. name
+      code:          { shotgrid: "" } # e.g. code
+      start_date:    { shotgrid: "" } # e.g. start_date
+      delivery_date: { shotgrid: "" } # e.g. sg_delivery_date
+      status:        { shotgrid: "" } # e.g. sg_status_list
+    links: {}
+
+  sequence:
+    shotgrid: "" # e.g. Sequence
+    fields:
+      id:   { shotgrid: "id" }
+      name: { shotgrid: "" } # e.g. code
+    links:
+      project: { shotgrid: "", target: project } # e.g. project
+
+  shot:
+    shotgrid: "" # e.g. Shot
+    fields:
+      id:   { shotgrid: "id" }
+      name: { shotgrid: "" } # e.g. code
+    links:
+      sequence: { shotgrid: "", target: sequence } # e.g. sg_sequence
+      # Inherited In(project) resolves through sequence → project in the backend.
+
+  asset:
+    shotgrid: "" # e.g. Asset
+    fields:
+      id:   { shotgrid: "id" }
+      name: { shotgrid: "" } # e.g. code
+    links:
+      project: { shotgrid: "", target: project } # e.g. project
+
+  playlist:
+    shotgrid: "" # e.g. Playlist
+    fields:
+      id:   { shotgrid: "id" }
+      name: { shotgrid: "" } # e.g. code
+    links:
+      project: { shotgrid: "", target: project } # e.g. project
+
+  version:
+    shotgrid: "" # e.g. Version
+    fields:
+      id:   { shotgrid: "id" }
+      name: { shotgrid: "" } # e.g. code
+    links:
+      # Strong parent: usually one polymorphic `entity` field per row.
+      shot:     { shotgrid: "", target: shot }     # e.g. entity (type Shot)
+      sequence: { shotgrid: "", target: sequence } # e.g. entity (type Sequence)
+      asset:    { shotgrid: "", target: asset }    # e.g. entity (type Asset)
+      # Weak membership: Version may belong to several Playlists.
+      playlist: { shotgrid: "", target: playlist } # e.g. playlists
+      # Inherited In(project) resolves through the strong parent → project.
