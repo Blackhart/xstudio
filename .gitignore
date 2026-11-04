@@ -33,7 +33,7 @@ build_rel/
 build_dbg/
 xstudio_install
 build_logs/
-CMakeUserPresets.json
+# CMakeUserPresets.json
 CMakeUserPresets.json.bak
 aqtinstall.log
 

@@ -1,0 +1,39 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "HostUbuntu2404NinjaRelWithDebInfo",
+      "displayName": "Host Ubuntu 24.04 RelWithDebInfo (devenv / F5)",
+      "inherits": ["linux-ninja-base"],
+      "binaryDir": "${sourceDir}/__build/ubuntu2404",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VCPKG_TARGET_TRIPLET": "x64-xstudio-linux-ubuntu2404",
+        "BUILD_TESTING": "OFF",
+        "STUDIO_PLUGINS": "mikros"
+      }
+    },
+    {
+      "name": "HostRocky9NinjaRelWithDebInfo",
+      "displayName": "Host Rocky 9 RelWithDebInfo (devenv / F5)",
+      "inherits": ["linux-ninja-base"],
+      "binaryDir": "${sourceDir}/__build/rocky9",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VCPKG_TARGET_TRIPLET": "x64-xstudio-linux-rocky9",
+        "BUILD_TESTING": "OFF",
+        "STUDIO_PLUGINS": "mikros"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "HostUbuntu2404NinjaRelWithDebInfo",
+      "configurePreset": "HostUbuntu2404NinjaRelWithDebInfo"
+    },
+    {
+      "name": "HostRocky9NinjaRelWithDebInfo",
+      "configurePreset": "HostRocky9NinjaRelWithDebInfo"
+    }
+  ]
+}
