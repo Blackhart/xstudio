@@ -38,6 +38,6 @@ CMakeUserPresets.json.bak
 aqtinstall.log
 
 # Mikros Shot Browser — local FakeBackend (dev only; see model/pms/dev/)
-src/plugin/data_source/mikros/shotbrowser/src/model/pms/fake/backend.hpp
-src/plugin/data_source/mikros/shotbrowser/src/model/pms/fake/backend.cpp
-src/plugin/data_source/mikros/shotbrowser/src/model/pms/tests/fake/test_fake_backend.cpp
+# src/plugin/data_source/mikros/shotbrowser/src/model/pms/fake/backend.hpp
+# src/plugin/data_source/mikros/shotbrowser/src/model/pms/fake/backend.cpp
+# src/plugin/data_source/mikros/shotbrowser/src/model/pms/tests/fake/test_fake_backend.cpp
