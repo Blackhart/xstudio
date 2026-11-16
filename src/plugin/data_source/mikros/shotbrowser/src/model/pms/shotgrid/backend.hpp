@@ -61,8 +61,8 @@ struct ShotGridSite {
  * Translates domain IR into `/api/v1/entity/{Type}/_search` filters, maps
  * returned attributes back to domain fields, and applies keyset pagination
  * when `ir.limit` is set. When a debug sink is set, each search logs the JSON
- * body before the request. Network work is synchronous; call from a
- * worker.
+ * body before the request. A notice sink reports a successful token fetch.
+ * Network work is synchronous; call from a worker.
  *
  */
 class ShotGridBackend : public Backend {
@@ -101,6 +101,12 @@ class ShotGridBackend : public Backend {
     void setDebug(std::function<void(const std::string &)> debug);
 
     /**
+     * @brief Receives a short auth result after a token is issued.
+     * @param notice Sink. Empty disables it. The text has no token or secret.
+     */
+    void setNotice(std::function<void(const std::string &)> notice);
+
+    /**
      * @brief Runs a validated find against ShotGrid.
      * @param ir Query with optional limit/cursor.
      * @return Page of domain rows.
@@ -114,7 +120,8 @@ class ShotGridBackend : public Backend {
 
     ShotGridSite site_;
     ShotGridMapping mapping_;
-    std::function<void(const std::string &)> debug_; ///< Search payload trace. Empty when off.
+    std::function<void(const std::string &)> debug_;  ///< Search payload trace. Empty when off.
+    std::function<void(const std::string &)> notice_; ///< Auth result trace. Empty when off.
     std::optional<std::string> access_token_;
     std::optional<std::string> refresh_token_;
     std::chrono::steady_clock::time_point token_expires_{};

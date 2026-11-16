@@ -40,6 +40,19 @@ std::string schemaPath() {
 }
 
 /**
+ * @brief Shows enough of a script key to recognise it, never the whole secret.
+ * @param key `SHOTGRID_CLIENT_SECRET`.
+ * @return `abcd...wxyz length=N`, or only the length when the key is short.
+ */
+std::string keyHint(const std::string &key) {
+    const std::string length = "length=" + std::to_string(key.size());
+    if (key.size() <= 8) {
+        return length;
+    }
+    return key.substr(0, 4) + "..." + key.substr(key.size() - 4) + " " + length;
+}
+
+/**
  * @brief Shared backend + CachingBackend + Session for the plugin process.
  *
  * Backend selected by `MIKROS_PMS_BACKEND` (`fake` default, or `shotgrid`).
@@ -87,6 +100,9 @@ class SharedPms {
                 "SHOTGRID_CLIENT_SECRET, SHOTGRID_MAPPING");
         }
         const std::string mappingPath = mapping;
+        trace::info(
+            "shotgrid site url=\"" + escape(url) + "\" script=\"" + escape(script) +
+            "\" key=" + keyHint(key) + " mapping=\"" + escape(mappingPath) + "\"");
         pms::ShotGridSite site;
         site.base_url = url;
         site.auth = pms::ShotGridScriptAuth{script, key};
@@ -94,6 +110,7 @@ class SharedPms {
         backend.setDebug([](const std::string &payload) {
             trace::info("shotgrid payload " + payload);
         });
+        backend.setNotice([](const std::string &line) { trace::info("shotgrid " + line); });
         return backend;
     }
 

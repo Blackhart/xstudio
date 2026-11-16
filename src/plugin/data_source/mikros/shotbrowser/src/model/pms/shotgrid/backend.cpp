@@ -44,6 +44,11 @@ std::unique_ptr<httplib::Client> makeClient(const std::string &base_url) {
     return client;
 }
 
+[[noreturn]] void failRequest(const char *what, const httplib::Result &response) {
+    throw Error(
+        std::string("shotgrid: ") + what + " (" + httplib::to_string(response.error()) + ")");
+}
+
 } // namespace
 
 ShotGridBackend::ShotGridBackend(ShotGridSite site, const std::string &mapping_path)
@@ -54,6 +59,10 @@ ShotGridBackend::ShotGridBackend(ShotGridSite site, ShotGridMapping mapping)
 
 void ShotGridBackend::setDebug(std::function<void(const std::string &)> debug) {
     debug_ = std::move(debug);
+}
+
+void ShotGridBackend::setNotice(std::function<void(const std::string &)> notice) {
+    notice_ = std::move(notice);
 }
 
 void ShotGridBackend::ensureToken() {
@@ -81,7 +90,7 @@ void ShotGridBackend::ensureToken() {
 
     const auto response = client->Post("/api/v1/auth/access_token", params);
     if (!response) {
-        throw Error("shotgrid: auth request failed");
+        failRequest("auth request failed", response);
     }
     if (response->status < 200 || response->status >= 300) {
         throw Error(
@@ -97,6 +106,9 @@ void ShotGridBackend::ensureToken() {
     }
     const int expiresIn = body.at("expires_in").get<int>();
     token_expires_ = now + std::chrono::seconds(expiresIn);
+    if (notice_) {
+        notice_("auth ok expires_in=" + std::to_string(expiresIn));
+    }
 }
 
 Page ShotGridBackend::find(const Ir &ir) {
@@ -133,7 +145,7 @@ Page ShotGridBackend::find(const Ir &ir) {
     }
     auto response = client->Post(path.c_str(), headers, request_body, kContentTypeHash);
     if (!response) {
-        throw Error("shotgrid: search request failed");
+        failRequest("search request failed", response);
     }
     if (response->status == 401) {
         access_token_.reset();
@@ -146,7 +158,7 @@ Page ShotGridBackend::find(const Ir &ir) {
         };
         response = client->Post(path.c_str(), headers, request_body, kContentTypeHash);
         if (!response) {
-            throw Error("shotgrid: search request failed after re-auth");
+            failRequest("search request failed after re-auth", response);
         }
     }
     if (response->status < 200 || response->status >= 300) {
