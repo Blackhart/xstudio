@@ -17,29 +17,35 @@
 namespace pms {
 
 /**
- * @brief Builds the ShotGrid `_search` filters object for a find IR.
+ * @brief Builds the ShotGrid `_search` filters value for a find IR.
+ *
+ * Hash style, as documented at
+ * https://developers.shotgridsoftware.com/rest-api/#searching : a basic
+ * condition array, or a complex filter with `logical_operator` and
+ * `conditions`. `filters` is optional on SearchRequest, so a find with no
+ * criterion returns null and the caller omits the key.
+ *
  * @param ir Validated find query (op may be set).
  * @param mapping Complete domain ↔ ShotGrid map.
- * @return JSON with `logical_operator` / `conditions`, or empty object when
- *     neither In nor Where is present.
+ * @return A hash-style filter, or null when the find has no criterion.
  * @throw Error When an entity, field, or link cannot be resolved.
  */
 nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mapping);
 
 /**
  * @brief Lists ShotGrid attribute names to request for an entity.
- * @param entity Mapped entity.
+ * @param schema ShotGrid schema for the queried entity.
  * @return Field shotgrid names in mapping order.
  */
-std::vector<std::string> shotgridFieldNames(const ShotGridEntityMap &entity);
+std::vector<std::string> shotgridFieldNames(const ShotGridSchema &schema);
 
 /**
  * @brief Maps one ShotGrid data row into a domain Record.
  * @param row One element of the `_search` `data` array.
- * @param entity Mapping for the queried domain entity.
+ * @param schema ShotGrid schema for the queried entity.
  * @return Domain record with only mapped fields.
  * @throw Error When a required attribute is missing or mistyped.
  */
-Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridEntityMap &entity);
+Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridSchema &schema);
 
 } // namespace pms

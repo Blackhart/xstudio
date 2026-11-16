@@ -50,16 +50,16 @@ struct LinkHop {
 
 std::vector<LinkHop> linkPathTo(
     const ShotGridMapping &mapping, const std::string &from, const std::string &parent) {
-    const ShotGridEntityMap *start = mapping.entity(from);
+    const ShotGridSchema *start = mapping.findSchema(from);
     if (!start) {
         throw Error("shotgrid: unknown entity \"" + from + "\"");
     }
-    if (const ShotGridLinkMap *direct = start->link(parent)) {
-        const ShotGridEntityMap *target = mapping.entity(direct->target);
-        if (!target || target->shotgrid.empty()) {
+    if (const ShotGridSchemaLink *direct = start->findLink(parent)) {
+        const ShotGridSchema *target = mapping.findSchema(direct->shotgridTargetName);
+        if (!target || target->shotgridName.empty()) {
             throw Error("shotgrid: incomplete target for link \"" + parent + "\"");
         }
-        return {LinkHop{direct->shotgrid, target->shotgrid, direct->target}};
+        return {LinkHop{direct->shotgrid, target->shotgridName, direct->shotgridTargetName}};
     }
 
     struct Node {
@@ -73,25 +73,25 @@ std::vector<LinkHop> linkPathTo(
     while (!queue.empty()) {
         Node node = std::move(queue.front());
         queue.pop();
-        const ShotGridEntityMap *entity = mapping.entity(node.domain);
-        if (!entity) {
+        const ShotGridSchema *schema = mapping.findSchema(node.domain);
+        if (!schema) {
             continue;
         }
-        for (const ShotGridLinkMap &link : entity->links) {
-            if (seen.count(link.target) != 0) {
+        for (const ShotGridSchemaLink &link : schema->links) {
+            if (seen.count(link.shotgridTargetName) != 0) {
                 continue;
             }
-            const ShotGridEntityMap *target = mapping.entity(link.target);
-            if (!target || target->shotgrid.empty() || link.shotgrid.empty()) {
+            const ShotGridSchema *target = mapping.findSchema(link.shotgridTargetName);
+            if (!target || target->shotgridName.empty() || link.shotgrid.empty()) {
                 continue;
             }
             std::vector<LinkHop> next = node.path;
-            next.push_back(LinkHop{link.shotgrid, target->shotgrid, link.target});
-            if (link.target == parent) {
+            next.push_back(LinkHop{link.shotgrid, target->shotgridName, link.shotgridTargetName});
+            if (link.shotgridTargetName == parent) {
                 return next;
             }
-            seen.insert(link.target);
-            queue.push(Node{link.target, std::move(next)});
+            seen.insert(link.shotgridTargetName);
+            queue.push(Node{link.shotgridTargetName, std::move(next)});
         }
     }
     throw Error("shotgrid: no link path from \"" + from + "\" to parent \"" + parent + "\"");
@@ -127,8 +127,8 @@ nlohmann::json scopeCondition(
         return condition;
     }
     if (const auto *name = std::get_if<std::string>(&*node.value)) {
-        const ShotGridEntityMap *target = mapping.entity(hops.back().target);
-        const ShotGridFieldMap *nameField = target ? target->field("name") : nullptr;
+        const ShotGridSchema *target = mapping.findSchema(hops.back().target);
+        const ShotGridSchemaField *nameField = target ? target->findField("name") : nullptr;
         if (!nameField || nameField->shotgrid.empty()) {
             throw Error("shotgrid: parent \"" + node.key + "\" has no mapped name field");
         }
@@ -141,14 +141,14 @@ nlohmann::json scopeCondition(
     throw Error("shotgrid: scope \"" + node.key + "\" expects id or name");
 }
 
-nlohmann::json fieldCondition(const ExprNode &node, const ShotGridEntityMap &entity) {
+nlohmann::json fieldCondition(const ExprNode &node, const ShotGridSchema &schema) {
     const char *op = comparisonOp(node.op);
     if (!op || !node.value) {
         throw Error("shotgrid: invalid field leaf on \"" + node.key + "\"");
     }
-    const ShotGridFieldMap *field = entity.field(node.key);
+    const ShotGridSchemaField *field = schema.findField(node.key);
     if (!field || field->shotgrid.empty()) {
-        throw Error("shotgrid: field \"" + entity.domain + "." + node.key + "\" is not mapped");
+        throw Error("shotgrid: field \"" + schema.domainName + "." + node.key + "\" is not mapped");
     }
     return nlohmann::json::array({field->shotgrid, op, valueJson(*node.value)});
 }
@@ -156,14 +156,14 @@ nlohmann::json fieldCondition(const ExprNode &node, const ShotGridEntityMap &ent
 nlohmann::json exprToJson(
     const ExprNode &node,
     const ShotGridMapping &mapping,
-    const ShotGridEntityMap &entity,
+    const ShotGridSchema &schema,
     bool scope) {
     if (node.kind == ExprKind::Group) {
         if (node.op == ExprOp::Not) {
             if (node.args.size() != 1 || !node.args[0]) {
                 throw Error("shotgrid: not expects one child");
             }
-            nlohmann::json child = exprToJson(*node.args[0], mapping, entity, scope);
+            nlohmann::json child = exprToJson(*node.args[0], mapping, schema, scope);
             if (!child.is_array() || child.size() < 2) {
                 throw Error("shotgrid: not only inverts a leaf");
             }
@@ -181,14 +181,14 @@ nlohmann::json exprToJson(
             if (!child) {
                 throw Error("shotgrid: empty child");
             }
-            out["conditions"].push_back(exprToJson(*child, mapping, entity, scope));
+            out["conditions"].push_back(exprToJson(*child, mapping, schema, scope));
         }
         return out;
     }
     if (scope) {
-        return scopeCondition(node, mapping, entity.domain);
+        return scopeCondition(node, mapping, schema.domainName);
     }
-    return fieldCondition(node, entity);
+    return fieldCondition(node, schema);
 }
 
 nlohmann::json andCombine(nlohmann::json left, nlohmann::json right) {
@@ -215,16 +215,16 @@ bool looksLikeDateField(const std::string &domain) {
 } // namespace
 
 nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mapping) {
-    const ShotGridEntityMap *entity = mapping.entity(ir.entity);
-    if (!entity || entity->shotgrid.empty()) {
+    const ShotGridSchema *schema = mapping.findSchema(ir.entity);
+    if (!schema || schema->shotgridName.empty()) {
         throw Error("shotgrid: entity \"" + ir.entity + "\" is not mapped");
     }
     nlohmann::json filters = nlohmann::json::object();
     if (ir.in) {
-        filters = exprToJson(*ir.in, mapping, *entity, true);
+        filters = exprToJson(*ir.in, mapping, *schema, true);
     }
     if (ir.where) {
-        nlohmann::json where = exprToJson(*ir.where, mapping, *entity, false);
+        nlohmann::json where = exprToJson(*ir.where, mapping, *schema, false);
         filters =
             filters.empty() ? std::move(where) : andCombine(std::move(filters), std::move(where));
     }
@@ -235,7 +235,7 @@ nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mappin
         } catch (const std::exception &) {
             throw Error("shotgrid: cursor must be an integer id");
         }
-        const ShotGridFieldMap *idField = entity->field("id");
+        const ShotGridSchemaField *idField = schema->findField("id");
         if (!idField) {
             throw Error("shotgrid: entity \"" + ir.entity + "\" has no id field");
         }
@@ -247,13 +247,17 @@ nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mappin
                             {"conditions", nlohmann::json::array({cursorFilter})}}
                       : andCombine(std::move(filters), std::move(cursorFilter));
     }
+    // SearchRequest.filters is optional. An empty object is not a hash filter.
+    if (filters.empty()) {
+        return nullptr;
+    }
     return filters;
 }
 
-std::vector<std::string> shotgridFieldNames(const ShotGridEntityMap &entity) {
+std::vector<std::string> shotgridFieldNames(const ShotGridSchema &schema) {
     std::vector<std::string> names;
-    names.reserve(entity.fields.size());
-    for (const ShotGridFieldMap &field : entity.fields) {
+    names.reserve(schema.fields.size());
+    for (const ShotGridSchemaField &field : schema.fields) {
         if (!field.shotgrid.empty()) {
             names.push_back(field.shotgrid);
         }
@@ -261,13 +265,13 @@ std::vector<std::string> shotgridFieldNames(const ShotGridEntityMap &entity) {
     return names;
 }
 
-Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridEntityMap &entity) {
+Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridSchema &schema) {
     const nlohmann::json *attributes = &row;
     if (row.contains("attributes") && row["attributes"].is_object()) {
         attributes = &row["attributes"];
     }
     Record out;
-    for (const ShotGridFieldMap &field : entity.fields) {
+    for (const ShotGridSchemaField &field : schema.fields) {
         if (field.shotgrid.empty()) {
             continue;
         }

@@ -107,10 +107,10 @@ class SharedPms {
         site.base_url = url;
         site.auth = pms::ShotGridScriptAuth{script, key};
         pms::ShotGridBackend backend(std::move(site), mappingPath);
-        backend.setDebug([](const std::string &payload) {
+        backend.setSearchLog([](const std::string &payload) {
             trace::info("shotgrid payload " + payload);
         });
-        backend.setNotice([](const std::string &line) { trace::info("shotgrid " + line); });
+        backend.setAuthLog([](const std::string &line) { trace::info("shotgrid " + line); });
         return backend;
     }
 

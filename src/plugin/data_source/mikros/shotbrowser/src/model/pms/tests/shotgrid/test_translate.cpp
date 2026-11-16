@@ -18,6 +18,14 @@ ShotGridMapping filledMapping() {
 
 } // namespace
 
+TEST_CASE("filters for an unfiltered project find") {
+    const ShotGridMapping mapping = filledMapping();
+    Ir ir = Project().ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
+    CHECK(filters.is_null());
+}
+
 TEST_CASE("filters for project where status") {
     const ShotGridMapping mapping = filledMapping();
     Ir ir = Project().Where(status == "ip").ir();
@@ -88,7 +96,7 @@ TEST_CASE("filters include greater_than cursor when limit is set") {
 
 TEST_CASE("record maps attributes to domain fields") {
     const ShotGridMapping mapping = filledMapping();
-    const ShotGridEntityMap *project = mapping.entity("project");
+    const ShotGridSchema *project = mapping.findSchema("project");
     REQUIRE(project != nullptr);
     const nlohmann::json row = {
         {"type", "Project"},

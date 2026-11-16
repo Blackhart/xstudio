@@ -15,8 +15,8 @@
 
 namespace pms {
 
-const ShotGridFieldMap *ShotGridEntityMap::field(const std::string &key) const {
-    for (const ShotGridFieldMap &spec : fields) {
+const ShotGridSchemaField *ShotGridSchema::findField(const std::string &key) const {
+    for (const ShotGridSchemaField &spec : fields) {
         if (spec.domain == key) {
             return &spec;
         }
@@ -24,8 +24,8 @@ const ShotGridFieldMap *ShotGridEntityMap::field(const std::string &key) const {
     return nullptr;
 }
 
-const ShotGridLinkMap *ShotGridEntityMap::link(const std::string &key) const {
-    for (const ShotGridLinkMap &spec : links) {
+const ShotGridSchemaLink *ShotGridSchema::findLink(const std::string &key) const {
+    for (const ShotGridSchemaLink &spec : links) {
         if (spec.domain == key) {
             return &spec;
         }
@@ -47,53 +47,53 @@ ShotGridMapping ShotGridMapping::parse(const std::string &yaml) {
     ShotGridMapping mapping;
     const YAML::Node entities = root["entities"];
     for (YAML::const_iterator it = entities.begin(); it != entities.end(); ++it) {
-        ShotGridEntityMap entity;
-        entity.domain = it->first.as<std::string>();
+        ShotGridSchema schema;
+        schema.domainName = it->first.as<std::string>();
         const YAML::Node body = it->second;
         if (!body["shotgrid"]) {
-            throw Error("shotgrid mapping: entity \"" + entity.domain + "\" missing shotgrid");
+            throw Error("shotgrid mapping: entity \"" + schema.domainName + "\" missing shotgrid");
         }
-        entity.shotgrid = body["shotgrid"].as<std::string>("");
+        schema.shotgridName = body["shotgrid"].as<std::string>("");
         if (!body["fields"]) {
-            throw Error("shotgrid mapping: entity \"" + entity.domain + "\" has no fields");
+            throw Error("shotgrid mapping: entity \"" + schema.domainName + "\" has no fields");
         }
         for (YAML::const_iterator fieldEntry = body["fields"].begin();
              fieldEntry != body["fields"].end();
              ++fieldEntry) {
-            ShotGridFieldMap field;
+            ShotGridSchemaField field;
             field.domain = fieldEntry->first.as<std::string>();
             const YAML::Node fieldBody = fieldEntry->second;
             if (!fieldBody["shotgrid"]) {
                 throw Error(
-                    "shotgrid mapping: field \"" + entity.domain + "." + field.domain +
+                    "shotgrid mapping: field \"" + schema.domainName + "." + field.domain +
                     "\" missing shotgrid");
             }
             field.shotgrid = fieldBody["shotgrid"].as<std::string>("");
-            entity.fields.push_back(std::move(field));
+            schema.fields.push_back(std::move(field));
         }
         if (body["links"]) {
             for (YAML::const_iterator linkEntry = body["links"].begin();
                  linkEntry != body["links"].end();
                  ++linkEntry) {
-                ShotGridLinkMap link;
+                ShotGridSchemaLink link;
                 link.domain = linkEntry->first.as<std::string>();
                 const YAML::Node linkBody = linkEntry->second;
                 if (!linkBody["shotgrid"] || !linkBody["target"]) {
                     throw Error(
-                        "shotgrid mapping: link \"" + entity.domain + "." + link.domain +
+                        "shotgrid mapping: link \"" + schema.domainName + "." + link.domain +
                         "\" needs shotgrid and target");
                 }
                 link.shotgrid = linkBody["shotgrid"].as<std::string>("");
-                link.target = linkBody["target"].as<std::string>();
-                if (link.target.empty()) {
+                link.shotgridTargetName = linkBody["target"].as<std::string>();
+                if (link.shotgridTargetName.empty()) {
                     throw Error(
-                        "shotgrid mapping: link \"" + entity.domain + "." + link.domain +
+                        "shotgrid mapping: link \"" + schema.domainName + "." + link.domain +
                         "\" has empty target");
                 }
-                entity.links.push_back(std::move(link));
+                schema.links.push_back(std::move(link));
             }
         }
-        mapping.entities_.push_back(std::move(entity));
+        mapping.entities_.push_back(std::move(schema));
     }
     return mapping;
 }
@@ -108,37 +108,37 @@ ShotGridMapping ShotGridMapping::load(const std::string &path) {
     return parse(buffer.str());
 }
 
-const ShotGridEntityMap *ShotGridMapping::entity(const std::string &name) const {
-    for (const ShotGridEntityMap &spec : entities_) {
-        if (spec.domain == name) {
-            return &spec;
+const ShotGridSchema *ShotGridMapping::findSchema(const std::string &domainName) const {
+    for (const ShotGridSchema &schema : entities_) {
+        if (schema.domainName == domainName) {
+            return &schema;
         }
     }
     return nullptr;
 }
 
-void ShotGridMapping::requireComplete() const {
-    for (const ShotGridEntityMap &entity : entities_) {
-        if (entity.shotgrid.empty()) {
-            throw Error("shotgrid mapping: entity \"" + entity.domain + "\" has empty shotgrid");
+void ShotGridMapping::throwIfNamesMissing() const {
+    for (const ShotGridSchema &schema : entities_) {
+        if (schema.shotgridName.empty()) {
+            throw Error("shotgrid mapping: entity \"" + schema.domainName + "\" has empty shotgrid");
         }
-        for (const ShotGridFieldMap &field : entity.fields) {
+        for (const ShotGridSchemaField &field : schema.fields) {
             if (field.shotgrid.empty()) {
                 throw Error(
-                    "shotgrid mapping: field \"" + entity.domain + "." + field.domain +
+                    "shotgrid mapping: field \"" + schema.domainName + "." + field.domain +
                     "\" has empty shotgrid");
             }
         }
-        for (const ShotGridLinkMap &link : entity.links) {
+        for (const ShotGridSchemaLink &link : schema.links) {
             if (link.shotgrid.empty()) {
                 throw Error(
-                    "shotgrid mapping: link \"" + entity.domain + "." + link.domain +
+                    "shotgrid mapping: link \"" + schema.domainName + "." + link.domain +
                     "\" has empty shotgrid");
             }
-            if (!this->entity(link.target)) {
+            if (!this->findSchema(link.shotgridTargetName)) {
                 throw Error(
-                    "shotgrid mapping: link \"" + entity.domain + "." + link.domain +
-                    "\" targets unknown entity \"" + link.target + "\"");
+                    "shotgrid mapping: link \"" + schema.domainName + "." + link.domain +
+                    "\" targets unknown entity \"" + link.shotgridTargetName + "\"");
             }
         }
     }

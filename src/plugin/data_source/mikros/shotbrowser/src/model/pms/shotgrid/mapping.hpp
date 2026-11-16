@@ -13,7 +13,7 @@ namespace pms {
 /**
  * @brief One domain field mapped to a ShotGrid attribute name.
  */
-struct ShotGridFieldMap {
+struct ShotGridSchemaField {
     std::string domain;   ///< Domain field key, such as `"name"`.
     std::string shotgrid; ///< REST attribute name. Empty until filled in.
 };
@@ -21,44 +21,44 @@ struct ShotGridFieldMap {
 /**
  * @brief One parent link on a ShotGrid entity.
  *
- * `shotgrid` is the field on the mapped entity. `target` is the domain parent
- * entity name used to resolve the parent's ShotGrid type and name field.
+ * `shotgrid` is the field on the mapped entity. `shotgridTargetName` is the
+ * domain parent name used to resolve the parent's ShotGrid type and name field.
  */
-struct ShotGridLinkMap {
+struct ShotGridSchemaLink {
     std::string domain;   ///< Domain parent key, such as `"project"`.
     std::string shotgrid; ///< REST link field on the child entity.
-    std::string target;   ///< Domain entity name of the parent.
+    std::string shotgridTargetName; ///< Domain entity name of the parent.
 };
 
 /**
- * @brief ShotGrid names for one domain entity.
+ * @brief ShotGrid schema for one domain entity: type, fields, and parent links.
  */
-struct ShotGridEntityMap {
-    std::string domain;   ///< Domain entity name, such as `"version"`.
-    std::string shotgrid; ///< REST entity type, such as `"Version"`.
-    std::vector<ShotGridFieldMap> fields; ///< Domain fields in YAML order.
-    std::vector<ShotGridLinkMap> links;   ///< Domain parents in YAML order.
+struct ShotGridSchema {
+    std::string domainName;   ///< Domain entity name, such as `"version"`.
+    std::string shotgridName; ///< REST entity type, such as `"Version"`.
+    std::vector<ShotGridSchemaField> fields; ///< Domain fields in YAML order.
+    std::vector<ShotGridSchemaLink> links;   ///< Domain parents in YAML order.
 
     /**
      * @brief Finds a field mapping by domain key.
      * @param key Domain field name.
      * @return The mapping, or null when absent.
      */
-    const ShotGridFieldMap *field(const std::string &key) const;
+    const ShotGridSchemaField *findField(const std::string &key) const;
 
     /**
      * @brief Finds a link mapping by domain parent key.
      * @param key Domain parent name.
      * @return The mapping, or null when absent.
      */
-    const ShotGridLinkMap *link(const std::string &key) const;
+    const ShotGridSchemaLink *findLink(const std::string &key) const;
 };
 
 /**
  * @brief Full ShotGrid mapping for the current domain slice.
  *
- * Empty `shotgrid` strings are allowed at load time so the file can be filled
- * gradually. Call requireComplete() before find() against a live site.
+ * `load` and `parse` accept an empty ShotGrid name so a file can be filled
+ * gradually. `throwIfNamesMissing` rejects that file before a live search.
  */
 class ShotGridMapping {
   public:
@@ -79,26 +79,26 @@ class ShotGridMapping {
     static ShotGridMapping parse(const std::string &yaml);
 
     /**
-     * @brief Finds an entity mapping by domain name.
-     * @param name Domain entity name.
-     * @return The mapping, or null when absent.
+     * @brief Finds the schema whose domain name matches.
+     * @param domainName Domain entity name, such as `"project"`.
+     * @return The schema, or null when absent.
      */
-    const ShotGridEntityMap *entity(const std::string &name) const;
+    const ShotGridSchema *findSchema(const std::string &domainName) const;
 
     /**
      * @brief Returns every entity mapping in file order.
      * @return The entities owned by this mapping.
      */
-    const std::vector<ShotGridEntityMap> &entities() const { return entities_; }
+    const std::vector<ShotGridSchema> &entities() const { return entities_; }
 
     /**
-     * @brief Throws when any entity, field, or link still has an empty shotgrid name.
-     * @throw Error Naming the first incomplete entry.
+     * @brief Throws when a ShotGrid name is empty or a link target is unknown.
+     * @throw Error Naming the first missing name.
      */
-    void requireComplete() const;
+    void throwIfNamesMissing() const;
 
   private:
-    std::vector<ShotGridEntityMap> entities_; ///< Entities in YAML order.
+    std::vector<ShotGridSchema> entities_; ///< Entities in YAML order.
 };
 
 } // namespace pms

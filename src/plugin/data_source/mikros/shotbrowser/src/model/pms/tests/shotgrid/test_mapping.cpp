@@ -7,10 +7,10 @@
 
 using namespace pms;
 
-TEST_CASE("filled fixture parses and requireComplete passes") {
+TEST_CASE("filled fixture parses and names are present") {
     const ShotGridMapping mapping = ShotGridMapping::load(PMS_SHOTGRID_MAPPING_FIXTURE_PATH);
-    CHECK_NOTHROW(mapping.requireComplete());
-    CHECK(mapping.entity("project")->shotgrid == "Project");
-    CHECK(mapping.entity("version")->field("name")->shotgrid == "code");
-    CHECK(mapping.entity("shot")->link("sequence")->shotgrid == "sg_sequence");
+    CHECK_NOTHROW(mapping.throwIfNamesMissing());
+    CHECK(mapping.findSchema("project")->shotgridName == "Project");
+    CHECK(mapping.findSchema("version")->findField("name")->shotgrid == "code");
+    CHECK(mapping.findSchema("shot")->findLink("sequence")->shotgrid == "sg_sequence");
 }

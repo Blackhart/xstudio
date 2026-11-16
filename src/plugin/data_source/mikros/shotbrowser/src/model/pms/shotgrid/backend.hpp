@@ -8,6 +8,9 @@
 #include "pms/backend.hpp"
 #include "pms/shotgrid/mapping.hpp"
 
+#include <cpp-httplib/httplib.h>
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <functional>
 #include <optional>
@@ -29,14 +32,14 @@ struct ShotGridScriptAuth {
 /**
  * @brief User credentials (OAuth password grant).
  *
- * ShotGrid supports this for human logins. Prefer script auth for a desktop
- * plugin service account unless you need per-user permissions.
+ * The documented password body is username, password, and grant_type.
+ * Prefer script auth for a desktop plugin service account.
  */
 struct ShotGridUserAuth {
     std::string username; ///< ShotGrid login.
     std::string password; ///< ShotGrid password.
-    std::string client_id;     ///< OAuth client_id (often a script name still required).
-    std::string client_secret; ///< OAuth client_secret for that client.
+    std::string client_id;     ///< Unused. The password grant does not send a client id.
+    std::string client_secret; ///< Unused. The password grant does not send a client secret.
 };
 
 /**
@@ -58,10 +61,13 @@ struct ShotGridSite {
 /**
  * @brief Executes find() against ShotGrid using a domain↔REST mapping.
  *
- * Translates domain IR into `/api/v1/entity/{Type}/_search` filters, maps
- * returned attributes back to domain fields, and applies keyset pagination
- * when `ir.limit` is set. When a debug sink is set, each search logs the JSON
- * body before the request. A notice sink reports a successful token fetch.
+ * Calls `POST /api/v1.1/entity/{collection}/_search` as documented at
+ * https://developers.shotgridsoftware.com/rest-api/#searching . The collection
+ * is the mapped type in plural snake_case. `fields`, `sort`, and `page` are
+ * query parameters. The body is only the hash filter, omitted when the find
+ * has no criterion. Returned attributes are mapped back to domain fields.
+ * Keyset pagination uses `greater_than` on id with page number 1. A debug
+ * sink logs the JSON body. A notice sink reports a successful token fetch.
  * Network work is synchronous; call from a worker.
  *
  */
@@ -82,29 +88,23 @@ class ShotGridBackend : public Backend {
      */
     ShotGridBackend(ShotGridSite site, ShotGridMapping mapping);
 
-    /**
-     * @brief Returns the loaded mapping.
-     * @return Mapping used for translation.
-     */
-    const ShotGridMapping &mapping() const { return mapping_; }
+    /** @brief Returns the mapping loaded at construction. */
+    const ShotGridMapping &getMapping() const { return mapping_; }
+
+    /** @brief Returns the site URL and credentials passed at construction. */
+    const ShotGridSite &getSite() const { return site_; }
 
     /**
-     * @brief Returns the configured site (URL + auth).
-     * @return Site passed at construction.
+     * @brief Records each search path and body before it is sent.
+     * @param searchLog Sink. Empty disables the trace. The text has no credentials.
      */
-    const ShotGridSite &site() const { return site_; }
+    void setSearchLog(std::function<void(const std::string &)> searchLog);
 
     /**
-     * @brief Receives the JSON body of each search before it is sent.
-     * @param debug Sink. Empty disables the trace. The body has no credentials.
+     * @brief Records a short line after a token is issued.
+     * @param authLog Sink. Empty disables it. The text has no token or secret.
      */
-    void setDebug(std::function<void(const std::string &)> debug);
-
-    /**
-     * @brief Receives a short auth result after a token is issued.
-     * @param notice Sink. Empty disables it. The text has no token or secret.
-     */
-    void setNotice(std::function<void(const std::string &)> notice);
+    void setAuthLog(std::function<void(const std::string &)> authLog);
 
     /**
      * @brief Runs a validated find against ShotGrid.
@@ -115,13 +115,136 @@ class ShotGridBackend : public Backend {
     Page find(const Ir &ir) override;
 
   private:
-    /** @brief Acquires or refreshes the OAuth access token when needed. */
-    void ensureToken();
+    /**
+     * @brief Reads the ShotGrid schema for the entity named in the IR.
+     * @param ir Incoming query.
+     * @return Schema. The reference stays valid for the backend lifetime.
+     * @throw Error When a name is missing, the URL is empty, or the entity is unknown.
+     */
+    const ShotGridSchema &extractSchemaFromIR(const Ir &ir) const;
+
+    /** @brief Throws when the site URL is empty. */
+    void throwIfBaseUrlEmpty() const;
+
+    /** @brief True when the stored token is still valid for at least 30 seconds. */
+    bool hasUsableToken() const;
+
+    /** @brief Fetches a token when none is stored or the current one is about to expire. */
+    void connectIfNeeded();
+
+    /**
+     * @brief Builds the token request body from the refresh token or the site credentials.
+     * @return Form fields for `/auth/access_token`.
+     */
+    httplib::Params buildAuthParams() const;
+
+    /**
+     * @brief Posts the token request.
+     * @return HTTP result. The caller stores the token.
+     * @throw Error When the connection fails before an HTTP status.
+     */
+    httplib::Result requestAccessToken();
+
+    /**
+     * @brief Saves the access token from a successful auth response.
+     * @param response Result of `requestAccessToken`.
+     * @throw Error When the status is not 2xx or the token is missing.
+     */
+    void storeAccessToken(const httplib::Result &response);
+
+    /** @brief Drops the stored tokens so the next connect asks for a new one. */
+    void forgetTokens();
+
+    /**
+     * @brief Builds the search body. Filters only, or `{}` when the find has no criterion.
+     * @param ir Incoming query.
+     * @return JSON object sent as the POST body.
+     */
+    nlohmann::json buildRequestBody(const Ir &ir) const;
+
+    /**
+     * @brief Builds `/api/v1.1/entity/{collection}/_search` with no query parameters.
+     * @param schema ShotGrid schema for the queried entity.
+     * @return The path.
+     */
+    std::string buildEntityUrl(const ShotGridSchema &schema) const;
+
+    /**
+     * @brief Appends the `fields` query parameter.
+     * @param url Path so far.
+     * @param schema ShotGrid schema for the queried entity.
+     * @return URL including `?fields=`.
+     */
+    std::string appendFields(std::string url, const ShotGridSchema &schema) const;
+
+    /**
+     * @brief Appends the `sort` query parameter. Sort is the mapped id field.
+     * @param url Path so far.
+     * @param schema ShotGrid schema for the queried entity.
+     * @return URL including `&sort=`.
+     */
+    std::string appendSort(std::string url, const ShotGridSchema &schema) const;
+
+    /**
+     * @brief Appends `page[size]` and `page[number]`. Size is the limit, capped at 500. Number is 1.
+     * @param url Path so far.
+     * @param ir Incoming query.
+     * @return URL including the page parameters.
+     */
+    std::string appendPage(std::string url, const Ir &ir) const;
+
+    /**
+     * @brief Posts the search. On 401, connects again and posts once more.
+     * @param url Full path and query.
+     * @param body Request body from `buildRequestBody`.
+     * @return HTTP result. Status is checked by `buildPage`.
+     * @throw Error When the connection fails before an HTTP status.
+     */
+    httplib::Result postSearch(const std::string &url, const nlohmann::json &body);
+
+    /**
+     * @brief Posts one search. Does not retry.
+     * @param url Full path and query.
+     * @param body Request body.
+     * @return HTTP result, which may have no status.
+     */
+    httplib::Result sendSearch(const std::string &url, const nlohmann::json &body);
+
+    /** @brief Logs the search path and body when a sink is set. */
+    void logSearch(const std::string &url, const nlohmann::json &body) const;
+
+    /**
+     * @brief Turns a search response into a domain page.
+     * @param response HTTP result from `postSearch`.
+     * @param schema ShotGrid schema used to read each row.
+     * @param ir Incoming query. A full page sets `next_cursor` to the last id.
+     * @return Domain rows and an optional cursor.
+     * @throw Error When the status is not 2xx or `data` is missing.
+     */
+    Page buildPage(
+        const httplib::Result &response, const ShotGridSchema &schema, const Ir &ir) const;
+
+    /**
+     * @brief Throws when the search status is not 2xx.
+     * @param response HTTP result from `postSearch`.
+     */
+    void throwIfSearchFailed(const httplib::Result &response) const;
+
+    /**
+     * @brief Reads `data` into domain rows and sets the cursor when the page is full.
+     * @param response Successful search response.
+     * @param schema ShotGrid schema used to read each row.
+     * @param ir Incoming query.
+     * @return Domain page.
+     * @throw Error When `data` is missing.
+     */
+    Page readRecords(
+        const httplib::Result &response, const ShotGridSchema &schema, const Ir &ir) const;
 
     ShotGridSite site_;
     ShotGridMapping mapping_;
-    std::function<void(const std::string &)> debug_;  ///< Search payload trace. Empty when off.
-    std::function<void(const std::string &)> notice_; ///< Auth result trace. Empty when off.
+    std::function<void(const std::string &)> searchLog_; ///< Search path and body. Empty when off.
+    std::function<void(const std::string &)> authLog_;   ///< Auth result line. Empty when off.
     std::optional<std::string> access_token_;
     std::optional<std::string> refresh_token_;
     std::chrono::steady_clock::time_point token_expires_{};
