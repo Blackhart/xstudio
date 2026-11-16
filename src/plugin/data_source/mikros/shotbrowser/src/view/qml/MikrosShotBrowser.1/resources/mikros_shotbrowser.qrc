@@ -1,5 +1,9 @@
 <RCC>
 	<qresource prefix="/mikros_shotbrowser_icons">
 		<file alias="mikros_shotbrowser.svg">mikros_shotbrowser.svg</file>
+		<file alias="account_tree.svg">icons/account_tree.svg</file>
+		<file alias="nature.svg">icons/nature.svg</file>
+		<file alias="segment.svg">icons/segment.svg</file>
+		<file alias="tag.svg">icons/tag.svg</file>
 	</qresource>
 </RCC>

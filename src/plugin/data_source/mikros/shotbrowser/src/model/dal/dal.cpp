@@ -10,15 +10,31 @@
 #include "pms/pms.hpp"
 #include "pms/shotgrid/backend.hpp"
 
+#include "xstudio/utility/helpers.hpp"
 #include "xstudio/utility/logging.hpp"
 
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <string>
 #include <variant>
 
 namespace xstudio::mikros_shotbrowser::dal {
 namespace {
+
+/**
+ * @brief Path to schema.yaml at runtime.
+ *
+ * Prefer `PMS_SCHEMA_PATH`, else `xstudio_root("/mikros_shotbrowser/schema.yaml")`
+ * (installed via add_resource; launcher sets XSTUDIO_ROOT to share/xstudio).
+ */
+std::string schemaPath() {
+    if (const char *override_path = std::getenv("PMS_SCHEMA_PATH");
+        override_path && *override_path) {
+        return override_path;
+    }
+    return utility::xstudio_root("/mikros_shotbrowser/schema.yaml");
+}
 
 /**
  * @brief Shared backend + CachingBackend + Session for the plugin process.
@@ -44,7 +60,7 @@ class SharedPms {
         : fake_(makeFake()),
           shotgrid_(makeShotGrid()),
           cache_(innerBackend(), makeCacheOptions()),
-          session_(pms::Schema::load(PMS_SCHEMA_PATH), cache_) {}
+          session_(pms::Schema::load(schemaPath()), cache_) {}
 
     static std::optional<pms::FakeBackend> makeFake() {
         const char *mode = std::getenv("MIKROS_PMS_BACKEND");

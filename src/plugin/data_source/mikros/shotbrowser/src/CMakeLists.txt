@@ -37,9 +37,13 @@ target_link_libraries(${PROJECT_NAME}
 
 set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS_NO_SHARED true)
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE
-	PMS_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/model/pms/schema/schema.yaml"
-)
+# Install schema under share/xstudio/; dal.cpp resolves it via XSTUDIO_ROOT
+# (or PMS_SCHEMA_PATH) at runtime — never bake CMAKE_CURRENT_SOURCE_DIR.
+add_resource(
+	schema.yaml
+	${CMAKE_CURRENT_SOURCE_DIR}/model/pms/schema
+	${PROJECT_NAME}
+	mikros_shotbrowser)
 
 qt_add_qml_module(${PROJECT_NAME}
 	URI MikrosShotBrowser
