@@ -6,6 +6,7 @@
 #pragma once
 
 #include "model/poco/asset.hpp"
+#include "model/poco/playlist.hpp"
 #include "model/poco/project.hpp"
 #include "model/poco/sequence.hpp"
 #include "model/poco/shot.hpp"
@@ -82,10 +83,26 @@ RowPage<poco::Asset> assets(
     std::optional<std::string> cursor = std::nullopt);
 
 /**
+ * @brief One page of playlists belonging to a project.
+ *
+ * A playlist depends only on its project. Pass next_cursor to the next call.
+ *
+ * @param projectId Domain project `id`.
+ * @param limit Maximum rows in the page. Must be greater than zero.
+ * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
+ * @return Page of playlists. Empty when none match or the lookup fails.
+ */
+RowPage<poco::Playlist> playlists(
+    std::int64_t projectId,
+    std::size_t limit,
+    std::optional<std::string> cursor = std::nullopt);
+
+/**
  * @brief One page of versions for a project.
  *
  * Strong parent (at most one): In(shot), else In(sequence), else In(asset),
- * else In(project). Pass next_cursor to the next call.
+ * else In(project). Playlist is an optional weak AND on that parent.
+ * Pass next_cursor to the next call.
  *
  * @param projectId Domain project `id`.
  * @param limit Maximum rows in the page. Must be greater than zero.
@@ -93,6 +110,7 @@ RowPage<poco::Asset> assets(
  * @param sequenceId Optional sequence `id`.
  * @param shotId Optional shot `id`.
  * @param assetId Optional asset `id`.
+ * @param playlistId Optional playlist `id`.
  * @return Page of versions. Empty when none match or the lookup fails.
  */
 RowPage<poco::Version> versions(
@@ -101,6 +119,7 @@ RowPage<poco::Version> versions(
     std::optional<std::string> cursor = std::nullopt,
     std::optional<std::int64_t> sequenceId = std::nullopt,
     std::optional<std::int64_t> shotId = std::nullopt,
-    std::optional<std::int64_t> assetId = std::nullopt);
+    std::optional<std::int64_t> assetId = std::nullopt,
+    std::optional<std::int64_t> playlistId = std::nullopt);
 
 } // namespace xstudio::mikros_shotbrowser::dal

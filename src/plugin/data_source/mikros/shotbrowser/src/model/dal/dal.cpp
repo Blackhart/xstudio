@@ -182,13 +182,20 @@ RowPage<poco::Asset> assets(
         pms::Asset().In(pms::scope::project == projectId), limit, cursor);
 }
 
+RowPage<poco::Playlist> playlists(
+    std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
+    return fetchPage<poco::Playlist>(
+        pms::Playlist().In(pms::scope::project == projectId), limit, cursor);
+}
+
 RowPage<poco::Version> versions(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor,
     std::optional<std::int64_t> sequenceId,
     std::optional<std::int64_t> shotId,
-    std::optional<std::int64_t> assetId) {
+    std::optional<std::int64_t> assetId,
+    std::optional<std::int64_t> playlistId) {
     auto query = pms::Version();
     if (shotId) {
         query = query.In(pms::scope::shot == *shotId);
@@ -198,6 +205,9 @@ RowPage<poco::Version> versions(
         query = query.In(pms::scope::asset == *assetId);
     } else {
         query = query.In(pms::scope::project == projectId);
+    }
+    if (playlistId) {
+        query = query.In(pms::scope::playlist == *playlistId);
     }
     return fetchPage<poco::Version>(std::move(query), limit, cursor);
 }

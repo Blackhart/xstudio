@@ -222,6 +222,9 @@ MikrosShotBrowserContext::MikrosShotBrowserContext(
     version_ = add_string_choice_attribute("Version", "Version", "", {}, {});
     version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 
+    playlist_tree_ = add_json_attribute("PlaylistTree", "PlaylistTree", nlohmann::json::array());
+    playlist_tree_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
     make_behavior();
     connect_to_ui();
     loadProjectsAsync();
@@ -451,11 +454,81 @@ void MikrosShotBrowserContext::refreshAssets() {
     }).detach();
 }
 
+void MikrosShotBrowserContext::refreshPlaylistTree() {
+    ++playlist_request_id_;
+    playlist_tree_->set_value(nlohmann::json::array());
+
+    if (!selected_project_) {
+        return;
+    }
+
+    const std::uint64_t request_id = playlist_request_id_;
+    const std::int64_t project_id = selected_project_->id;
+    const std::optional<std::int64_t> sequence_id =
+        selected_sequence_ ? std::optional<std::int64_t>{selected_sequence_->id} : std::nullopt;
+    const std::optional<std::int64_t> shot_id =
+        selected_shot_ ? std::optional<std::int64_t>{selected_shot_->id} : std::nullopt;
+    const std::optional<std::int64_t> asset_id =
+        selected_asset_ ? std::optional<std::int64_t>{selected_asset_->id} : std::nullopt;
+    PageScope scope;
+    scope.has_sequence = sequence_id.has_value();
+    scope.sequence_id = sequence_id ? *sequence_id : std::int64_t{0};
+    scope.has_shot = shot_id.has_value();
+    scope.shot_id = shot_id ? *shot_id : std::int64_t{0};
+    scope.has_asset = asset_id.has_value();
+    scope.asset_id = asset_id ? *asset_id : std::int64_t{0};
+    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
+    std::thread([weak, request_id, project_id, sequence_id, shot_id, asset_id, scope]() {
+        const std::vector<poco::Playlist> playlists = collectPages<poco::Playlist>(
+            [project_id](const std::optional<std::string> &cursor) {
+                return dal::playlists(project_id, kPageLimit, cursor);
+            });
+        nlohmann::json tree = nlohmann::json::array();
+        for (const poco::Playlist &playlist : playlists) {
+            const std::vector<poco::Version> versions = collectPages<poco::Version>(
+                [project_id, sequence_id, shot_id, asset_id, playlistId = playlist.id](
+                    const std::optional<std::string> &cursor) {
+                    return dal::versions(
+                        project_id,
+                        kPageLimit,
+                        cursor,
+                        sequence_id,
+                        shot_id,
+                        asset_id,
+                        playlistId);
+                });
+            nlohmann::json names = nlohmann::json::array();
+            for (const std::string &label : uniqueLabels(versions)) {
+                names.push_back(label);
+            }
+            tree.push_back(
+                {{"name", playlist.name}, {"id", playlist.id}, {"versions", std::move(names)}});
+        }
+        if (auto handle = weak.lock()) {
+            anon_mail(
+                data_source::put_data_atom_v,
+                request_id,
+                std::string("playlist_tree"),
+                project_id,
+                scope.has_sequence,
+                scope.sequence_id,
+                scope.has_shot,
+                scope.shot_id,
+                scope.has_asset,
+                scope.asset_id,
+                false,
+                utility::JsonStore(std::move(tree)))
+                .send(caf::actor_cast<caf::actor>(handle));
+        }
+    }).detach();
+}
+
 void MikrosShotBrowserContext::refreshVersions() {
     ++version_request_id_;
     versions_.clear();
     version_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
     version_->set_value("");
+    refreshPlaylistTree();
 
     if (!selected_project_) {
         return;
@@ -580,6 +653,16 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
                 }
                 applyCatalogPage(
                     assets_, asset_, namedRowsFromJson<poco::Asset>(payload), append);
+            } else if (catalog == "playlist_tree") {
+                if (request_id != playlist_request_id_) {
+                    return;
+                }
+                if (!selectionMatches(has_sequence, sequence_id, selected_sequence_) ||
+                    !selectionMatches(has_shot, shot_id, selected_shot_) ||
+                    !selectionMatches(has_asset, asset_id, selected_asset_)) {
+                    return;
+                }
+                playlist_tree_->set_value(nlohmann::json(payload));
             } else if (catalog == "version") {
                 if (request_id != version_request_id_) {
                     return;

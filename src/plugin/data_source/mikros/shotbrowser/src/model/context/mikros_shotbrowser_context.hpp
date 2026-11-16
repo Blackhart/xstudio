@@ -40,6 +40,9 @@ namespace xstudio::mikros_shotbrowser {
  *
  * Sequence and Asset are mutually exclusive. Shots and sequences are resolved
  * from the shot tree, not from a separate combo catalog.
+ *
+ * Playlists belong to the project. The versions nested under each playlist use
+ * the same sequence, shot, or asset filter as the version list, plus that playlist.
  */
 class MikrosShotBrowserContext : public plugin::StandardPlugin {
   public:
@@ -98,6 +101,11 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     void refreshAssets();
     /** @brief Clears then streams version pages for the current selection. */
     void refreshVersions();
+    /**
+     * @brief Rebuilds playlists for the project, with versions matching the
+     * current sequence, shot, or asset selection.
+     */
+    void refreshPlaylistTree();
 
     std::vector<poco::Project> projects_;   ///< Project pages received so far.
     std::vector<poco::Asset> assets_;       ///< Asset pages for `selected_project_`.
@@ -111,6 +119,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     std::uint64_t sequence_request_id_ = 0;  ///< Drops stale shot-tree worker replies.
     std::uint64_t asset_request_id_ = 0;     ///< Drops stale asset worker replies.
     std::uint64_t version_request_id_ = 0;   ///< Drops stale version worker replies.
+    std::uint64_t playlist_request_id_ = 0;  ///< Drops stale playlist-tree worker replies.
     bool aligning_sequence_ = false;         ///< Shot selection updates its sequence without clearing the shot.
 
     module::StringChoiceAttribute *project_ = nullptr;   ///< Project combo.
@@ -119,6 +128,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     module::JsonAttribute *shot_tree_ = nullptr;         ///< Sequences with their shot names.
     module::StringChoiceAttribute *asset_ = nullptr;     ///< Asset combo.
     module::StringChoiceAttribute *version_ = nullptr;   ///< Version combo.
+    module::JsonAttribute *playlist_tree_ = nullptr;     ///< Playlists with their version names.
 };
 
 } // namespace xstudio::mikros_shotbrowser

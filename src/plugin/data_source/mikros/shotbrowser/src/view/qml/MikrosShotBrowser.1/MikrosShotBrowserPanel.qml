@@ -20,8 +20,10 @@ Item {
     readonly property int splitFreeMax: 100000
 
     property string browserMode: "shot"
+    property string resultView: "versions"
     property string treeQuery: ""
     property var openSequences: ({})
+    property var openPlaylists: ({})
     property real leftPaneWidth: 0
 
     function restoreMode() {
@@ -144,6 +146,60 @@ Item {
         return rows
     }
 
+    function playlistTreeNodes() {
+        let value = playlistTree.value
+        if (!value)
+            return []
+        if (typeof value === "string") {
+            try {
+                value = JSON.parse(value)
+            } catch (error) {
+                return []
+            }
+        }
+        return value.length ? value : []
+    }
+
+    function togglePlaylist(name) {
+        const next = Object.assign({}, openPlaylists)
+        next[name] = !next[name]
+        openPlaylists = next
+    }
+
+    function playlistTreeRows() {
+        const nodes = playlistTreeNodes()
+        const rows = []
+        for (let i = 0; i < nodes.length; i++) {
+            const name = String(nodes[i].name)
+            const versions = nodes[i].versions && nodes[i].versions.length ? nodes[i].versions : []
+            const versionNames = []
+            for (let v = 0; v < versions.length; v++)
+                versionNames.push(String(versions[v]))
+            const expanded = versionNames.length > 0 && !!openPlaylists[name]
+            rows.push({
+                name: name,
+                depth: 0,
+                parent: versionNames.length > 0,
+                open: expanded,
+                kind: "playlist",
+                childCount: versionNames.length
+            })
+            if (!expanded)
+                continue
+            for (let v = 0; v < versionNames.length; v++) {
+                rows.push({
+                    name: versionNames[v],
+                    depth: 1,
+                    parent: false,
+                    open: false,
+                    kind: "version",
+                    childCount: 0
+                })
+            }
+        }
+        return rows
+    }
+
     function assetTreeRows() {
         const labels = filteredNames(asset.names)
         const rows = []
@@ -241,36 +297,72 @@ Item {
         property string placeholder
         property bool boxedCount: false
         property bool loadedFooter: false
+        property string footerNoun: "version"
+        property bool resultSwitcher: false
+        property string resultMode: "versions"
+        property int switcherHeight: XsStyleSheet.widgetStdHeight + 4
+        property int switcherSpacing: 2
         property color listColor: "transparent"
         property bool tree: false
+        property bool playlistTree: false
+        property int footerCount: -1
+
+        signal resultChosen(string mode)
 
         signal nodeToggled(string name)
         signal nodeSelected(string name, int depth)
 
         readonly property int count: names && names.length ? names.length : 0
+        readonly property int footerValue: footerCount >= 0 ? footerCount : count
 
         spacing: XsStyleSheet.panelPadding
 
         Bar {
-            visible: column.title !== ""
-            spacing: 1
+            visible: column.title !== "" || column.resultSwitcher
+            barHeight: column.resultSwitcher ? column.switcherHeight : XsStyleSheet.widgetStdHeight
+            spacing: column.resultSwitcher ? column.switcherSpacing : 1
+
+            XsPrimaryButton {
+                visible: column.resultSwitcher
+                Layout.fillWidth: visible
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
+                Layout.fillHeight: true
+                text: "Versions"
+                isActive: column.resultMode === "versions"
+                onClicked: column.resultChosen("versions")
+            }
+
+            XsPrimaryButton {
+                visible: column.resultSwitcher
+                Layout.fillWidth: visible
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 0
+                Layout.fillHeight: true
+                text: "Playlist"
+                isActive: column.resultMode === "playlist"
+                onClicked: column.resultChosen("playlist")
+            }
 
             XsIcon {
-                visible: column.iconSrc != ""
+                visible: !column.resultSwitcher && column.iconSrc != ""
                 Layout.preferredWidth: visible ? 16 : 0
                 Layout.preferredHeight: 16
                 source: column.iconSrc
             }
 
             XsText {
+                visible: !column.resultSwitcher
                 text: column.title
-                Layout.fillWidth: true
+                Layout.fillWidth: visible
+                Layout.preferredWidth: visible ? implicitWidth : 0
                 font.pixelSize: XsStyleSheet.fontSize * 1.2
                 font.weight: Font.Medium
             }
 
             XsText {
-                visible: !column.loadedFooter && !column.boxedCount
+                visible: !column.resultSwitcher && !column.loadedFooter && !column.boxedCount
+                Layout.preferredWidth: visible ? implicitWidth : 0
                 text: column.count
                 opacity: 0.5
                 font.pixelSize: XsStyleSheet.fontSize * 1.2
@@ -278,8 +370,8 @@ Item {
             }
 
             Rectangle {
-                visible: !column.loadedFooter && column.boxedCount
-                Layout.preferredWidth: 72
+                visible: !column.resultSwitcher && !column.loadedFooter && column.boxedCount
+                Layout.preferredWidth: visible ? 72 : 0
                 Layout.fillHeight: true
                 color: XsStyleSheet.panelBgColor
                 border.width: 1
@@ -294,7 +386,7 @@ Item {
         }
 
         Rectangle {
-            visible: column.title !== ""
+            visible: column.title !== "" || column.resultSwitcher
             Layout.fillWidth: true
             Layout.preferredHeight: 2
             color: XsStyleSheet.panelBgColor
@@ -319,16 +411,17 @@ Item {
                 anchors.fill: parent
                 visible: column.count > 0
                 clip: true
-                spacing: column.tree ? 1 : XsStyleSheet.panelPadding
+                readonly property bool calmScroll: !column.tree || column.playlistTree
+                spacing: calmScroll ? XsStyleSheet.panelPadding : 1
                 model: column.names
                 // Version cards are tall. The default flick keeps travelling
                 // for a long way; DNEG's list stops almost immediately.
-                flickDeceleration: column.tree ? 1500 : 100000
-                maximumFlickVelocity: column.tree ? 2500 : 800
-                boundsBehavior: column.tree ? Flickable.DragAndOvershootBounds : Flickable.StopAtBounds
+                flickDeceleration: calmScroll ? 100000 : 1500
+                maximumFlickVelocity: calmScroll ? 800 : 2500
+                boundsBehavior: calmScroll ? Flickable.StopAtBounds : Flickable.DragAndOvershootBounds
 
                 WheelHandler {
-                    enabled: !column.tree
+                    enabled: nameView.calmScroll
                     onWheel: function(event) {
                         let step = event.pixelDelta.y !== 0
                                    ? event.pixelDelta.y
@@ -352,36 +445,50 @@ Item {
                     readonly property int depth: column.tree ? modelData.depth : 0
                     readonly property bool isParent: column.tree ? modelData.parent : false
                     readonly property bool isOpen: column.tree ? modelData.open : false
+                    readonly property string kind: column.tree && modelData.kind ? String(modelData.kind) : ""
+                    readonly property bool playlistCard: kind === "playlist"
+                    readonly property bool versionCard: !column.tree || kind === "version"
+                    readonly property int childCount: column.tree && modelData.childCount !== undefined
+                            ? modelData.childCount : 0
                     readonly property real chevronWidth: XsStyleSheet.widgetStdHeight / 1.2
-                    readonly property bool chosen: !column.tree
-                            ? label === column.selected
-                            : (depth === 0 && column.sequencesSelectable)
-                                ? label === column.sequenceSelected
-                                : label === column.selected
+                    readonly property bool chosen: column.playlistTree
+                            ? false
+                            : !column.tree
+                                ? label === column.selected
+                                : (depth === 0 && column.sequencesSelectable)
+                                    ? label === column.sequenceSelected
+                                    : label === column.selected
 
-                    width: nameView.width
-                    height: column.tree
-                            ? XsStyleSheet.widgetStdHeight
-                            : (XsStyleSheet.widgetStdHeight + 1) * 4
-                    color: column.tree
-                           ? (chosen
-                              ? Qt.darker(XsStyleSheet.accentColor, 2)
-                              : rowHover.hovered
-                                ? XsStyleSheet.widgetBgNormalColor
+                    x: kind === "version" ? depth * chevronWidth : 0
+                    width: nameView.width - x
+                    height: playlistCard
+                            ? XsStyleSheet.widgetStdHeight * 2
+                            : versionCard
+                              ? (XsStyleSheet.widgetStdHeight + 1) * 4
+                              : XsStyleSheet.widgetStdHeight
+                    color: playlistCard
+                           ? XsStyleSheet.widgetBgNormalColor
+                           : versionCard
+                             ? (chosen
+                                ? Qt.darker(XsStyleSheet.accentColor, 5)
                                 : "transparent")
-                           : (chosen
-                              ? Qt.darker(XsStyleSheet.accentColor, 5)
-                              : "transparent")
+                             : (chosen
+                                ? Qt.darker(XsStyleSheet.accentColor, 2)
+                                : rowHover.hovered
+                                  ? XsStyleSheet.widgetBgNormalColor
+                                  : "transparent")
                     border.width: 1
-                    border.color: column.tree
+                    border.color: playlistCard
                                    ? (rowHover.hovered ? XsStyleSheet.accentColor : "transparent")
-                                   : (rowHover.hovered ? XsStyleSheet.accentColor : XsStyleSheet.widgetBgNormalColor)
+                                   : versionCard
+                                     ? (rowHover.hovered ? XsStyleSheet.accentColor : XsStyleSheet.widgetBgNormalColor)
+                                     : (rowHover.hovered ? XsStyleSheet.accentColor : "transparent")
 
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: row.depth === 0 ? 0 : (row.depth + 1) * row.chevronWidth
                         spacing: 1
-                        visible: column.tree
+                        visible: column.tree && !row.versionCard && !row.playlistCard
 
                         XsSecondaryButton {
                             visible: row.depth === 0
@@ -414,11 +521,133 @@ Item {
                         }
                     }
 
+                    GridLayout {
+                        anchors.fill: parent
+                        anchors.margins: XsStyleSheet.panelPadding
+                        visible: row.playlistCard
+                        rows: 2
+                        columns: 7
+                        rowSpacing: 1
+                        columnSpacing: 3
+
+                        XsPrimaryButton {
+                            Layout.preferredWidth: 20
+                            Layout.fillHeight: true
+                            Layout.rowSpan: 2
+                            imgSrc: "qrc:/icons/chevron_right.svg"
+                            imageDiv.rotation: row.isOpen ? 90 : 0
+                            enabled: row.isParent
+                            opacity: enabled ? 1 : 0.5
+                            isActiveViaIndicator: false
+                            isActive: row.isOpen
+                            onClicked: column.nodeToggled(row.label)
+                        }
+
+                        XsPrimaryButton {
+                            Layout.preferredWidth: 20
+                            Layout.fillHeight: true
+                            Layout.rowSpan: 2
+                            text: "N"
+                            font.pixelSize: XsStyleSheet.fontSize * 1.2
+                            textDiv.color: XsStyleSheet.hintColor
+                            enabled: false
+                            bgDiv.opacity: 0.5
+                            isActiveViaIndicator: false
+                            isUnClickable: true
+                        }
+
+                        XsText {
+                            Layout.preferredWidth: XsStyleSheet.widgetStdHeight
+                            Layout.fillHeight: true
+                            Layout.rowSpan: 2
+                            text: row.childCount
+                            color: row.childCount === 0
+                                   ? XsStyleSheet.hintColor
+                                   : XsStyleSheet.secondaryTextColor
+                            font.pixelSize: XsStyleSheet.fontSize * 1.2
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        XsText {
+                            Layout.columnSpan: 3
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            text: row.label
+                            elide: Text.ElideRight
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignTop
+                            topPadding: 2
+                        }
+
+                        XsText {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 20
+                            Layout.preferredWidth: 60
+                            Layout.maximumWidth: 190
+                            Layout.fillHeight: true
+                            text: "N/A"
+                            elide: Text.ElideRight
+                            horizontalAlignment: Text.AlignRight
+                            verticalAlignment: Text.AlignTop
+                            topPadding: 2
+                            rightPadding: 2
+                        }
+
+                        XsText {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 40
+                            Layout.preferredWidth: 60
+                            Layout.maximumWidth: 92
+                            text: "N/A"
+                            elide: Text.ElideRight
+                            color: XsStyleSheet.hintColor
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignBottom
+                            bottomPadding: 2
+                        }
+
+                        XsText {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 40
+                            Layout.preferredWidth: 60
+                            Layout.maximumWidth: 85
+                            text: "N/A"
+                            elide: Text.ElideRight
+                            color: XsStyleSheet.hintColor
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignBottom
+                            bottomPadding: 2
+                        }
+
+                        XsText {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 60
+                            text: "N/A"
+                            elide: Text.ElideRight
+                            color: XsStyleSheet.hintColor
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignBottom
+                            bottomPadding: 2
+                        }
+
+                        XsText {
+                            Layout.fillWidth: true
+                            text: "N/A"
+                            elide: Text.ElideRight
+                            color: XsStyleSheet.hintColor
+                            horizontalAlignment: Text.AlignRight
+                            verticalAlignment: Text.AlignBottom
+                            bottomPadding: 2
+                            rightPadding: 2
+                        }
+                    }
+
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 1
                         spacing: 1
-                        visible: !column.tree
+                        visible: row.versionCard
 
                         Rectangle {
                             Layout.fillWidth: true
@@ -637,9 +866,9 @@ Item {
             Layout.fillHeight: false
             Layout.preferredHeight: implicitHeight
             Layout.maximumHeight: implicitHeight
-            text: column.count === 0 ? "No versions found"
-                  : column.count === 1 ? "1 version loaded"
-                  : column.count + " versions loaded"
+            text: column.footerValue === 0 ? "No " + column.footerNoun + "s found"
+                  : column.footerValue === 1 ? "1 " + column.footerNoun + " loaded"
+                  : column.footerValue + " " + column.footerNoun + "s loaded"
             color: "white"
             font.pixelSize: XsStyleSheet.fontSize * 0.8
             horizontalAlignment: Text.AlignRight
@@ -663,10 +892,17 @@ Item {
         model: shotbrowserAttributes
     }
 
+    XsAttributeValue {
+        id: playlistTree
+        attributeTitle: "PlaylistTree"
+        model: shotbrowserAttributes
+    }
+
     Connections {
         target: project
         function onValueChanged() {
             panel.openSequences = ({})
+            panel.openPlaylists = ({})
         }
     }
 
@@ -874,12 +1110,26 @@ Item {
             NameColumn {
                 anchors.fill: parent
                 anchors.margins: 4
-                title: "Version"
+                resultSwitcher: true
+                switcherHeight: panel.tabHeight
+                switcherSpacing: panel.buttonSpacing * 2
+                resultMode: panel.resultView
+                onResultChosen: function(mode) { panel.resultView = mode }
                 loadedFooter: true
+                footerNoun: panel.resultView === "versions" ? "version" : "playlist"
                 listColor: XsStyleSheet.panelBgColor
-                names: version.names
+                tree: panel.resultView === "playlist"
+                playlistTree: panel.resultView === "playlist"
+                names: panel.resultView === "versions" ? version.names : panel.playlistTreeRows()
+                footerCount: panel.resultView === "playlist" ? panel.playlistTreeNodes().length : -1
                 selected: version.value
-                placeholder: listPlaceholder(version.names.length)
+                placeholder: listPlaceholder(panel.resultView === "versions"
+                        ? version.names.length
+                        : panel.playlistTreeNodes().length)
+                onNodeToggled: function(name) {
+                    if (panel.resultView === "playlist")
+                        panel.togglePlaylist(name)
+                }
             }
         }
     }
