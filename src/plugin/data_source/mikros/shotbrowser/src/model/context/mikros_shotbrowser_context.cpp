@@ -309,89 +309,219 @@ void publishPages(
 }
 
 /**
- * @brief One sequence node: its name, id, shot labels, and shot ids.
- * @param sequence Sequence the shots belong to.
- * @return JSON object stored in the shot tree.
+ * @brief Address of one tree mail. Each message carries the tree built so far.
  */
-nlohmann::json buildSequenceNode(const poco::Sequence &sequence) {
-    const std::vector<poco::Shot> shots = collectPages<poco::Shot>(
-        [sequenceId = sequence.id](const std::optional<std::string> &cursor) {
-            return dal::findShots(sequenceId, dal::readPageLimit(), cursor);
-        });
+struct TreeMail {
+    caf::weak_actor_ptr weak;     ///< Actor that applies the tree.
+    std::uint64_t requestId = 0;  ///< Request that must still be current.
+    std::string catalog;          ///< `shot_tree` or `playlist_tree`.
+    std::int64_t projectId = 0;   ///< Project the tree belongs to.
+    PageScope scope;              ///< Parents that must still match.
+};
+
+/**
+ * @brief Mails the tree built so far, so the panel can show this page.
+ * @param mail Destination and request.
+ * @param tree Sequences or playlists accumulated on the worker.
+ */
+void sendTree(const TreeMail &mail, const nlohmann::json &tree) {
+    sendCatalog(
+        mail.weak,
+        mail.requestId,
+        mail.catalog,
+        mail.projectId,
+        mail.scope,
+        false,
+        utility::JsonStore(tree));
+}
+
+/**
+ * @brief Writes shot labels and ids into one sequence node.
+ * @param node Sequence object already stored in the tree.
+ * @param shots Shots received for that sequence so far.
+ */
+void writeShots(nlohmann::json &node, const std::vector<poco::Shot> &shots) {
+    const std::vector<std::string> labels = buildUniqueLabels(shots);
     nlohmann::json names = nlohmann::json::array();
     nlohmann::json ids = nlohmann::json::array();
-    const std::vector<std::string> labels = buildUniqueLabels(shots);
     for (std::size_t index = 0; index < shots.size(); ++index) {
         names.push_back(labels[index]);
         ids.push_back(shots[index].id);
     }
-    return {
-        {"name", sequence.name},
-        {"id", sequence.id},
-        {"shots", std::move(names)},
-        {"shotIds", std::move(ids)}};
+    node["shots"] = std::move(names);
+    node["shotIds"] = std::move(ids);
 }
 
 /**
- * @brief Sequences of one project, each with its shots.
- * @param projectId Domain project id.
- * @return JSON array the shot tree attribute stores.
+ * @brief Writes version labels into one playlist node.
+ * @param node Playlist object already stored in the tree.
+ * @param versions Versions received for that playlist so far.
  */
-nlohmann::json buildShotTree(std::int64_t projectId) {
-    const std::vector<poco::Sequence> sequences = collectPages<poco::Sequence>(
-        [projectId](const std::optional<std::string> &cursor) {
-            return dal::findSequences(projectId, dal::readPageLimit(), cursor);
-        });
-    nlohmann::json tree = nlohmann::json::array();
-    for (const poco::Sequence &sequence : sequences) {
-        tree.push_back(buildSequenceNode(sequence));
-    }
-    return tree;
-}
-
-/**
- * @brief One playlist node: its name, id, and version labels.
- * @param playlist Playlist the versions belong to.
- * @param projectId Domain project id.
- * @param parents Sequence, shot, and asset that also filter the versions.
- * @return JSON object stored in the playlist tree.
- */
-nlohmann::json buildPlaylistNode(
-    const poco::Playlist &playlist, std::int64_t projectId, const VersionParents &parents) {
-    const std::vector<poco::Version> versions = collectPages<poco::Version>(
-        [projectId, parents, playlistId = playlist.id](const std::optional<std::string> &cursor) {
-            return dal::findVersions(
-                projectId,
-                dal::readPageLimit(),
-                cursor,
-                parents.sequenceId,
-                parents.shotId,
-                parents.assetId,
-                playlistId);
-        });
+void writeVersions(nlohmann::json &node, const std::vector<poco::Version> &versions) {
     nlohmann::json names = nlohmann::json::array();
     for (const std::string &label : buildUniqueLabels(versions)) {
         names.push_back(label);
     }
-    return {{"name", playlist.name}, {"id", playlist.id}, {"versions", std::move(names)}};
+    node["versions"] = std::move(names);
 }
 
 /**
- * @brief Playlists of one project, each with the versions that match the parents.
- * @param projectId Domain project id.
- * @param parents Sequence, shot, and asset filter shared with the version list.
- * @return JSON array the playlist tree attribute stores.
+ * @brief Mails one sequence's shots. The actor writes them into that node.
+ * @param mail Destination. `catalog` is `sequence_shots`.
+ * @param sequenceId Sequence the user unfolded.
+ * @param shots Shots received for that sequence so far.
+ * @param complete True on the last page.
  */
-nlohmann::json buildPlaylistTree(std::int64_t projectId, const VersionParents &parents) {
-    const std::vector<poco::Playlist> playlists = collectPages<poco::Playlist>(
-        [projectId](const std::optional<std::string> &cursor) {
-            return dal::findPlaylists(projectId, dal::readPageLimit(), cursor);
-        });
-    nlohmann::json tree = nlohmann::json::array();
-    for (const poco::Playlist &playlist : playlists) {
-        tree.push_back(buildPlaylistNode(playlist, projectId, parents));
+void sendSequenceShots(
+    const TreeMail &mail,
+    std::int64_t sequenceId,
+    const std::vector<poco::Shot> &shots,
+    bool complete) {
+    nlohmann::json patch = {{"sequenceId", sequenceId}, {"complete", complete}};
+    writeShots(patch, shots);
+    sendCatalog(
+        mail.weak,
+        mail.requestId,
+        mail.catalog,
+        mail.projectId,
+        mail.scope,
+        false,
+        utility::JsonStore(std::move(patch)));
+}
+
+/**
+ * @brief Loads one sequence's shots and mails each page.
+ * @param mail Destination. `catalog` is `sequence_shots`.
+ * @param sequenceId Sequence the user unfolded.
+ */
+void publishShotsOfSequence(const TreeMail &mail, std::int64_t sequenceId) {
+    std::vector<poco::Shot> shots;
+    std::optional<std::string> cursor;
+    for (;;) {
+        const dal::RowPage<poco::Shot> page =
+            dal::findShots(sequenceId, dal::readPageLimit(), cursor);
+        if (!page.rows.empty()) {
+            shots.insert(shots.end(), page.rows.begin(), page.rows.end());
+        }
+        const bool complete = !page.next_cursor;
+        if (!shots.empty() || complete) {
+            sendSequenceShots(mail, sequenceId, shots, complete);
+        }
+        if (complete) {
+            break;
+        }
+        cursor = page.next_cursor;
     }
-    return tree;
+}
+
+/**
+ * @brief Loads sequences and mails the tree after each page. Shots stay empty.
+ * @param mail Destination and request. `catalog` is `shot_tree`.
+ */
+void publishSequences(const TreeMail &mail) {
+    nlohmann::json tree = nlohmann::json::array();
+    std::optional<std::string> cursor;
+    for (;;) {
+        const dal::RowPage<poco::Sequence> page =
+            dal::findSequences(mail.projectId, dal::readPageLimit(), cursor);
+        for (const poco::Sequence &sequence : page.rows) {
+            tree.push_back(
+                {{"name", sequence.name},
+                 {"id", sequence.id},
+                 {"shots", nlohmann::json::array()},
+                 {"shotIds", nlohmann::json::array()}});
+        }
+        if (!page.rows.empty()) {
+            sendTree(mail, tree); ///< Show this page of sequences. Shots wait for an unfold.
+        }
+        if (!page.next_cursor) {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+}
+
+/**
+ * @brief Mails one playlist's versions. The actor writes them into that node.
+ * @param mail Destination. `catalog` is `playlist_versions`.
+ * @param playlistId Playlist the user unfolded.
+ * @param versions Versions received for that playlist so far.
+ * @param complete True on the last page.
+ */
+void sendPlaylistVersions(
+    const TreeMail &mail,
+    std::int64_t playlistId,
+    const std::vector<poco::Version> &versions,
+    bool complete) {
+    nlohmann::json patch = {{"playlistId", playlistId}, {"complete", complete}};
+    writeVersions(patch, versions);
+    sendCatalog(
+        mail.weak,
+        mail.requestId,
+        mail.catalog,
+        mail.projectId,
+        mail.scope,
+        false,
+        utility::JsonStore(std::move(patch)));
+}
+
+/**
+ * @brief Loads one playlist's versions and mails each page.
+ * @param mail Destination. `catalog` is `playlist_versions`.
+ * @param parents Sequence, shot, and asset filter shared with the version list.
+ * @param playlistId Playlist the user unfolded.
+ */
+void publishVersionsOfPlaylist(
+    const TreeMail &mail, const VersionParents &parents, std::int64_t playlistId) {
+    std::vector<poco::Version> versions;
+    std::optional<std::string> cursor;
+    for (;;) {
+        const dal::RowPage<poco::Version> page = dal::findVersions(
+            mail.projectId,
+            dal::readPageLimit(),
+            cursor,
+            parents.sequenceId,
+            parents.shotId,
+            parents.assetId,
+            playlistId);
+        if (!page.rows.empty()) {
+            versions.insert(versions.end(), page.rows.begin(), page.rows.end());
+        }
+        const bool complete = !page.next_cursor;
+        if (!versions.empty() || complete) {
+            sendPlaylistVersions(mail, playlistId, versions, complete);
+        }
+        if (complete) {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+}
+
+/**
+ * @brief Loads playlist names and mails the tree after each page.
+ * @param mail Destination and request. `catalog` is `playlist_tree`.
+ */
+void publishPlaylistNames(const TreeMail &mail) {
+    nlohmann::json tree = nlohmann::json::array();
+    std::optional<std::string> cursor;
+    for (;;) {
+        const dal::RowPage<poco::Playlist> page =
+            dal::findPlaylists(mail.projectId, dal::readPageLimit(), cursor);
+        for (const poco::Playlist &playlist : page.rows) {
+            tree.push_back(
+                {{"name", playlist.name},
+                 {"id", playlist.id},
+                 {"versions", nlohmann::json::array()}});
+        }
+        if (!page.rows.empty()) {
+            sendTree(mail, tree); ///< Names only. Versions wait for an unfold.
+        }
+        if (!page.next_cursor) {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
 }
 
 } // namespace
@@ -438,6 +568,18 @@ void MikrosShotBrowserContext::addPanelAttributes() {
 
     playlist_tree_ = add_json_attribute("PlaylistTree", "PlaylistTree", nlohmann::json::array());
     playlist_tree_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
+    browser_mode_ = add_string_attribute("BrowserMode", "BrowserMode", "shot");
+    browser_mode_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
+    result_view_ = add_string_attribute("ResultView", "ResultView", "versions");
+    result_view_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
+    expanded_sequence_ = add_string_attribute("ExpandedSequence", "ExpandedSequence", "");
+    expanded_sequence_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
+    expanded_playlist_ = add_string_attribute("ExpandedPlaylist", "ExpandedPlaylist", "");
+    expanded_playlist_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 std::optional<poco::Project> MikrosShotBrowserContext::findProjectByLabel(
@@ -587,6 +729,7 @@ void MikrosShotBrowserContext::startProjectLoad(std::uint64_t requestId) {
 
 void MikrosShotBrowserContext::refreshShotTree() {
     ++sequence_request_id_; ///< Drop a shot tree that is still loading.
+    sequences_ready_ = selected_project_.has_value();
     clearSequenceSelection();
     shot_tree_->set_value(nlohmann::json::array()); ///< Hide the previous project's tree.
     if (!selected_project_) {
@@ -595,12 +738,42 @@ void MikrosShotBrowserContext::refreshShotTree() {
     startShotTreeLoad(sequence_request_id_, selected_project_->id);
 }
 
+void MikrosShotBrowserContext::startSequenceShotLoad(
+    std::uint64_t requestId, std::int64_t projectId, std::int64_t sequenceId) {
+    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
+    std::thread([weak, requestId, projectId, sequenceId]() {
+        TreeMail mail;
+        mail.weak = weak;
+        mail.requestId = requestId;
+        mail.catalog = "sequence_shots";
+        mail.projectId = projectId;
+        publishShotsOfSequence(mail, sequenceId);
+    }).detach();
+}
+
+bool MikrosShotBrowserContext::sequenceShotsReady(std::int64_t sequenceId) const {
+    const nlohmann::json tree = shot_tree_ ? shot_tree_->value() : nlohmann::json::array();
+    if (!tree.is_array()) {
+        return false;
+    }
+    for (const auto &node : tree) {
+        if (!node.is_object() || !node.contains("id") || node["id"].get<std::int64_t>() != sequenceId) {
+            continue;
+        }
+        return node.value("shotsLoaded", false);
+    }
+    return false;
+}
+
 void MikrosShotBrowserContext::startShotTreeLoad(std::uint64_t requestId, std::int64_t projectId) {
     const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
     std::thread([weak, requestId, projectId]() {
-        const nlohmann::json tree = buildShotTree(projectId); ///< Sequences, each with its shots.
-        sendCatalog(
-            weak, requestId, "shot_tree", projectId, {}, false, utility::JsonStore(tree));
+        TreeMail mail;
+        mail.weak = weak;
+        mail.requestId = requestId;
+        mail.catalog = "shot_tree";
+        mail.projectId = projectId;
+        publishSequences(mail); ///< Sequence names only. Shots wait for an unfold.
     }).detach();
 }
 
@@ -614,6 +787,7 @@ void MikrosShotBrowserContext::resetAssetCatalog() {
 
 void MikrosShotBrowserContext::refreshAssets() {
     resetAssetCatalog();
+    assets_ready_ = selected_project_.has_value();
     if (!selected_project_) {
         return;
     }
@@ -643,11 +817,11 @@ void MikrosShotBrowserContext::resetVersionCatalog() {
 
 void MikrosShotBrowserContext::refreshVersions() {
     resetVersionCatalog();
-    refreshPlaylistTree(); ///< Playlists use the same parents as the version list.
     if (!selected_project_) {
         return;
     }
     startVersionLoad(version_request_id_, selected_project_->id);
+    reloadExpandedPlaylist(); ///< One open playlist follows the new version filter.
 }
 
 void MikrosShotBrowserContext::startVersionLoad(std::uint64_t requestId, std::int64_t projectId) {
@@ -676,6 +850,7 @@ void MikrosShotBrowserContext::startVersionLoad(std::uint64_t requestId, std::in
 
 void MikrosShotBrowserContext::refreshPlaylistTree() {
     ++playlist_request_id_; ///< Drop a playlist tree that is still loading.
+    playlists_ready_ = selected_project_.has_value();
     playlist_tree_->set_value(nlohmann::json::array()); ///< Hide playlists from the previous selection.
     if (!selected_project_) {
         return;
@@ -683,32 +858,172 @@ void MikrosShotBrowserContext::refreshPlaylistTree() {
     startPlaylistLoad(playlist_request_id_, selected_project_->id);
 }
 
-void MikrosShotBrowserContext::startPlaylistLoad(
-    std::uint64_t requestId, std::int64_t projectId) {
+void MikrosShotBrowserContext::startPlaylistVersionLoad(
+    std::uint64_t requestId, std::int64_t projectId, std::int64_t playlistId) {
     const VersionParents parents =
         readVersionParents(selected_sequence_, selected_shot_, selected_asset_);
     const PageScope scope = pageScope(parents);
     const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, requestId, projectId, parents, scope]() {
-        const nlohmann::json tree = buildPlaylistTree(projectId, parents);
-        sendCatalog(
-            weak,
-            requestId,
-            "playlist_tree",
-            projectId,
-            scope,
-            false,
-            utility::JsonStore(tree));
+    std::thread([weak, requestId, projectId, playlistId, parents, scope]() {
+        TreeMail mail;
+        mail.weak = weak;
+        mail.requestId = requestId;
+        mail.catalog = "playlist_versions";
+        mail.projectId = projectId;
+        mail.scope = scope;
+        publishVersionsOfPlaylist(mail, parents, playlistId);
     }).detach();
+}
+
+bool MikrosShotBrowserContext::playlistVersionsReady(std::int64_t playlistId) const {
+    const nlohmann::json tree = playlist_tree_ ? playlist_tree_->value() : nlohmann::json::array();
+    if (!tree.is_array()) {
+        return false;
+    }
+    for (const auto &node : tree) {
+        if (!node.is_object() || !node.contains("id") || node["id"].get<std::int64_t>() != playlistId) {
+            continue;
+        }
+        return node.value("versionsLoaded", false);
+    }
+    return false;
+}
+
+void MikrosShotBrowserContext::startPlaylistLoad(
+    std::uint64_t requestId, std::int64_t projectId) {
+    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
+    std::thread([weak, requestId, projectId]() {
+        TreeMail mail;
+        mail.weak = weak;
+        mail.requestId = requestId;
+        mail.catalog = "playlist_tree";
+        mail.projectId = projectId;
+        publishPlaylistNames(mail); ///< Playlist names only. Versions wait for an unfold.
+    }).detach();
+}
+
+void MikrosShotBrowserContext::clearAssetCatalog() {
+    ++asset_request_id_; ///< Drop asset pages still loading for the previous project.
+    assets_.clear();
+    assets_ready_ = false;
+    asset_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
+    clearAssetSelection();
+}
+
+void MikrosShotBrowserContext::clearShotTree() {
+    ++sequence_request_id_; ///< Drop sequence and shot pages for the previous project.
+    sequences_ready_ = false;
+    clearSequenceSelection();
+    clearShotSelection();
+    shot_tree_->set_value(nlohmann::json::array());
 }
 
 void MikrosShotBrowserContext::onProjectChosen() {
     selected_project_ = findProjectByLabel(project_->value());
     logSelection("project", selected_project_);
-    refreshShotTree();    ///< Sequences and shots of this project.
-    clearShotSelection(); ///< The new tree has no shot selected yet.
-    refreshAssets();
+    sequences_ready_ = false;
+    assets_ready_ = false;
+    playlists_ready_ = false;
+    expanded_sequence_->set_value("", false); ///< Do not fetch shots for the previous project.
+    expanded_playlist_->set_value("", false);
+    if (browser_mode_->value() == "asset") {
+        clearShotTree();
+        refreshAssets(); ///< The asset tab is what the user is looking at.
+    } else {
+        clearAssetCatalog();
+        refreshShotTree(); ///< Sequences only.
+        clearShotSelection();
+    }
     refreshVersions();
+    if (result_view_->value() == "playlist") {
+        refreshPlaylistTree(); ///< Names only, because that view is open.
+    } else {
+        playlist_tree_->set_value(nlohmann::json::array());
+    }
+}
+
+void MikrosShotBrowserContext::onBrowserModeChosen() {
+    if (!selected_project_) {
+        return;
+    }
+    if (browser_mode_->value() == "asset") {
+        if (!assets_ready_) {
+            refreshAssets();
+        }
+        return;
+    }
+    if (!sequences_ready_) {
+        refreshShotTree();
+    }
+}
+
+void MikrosShotBrowserContext::onResultViewChosen() {
+    if (result_view_->value() != "playlist" || !selected_project_ || playlists_ready_) {
+        return;
+    }
+    refreshPlaylistTree();
+}
+
+void MikrosShotBrowserContext::onSequenceExpanded() {
+    const std::string name = expanded_sequence_->value();
+    if (name.empty() || !selected_project_) {
+        return;
+    }
+    const std::optional<poco::Sequence> sequence = findSequenceByLabel(name);
+    if (!sequence) {
+        return;
+    }
+    if (!sequenceShotsReady(sequence->id)) {
+        startSequenceShotLoad(sequence_request_id_, selected_project_->id, sequence->id);
+    }
+    if (!selected_sequence_ || selected_sequence_->id != sequence->id) {
+        sequence_->set_value(sequence->name); ///< Versions of the sequence the user opened.
+    }
+}
+
+void MikrosShotBrowserContext::onPlaylistExpanded() {
+    const std::string name = expanded_playlist_->value();
+    if (name.empty() || !selected_project_) {
+        return;
+    }
+    const nlohmann::json tree = playlist_tree_->value();
+    if (!tree.is_array()) {
+        return;
+    }
+    for (const auto &node : tree) {
+        if (!node.is_object() || node.value("name", std::string()) != name || !node.contains("id")) {
+            continue;
+        }
+        const std::int64_t playlistId = node["id"].get<std::int64_t>();
+        if (!playlistVersionsReady(playlistId)) {
+            startPlaylistVersionLoad(playlist_request_id_, selected_project_->id, playlistId);
+        }
+        return;
+    }
+}
+
+void MikrosShotBrowserContext::reloadExpandedPlaylist() {
+    if (!result_view_ || result_view_->value() != "playlist" || !selected_project_) {
+        return;
+    }
+    const std::string name = expanded_playlist_->value();
+    if (name.empty()) {
+        return;
+    }
+    nlohmann::json tree = playlist_tree_->value();
+    if (!tree.is_array()) {
+        return;
+    }
+    for (auto &node : tree) {
+        if (!node.is_object() || node.value("name", std::string()) != name || !node.contains("id")) {
+            continue;
+        }
+        node["versionsLoaded"] = false;
+        const std::int64_t playlistId = node["id"].get<std::int64_t>();
+        playlist_tree_->set_value(tree);
+        startPlaylistVersionLoad(playlist_request_id_, selected_project_->id, playlistId);
+        return;
+    }
 }
 
 void MikrosShotBrowserContext::onSequenceChosen() {
@@ -768,6 +1083,14 @@ void MikrosShotBrowserContext::attribute_changed(
     }
     if (attr_uuid == project_->uuid()) {
         onProjectChosen();
+    } else if (attr_uuid == browser_mode_->uuid()) {
+        onBrowserModeChosen();
+    } else if (attr_uuid == result_view_->uuid()) {
+        onResultViewChosen();
+    } else if (attr_uuid == expanded_sequence_->uuid()) {
+        onSequenceExpanded();
+    } else if (attr_uuid == expanded_playlist_->uuid()) {
+        onPlaylistExpanded();
     } else if (aligning_sequence_) {
         plugin::StandardPlugin::attribute_changed(attr_uuid, role);
         return; ///< The shot handler is aligning the sequence. Do not clear the shot.
@@ -815,6 +1138,63 @@ void MikrosShotBrowserContext::applyShotTree(
     shot_tree_->set_value(nlohmann::json(payload));
 }
 
+void MikrosShotBrowserContext::applySequenceShots(
+    std::uint64_t requestId, const utility::JsonStore &payload) {
+    if (requestId != sequence_request_id_) {
+        trace::drop("sequence_shots", requestId);
+        return;
+    }
+    const nlohmann::json patch = nlohmann::json(payload);
+    if (!patch.contains("sequenceId")) {
+        return;
+    }
+    nlohmann::json tree = shot_tree_->value();
+    if (!tree.is_array()) {
+        return;
+    }
+    const std::int64_t sequenceId = patch["sequenceId"].get<std::int64_t>();
+    for (auto &node : tree) {
+        if (!node.is_object() || !node.contains("id") || node["id"].get<std::int64_t>() != sequenceId) {
+            continue;
+        }
+        node["shots"] = patch["shots"];
+        node["shotIds"] = patch["shotIds"];
+        if (patch.value("complete", false)) {
+            node["shotsLoaded"] = true;
+        }
+        shot_tree_->set_value(tree);
+        return;
+    }
+}
+
+void MikrosShotBrowserContext::applyPlaylistVersions(
+    std::uint64_t requestId, const utility::JsonStore &payload) {
+    if (requestId != playlist_request_id_) {
+        trace::drop("playlist_versions", requestId);
+        return;
+    }
+    const nlohmann::json patch = nlohmann::json(payload);
+    if (!patch.contains("playlistId")) {
+        return;
+    }
+    nlohmann::json tree = playlist_tree_->value();
+    if (!tree.is_array()) {
+        return;
+    }
+    const std::int64_t playlistId = patch["playlistId"].get<std::int64_t>();
+    for (auto &node : tree) {
+        if (!node.is_object() || !node.contains("id") || node["id"].get<std::int64_t>() != playlistId) {
+            continue;
+        }
+        node["versions"] = patch["versions"];
+        if (patch.value("complete", false)) {
+            node["versionsLoaded"] = true;
+        }
+        playlist_tree_->set_value(tree);
+        return;
+    }
+}
+
 void MikrosShotBrowserContext::applyAssetPage(
     std::uint64_t requestId, bool append, const utility::JsonStore &payload) {
     if (requestId != asset_request_id_) {
@@ -826,19 +1206,14 @@ void MikrosShotBrowserContext::applyAssetPage(
 
 void MikrosShotBrowserContext::applyPlaylistTree(
     std::uint64_t requestId,
-    bool hasSequence,
-    std::int64_t sequenceId,
-    bool hasShot,
-    std::int64_t shotId,
-    bool hasAsset,
-    std::int64_t assetId,
+    bool /*hasSequence*/,
+    std::int64_t /*sequenceId*/,
+    bool /*hasShot*/,
+    std::int64_t /*shotId*/,
+    bool /*hasAsset*/,
+    std::int64_t /*assetId*/,
     const utility::JsonStore &payload) {
     if (requestId != playlist_request_id_) {
-        trace::drop("playlist_tree", requestId);
-        return;
-    }
-    if (!versionParentsStillSelected(
-            hasSequence, sequenceId, hasShot, shotId, hasAsset, assetId)) {
         trace::drop("playlist_tree", requestId);
         return;
     }
@@ -891,6 +1266,10 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
             }
             if (catalog == "shot_tree") {
                 applyShotTree(requestId, payload);
+            } else if (catalog == "sequence_shots") {
+                applySequenceShots(requestId, payload);
+            } else if (catalog == "playlist_versions") {
+                applyPlaylistVersions(requestId, payload);
             } else if (catalog == "asset") {
                 applyAssetPage(requestId, append, payload);
             } else if (catalog == "playlist_tree") {

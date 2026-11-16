@@ -28,21 +28,19 @@ namespace xstudio::mikros_shotbrowser {
  * and version pages are pushed to the combos as they arrive. Does not include
  * `pms/pms.hpp` and does not sleep in a handler.
  *
- * Two cascades. Changing a selector clears every child selector to none,
- * then reloads the lists that remain:
- * - Project → Sequence → Shot → Version
- *   Project lists the shot tree and the versions of that project.
- *   Sequence narrows versions to that sequence and clears Shot.
- *   Shot narrows versions to that shot and clears Version.
- * - Project → Asset → Version
- *   Project lists assets and versions of that project.
- *   Asset narrows versions to that asset and clears Version.
+ * A project load fills only the open tab, plus the version list. The shot tab
+ * loads sequences. The asset tab loads assets. Shots of one sequence are loaded
+ * when that sequence is unfolded, and the version list narrows to it. Playlist
+ * names load when the playlist view is open. Versions under one playlist load
+ * when that playlist is unfolded.
  *
- * Sequence and Asset are mutually exclusive. Shots and sequences are resolved
- * from the shot tree, not from a separate combo catalog.
+ * Changing a selector clears every child selector, then reloads the version list:
+ * - Sequence narrows versions to that sequence and clears Shot.
+ * - Shot narrows versions to that shot.
+ * - Asset narrows versions to that asset and clears the sequence branch.
  *
- * Playlists belong to the project. The versions nested under each playlist use
- * the same sequence, shot, or asset filter as the version list, plus that playlist.
+ * Sequence and Asset are mutually exclusive. Shots are resolved from the shot
+ * tree, not from a separate combo catalog.
  */
 class MikrosShotBrowserContext : public plugin::StandardPlugin {
   public:
@@ -103,10 +101,20 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     /** @brief Streams project pages for one request id. */
     void startProjectLoad(std::uint64_t requestId);
 
-    /** @brief Clears the sequence and the visible shot tree, then reloads it. */
+    /** @brief Clears the shot tree and streams sequences, without their shots. */
     void refreshShotTree();
-    /** @brief Builds the shot tree for one project on a worker. */
+    /** @brief Streams sequence rows for one project on a worker. */
     void startShotTreeLoad(std::uint64_t requestId, std::int64_t projectId);
+    /**
+     * @brief Streams the shots of one sequence into its tree node.
+     * @param requestId Shot-tree generation. A newer tree drops these pages.
+     * @param projectId Selected project id.
+     * @param sequenceId Sequence whose shots the user unfolded.
+     */
+    void startSequenceShotLoad(
+        std::uint64_t requestId, std::int64_t projectId, std::int64_t sequenceId);
+    /** @brief True when that sequence's shots were already requested to completion. */
+    bool sequenceShotsReady(std::int64_t sequenceId) const;
 
     /** @brief Empties the asset combo. The empty value notifies. */
     void resetAssetCatalog();
@@ -126,8 +134,18 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
      */
     void startVersionLoad(std::uint64_t requestId, std::int64_t projectId);
 
-    /** @brief Rebuilds playlists for the project, filtered like the version list. */
+    /** @brief Clears playlists and streams their names, without their versions. */
     void refreshPlaylistTree();
+    /**
+     * @brief Streams the versions nested under one playlist.
+     * @param requestId Playlist-tree generation. A newer tree drops these pages.
+     * @param projectId Selected project id.
+     * @param playlistId Playlist the user unfolded.
+     */
+    void startPlaylistVersionLoad(
+        std::uint64_t requestId, std::int64_t projectId, std::int64_t playlistId);
+    /** @brief True when that playlist's versions were already requested to completion. */
+    bool playlistVersionsReady(std::int64_t playlistId) const;
     /**
      * @brief Builds the playlist tree for one project on a worker.
      * @param requestId Request that must still be current when the tree arrives.
@@ -135,8 +153,22 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
      */
     void startPlaylistLoad(std::uint64_t requestId, std::int64_t projectId);
 
-    /** @brief Applies a new project: reload the shot tree, assets, and versions. */
+    /** @brief Loads the open tab and the version list for the chosen project. */
     void onProjectChosen();
+    /** @brief Loads sequences or assets when the user changes tab. */
+    void onBrowserModeChosen();
+    /** @brief Loads playlist names when the user opens the playlist view. */
+    void onResultViewChosen();
+    /** @brief Loads one sequence's shots and narrows versions to that sequence. */
+    void onSequenceExpanded();
+    /** @brief Loads one playlist's versions. */
+    void onPlaylistExpanded();
+    /** @brief Reloads the unfolded playlist after the version filter changes. */
+    void reloadExpandedPlaylist();
+    /** @brief Drops asset rows without asking the backend. */
+    void clearAssetCatalog();
+    /** @brief Drops the shot tree without asking the backend. */
+    void clearShotTree();
     /** @brief Applies a new sequence and narrows the versions. */
     void onSequenceChosen();
     /** @brief Applies a new shot, aligns its sequence, and narrows the versions. */
@@ -166,6 +198,10 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     void applyProjectPage(std::uint64_t requestId, bool append, const utility::JsonStore &payload);
     /** @brief Applies a shot tree when the request is still current. */
     void applyShotTree(std::uint64_t requestId, const utility::JsonStore &payload);
+    /** @brief Writes one sequence's shot page into the tree. */
+    void applySequenceShots(std::uint64_t requestId, const utility::JsonStore &payload);
+    /** @brief Writes one playlist's version page into the tree. */
+    void applyPlaylistVersions(std::uint64_t requestId, const utility::JsonStore &payload);
     /** @brief Applies one asset page when the request is still current. */
     void applyAssetPage(std::uint64_t requestId, bool append, const utility::JsonStore &payload);
     /** @brief Applies a playlist tree when the request and parents still match. */
@@ -204,6 +240,14 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     std::uint64_t version_request_id_ = 0;   ///< Drops stale version worker replies.
     std::uint64_t playlist_request_id_ = 0;  ///< Drops stale playlist-tree worker replies.
     bool aligning_sequence_ = false;         ///< Shot selection updates its sequence without clearing the shot.
+    bool sequences_ready_ = false;           ///< Sequences were requested for the current project.
+    bool assets_ready_ = false;              ///< Assets were requested for the current project.
+    bool playlists_ready_ = false;           ///< Playlist names were requested for the current project.
+
+    module::StringAttribute *browser_mode_ = nullptr;       ///< `shot` or `asset`.
+    module::StringAttribute *result_view_ = nullptr;        ///< `versions` or `playlist`.
+    module::StringAttribute *expanded_sequence_ = nullptr;  ///< Sequence the user unfolded.
+    module::StringAttribute *expanded_playlist_ = nullptr;  ///< Playlist the user unfolded.
 
     module::StringChoiceAttribute *project_ = nullptr;   ///< Project combo.
     module::StringChoiceAttribute *sequence_ = nullptr;  ///< Sequence combo.

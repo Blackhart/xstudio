@@ -31,6 +31,7 @@ Item {
             const saved = modePref.value
             if (saved === "shot" || saved === "asset")
                 browserMode = saved
+            browserModeAttr.value = browserMode
         })
     }
 
@@ -39,6 +40,7 @@ Item {
             const saved = resultPref.value
             if (saved === "versions" || saved === "playlist")
                 resultView = saved
+            resultViewAttr.value = resultView
         })
     }
 
@@ -109,9 +111,14 @@ Item {
     }
 
     function toggleSequence(name) {
+        const opening = !openSequences[name]
         const next = Object.assign({}, openSequences)
-        next[name] = !next[name]
+        next[name] = opening
         openSequences = next
+        if (opening)
+            expandedSequence.value = name
+        else if (expandedSequence.value === name)
+            expandedSequence.value = ""
     }
 
     function shotTreeRows() {
@@ -124,6 +131,7 @@ Item {
             const shotNames = []
             for (let s = 0; s < shots.length; s++)
                 shotNames.push(String(shots[s]))
+            const shotsLoaded = !!nodes[i].shotsLoaded
             const nameHit = !query || name.toLowerCase().indexOf(query) !== -1
             const matchedShots = []
             for (let s = 0; s < shotNames.length; s++) {
@@ -136,7 +144,7 @@ Item {
             rows.push({
                 name: name,
                 depth: 0,
-                parent: shotNames.length > 0,
+                parent: !shotsLoaded || shotNames.length > 0,
                 open: expanded
             })
             if (!expanded)
@@ -169,9 +177,14 @@ Item {
     }
 
     function togglePlaylist(name) {
+        const opening = !openPlaylists[name]
         const next = Object.assign({}, openPlaylists)
-        next[name] = !next[name]
+        next[name] = opening
         openPlaylists = next
+        if (opening)
+            expandedPlaylist.value = name
+        else if (expandedPlaylist.value === name)
+            expandedPlaylist.value = ""
     }
 
     function playlistTreeRows() {
@@ -179,15 +192,16 @@ Item {
         const rows = []
         for (let i = 0; i < nodes.length; i++) {
             const name = String(nodes[i].name)
+            const versionsLoaded = !!nodes[i].versionsLoaded
             const versions = nodes[i].versions && nodes[i].versions.length ? nodes[i].versions : []
             const versionNames = []
             for (let v = 0; v < versions.length; v++)
                 versionNames.push(String(versions[v]))
-            const expanded = versionNames.length > 0 && !!openPlaylists[name]
+            const expanded = !!openPlaylists[name]
             rows.push({
                 name: name,
                 depth: 0,
-                parent: versionNames.length > 0,
+                parent: !versionsLoaded || versionNames.length > 0,
                 open: expanded,
                 kind: "playlist",
                 childCount: versionNames.length
@@ -323,6 +337,8 @@ Item {
         readonly property int count: names && names.length ? names.length : 0
         readonly property int footerValue: footerCount >= 0 ? footerCount : count
 
+        onNamesChanged: nameView.holdScroll() ///< A new page must not jump back to the top.
+
         spacing: XsStyleSheet.panelPadding
 
         Bar {
@@ -419,22 +435,28 @@ Item {
                 anchors.fill: parent
                 visible: column.count > 0
                 clip: true
-                readonly property bool calmScroll: !column.tree || column.playlistTree
-                spacing: calmScroll ? XsStyleSheet.panelPadding : 1
+                spacing: column.tree && !column.playlistTree ? 1 : XsStyleSheet.panelPadding
                 model: column.names
-                // Version cards are tall. The default flick keeps travelling
-                // for a long way; DNEG's list stops almost immediately.
-                flickDeceleration: calmScroll ? 100000 : 1500
-                maximumFlickVelocity: calmScroll ? 800 : 2500
-                boundsBehavior: calmScroll ? Flickable.StopAtBounds : Flickable.DragAndOvershootBounds
+
+                function holdScroll() {
+                    const y = contentY
+                    Qt.callLater(function() {
+                        const limit = Math.max(0, contentHeight - height)
+                        contentY = Math.max(0, Math.min(y, limit))
+                    })
+                }
+                // One row per wheel notch, and the flick stops at once.
+                flickDeceleration: 100000
+                maximumFlickVelocity: 800
+                boundsBehavior: Flickable.StopAtBounds
 
                 WheelHandler {
-                    enabled: nameView.calmScroll
                     onWheel: function(event) {
-                        let step = event.pixelDelta.y !== 0
-                                   ? event.pixelDelta.y
-                                   : (event.angleDelta.y / 120) * XsStyleSheet.widgetStdHeight
-                        let limit = Math.max(0, nameView.contentHeight - nameView.height)
+                        const row = XsStyleSheet.widgetStdHeight
+                        const step = event.angleDelta.y !== 0
+                                     ? (event.angleDelta.y / 120) * row
+                                     : Math.max(-row, Math.min(row, event.pixelDelta.y))
+                        const limit = Math.max(0, nameView.contentHeight - nameView.height)
                         nameView.contentY = Math.max(0, Math.min(nameView.contentY - step, limit))
                         event.accepted = true
                     }
@@ -449,11 +471,37 @@ Item {
                     id: row
                     required property var modelData
 
-                    readonly property string label: column.tree ? modelData.name : String(modelData)
-                    readonly property int depth: column.tree ? modelData.depth : 0
-                    readonly property bool isParent: column.tree ? modelData.parent : false
-                    readonly property bool isOpen: column.tree ? modelData.open : false
-                    readonly property string kind: column.tree && modelData.kind ? String(modelData.kind) : ""
+                    readonly property string label: {
+                        if (modelData === undefined || modelData === null)
+                            return ""
+                        if (!column.tree)
+                            return String(modelData)
+                        return modelData.name !== undefined ? String(modelData.name) : ""
+                    }
+                    readonly property int depth: {
+                        if (!column.tree || modelData === undefined || modelData === null
+                                || modelData.depth === undefined)
+                            return 0
+                        return modelData.depth
+                    }
+                    readonly property bool isParent: {
+                        if (!column.tree || modelData === undefined || modelData === null
+                                || modelData.parent === undefined)
+                            return false
+                        return modelData.parent
+                    }
+                    readonly property bool isOpen: {
+                        if (!column.tree || modelData === undefined || modelData === null
+                                || modelData.open === undefined)
+                            return false
+                        return modelData.open
+                    }
+                    readonly property string kind: {
+                        if (!column.tree || modelData === undefined || modelData === null
+                                || modelData.kind === undefined)
+                            return ""
+                        return String(modelData.kind)
+                    }
                     readonly property bool playlistCard: kind === "playlist"
                     readonly property bool versionCard: !column.tree || kind === "version"
                     readonly property int childCount: column.tree && modelData.childCount !== undefined
@@ -906,6 +954,30 @@ Item {
         model: shotbrowserAttributes
     }
 
+    XsAttributeValue {
+        id: browserModeAttr
+        attributeTitle: "BrowserMode"
+        model: shotbrowserAttributes
+    }
+
+    XsAttributeValue {
+        id: resultViewAttr
+        attributeTitle: "ResultView"
+        model: shotbrowserAttributes
+    }
+
+    XsAttributeValue {
+        id: expandedSequence
+        attributeTitle: "ExpandedSequence"
+        model: shotbrowserAttributes
+    }
+
+    XsAttributeValue {
+        id: expandedPlaylist
+        attributeTitle: "ExpandedPlaylist"
+        model: shotbrowserAttributes
+    }
+
     Connections {
         target: project
         function onValueChanged() {
@@ -998,6 +1070,7 @@ Item {
                         onClicked: {
                             panel.browserMode = "shot"
                             modePref.value = "shot"
+                            browserModeAttr.value = "shot"
                         }
                     }
 
@@ -1010,6 +1083,7 @@ Item {
                         onClicked: {
                             panel.browserMode = "asset"
                             modePref.value = "asset"
+                            browserModeAttr.value = "asset"
                         }
                     }
 
@@ -1131,6 +1205,7 @@ Item {
                 onResultChosen: function(mode) {
                     panel.resultView = mode
                     resultPref.value = mode
+                    resultViewAttr.value = mode
                 }
                 loadedFooter: true
                 footerNoun: panel.resultView === "versions" ? "version" : "playlist"
