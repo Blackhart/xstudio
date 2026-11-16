@@ -107,9 +107,6 @@ bool selectionMatches(
     return !selected;
 }
 
-/** @brief Page size used when streaming catalog rows. */
-constexpr std::size_t kPageLimit = 5;
-
 /**
  * @brief Optional parents carried with a catalog page.
  *
@@ -385,7 +382,7 @@ void MikrosShotBrowserContext::loadProjectsAsync() {
             "project",
             0,
             [](const std::optional<std::string> &cursor) {
-                return dal::projects(kPageLimit, cursor);
+                return dal::projects(dal::pageLimit(), cursor);
             });
     }).detach();
 }
@@ -412,13 +409,13 @@ void MikrosShotBrowserContext::refreshSequences() {
     std::thread([weak, request_id, project_id]() {
         const std::vector<poco::Sequence> sequences = collectPages<poco::Sequence>(
             [project_id](const std::optional<std::string> &cursor) {
-                return dal::sequences(project_id, kPageLimit, cursor);
+                return dal::sequences(project_id, dal::pageLimit(), cursor);
             });
         nlohmann::json tree = nlohmann::json::array();
         for (const poco::Sequence &sequence : sequences) {
             const std::vector<poco::Shot> shots = collectPages<poco::Shot>(
                 [sequenceId = sequence.id](const std::optional<std::string> &cursor) {
-                    return dal::shots(sequenceId, kPageLimit, cursor);
+                    return dal::shots(sequenceId, dal::pageLimit(), cursor);
                 });
             nlohmann::json names = nlohmann::json::array();
             nlohmann::json ids = nlohmann::json::array();
@@ -484,7 +481,7 @@ void MikrosShotBrowserContext::refreshAssets() {
             "asset",
             project_id,
             [project_id](const std::optional<std::string> &cursor) {
-                return dal::assets(project_id, kPageLimit, cursor);
+                return dal::assets(project_id, dal::pageLimit(), cursor);
             });
     }).detach();
 }
@@ -516,7 +513,7 @@ void MikrosShotBrowserContext::refreshPlaylistTree() {
     std::thread([weak, request_id, project_id, sequence_id, shot_id, asset_id, scope]() {
         const std::vector<poco::Playlist> playlists = collectPages<poco::Playlist>(
             [project_id](const std::optional<std::string> &cursor) {
-                return dal::playlists(project_id, kPageLimit, cursor);
+                return dal::playlists(project_id, dal::pageLimit(), cursor);
             });
         nlohmann::json tree = nlohmann::json::array();
         for (const poco::Playlist &playlist : playlists) {
@@ -525,7 +522,7 @@ void MikrosShotBrowserContext::refreshPlaylistTree() {
                     const std::optional<std::string> &cursor) {
                     return dal::versions(
                         project_id,
-                        kPageLimit,
+                        dal::pageLimit(),
                         cursor,
                         sequence_id,
                         shot_id,
@@ -594,7 +591,7 @@ void MikrosShotBrowserContext::refreshVersions() {
             [project_id, sequence_id, shot_id, asset_id](
                 const std::optional<std::string> &cursor) {
                 return dal::versions(
-                    project_id, kPageLimit, cursor, sequence_id, shot_id, asset_id);
+                    project_id, dal::pageLimit(), cursor, sequence_id, shot_id, asset_id);
             },
             scope);
     }).detach();

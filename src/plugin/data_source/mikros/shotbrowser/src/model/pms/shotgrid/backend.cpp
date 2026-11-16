@@ -136,7 +136,6 @@ Page ShotGridBackend::find(const Ir &ir) {
     httplib::Headers headers = {
         {"Authorization", "Bearer " + *access_token_},
         {"Accept", kContentTypeHash},
-        {"Content-Type", kContentTypeHash},
     };
     const std::string path = "/api/v1/entity/" + entity->shotgrid + "/_search";
     const std::string request_body = body.dump();
@@ -154,7 +153,6 @@ Page ShotGridBackend::find(const Ir &ir) {
         headers = {
             {"Authorization", "Bearer " + *access_token_},
             {"Accept", kContentTypeHash},
-            {"Content-Type", kContentTypeHash},
         };
         response = client->Post(path.c_str(), headers, request_body, kContentTypeHash);
         if (!response) {

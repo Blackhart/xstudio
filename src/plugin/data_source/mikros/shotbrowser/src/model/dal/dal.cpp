@@ -178,7 +178,7 @@ class SharedPms {
         pms::CacheOptions options;
         options.backend_name = backend;
         options.trace_ir = [](const pms::Ir &ir) {
-            trace::info("ir\n" + trimNewline(pms::dump(ir)));
+            trace::info("request intermediate representation\n" + trimNewline(pms::dump(ir)));
         };
         options.trace_cache = [](const char *verdict, const std::string &entity) {
             trace::info(std::string("cache ") + verdict + " entity=" + entity);
@@ -243,6 +243,14 @@ fetchPage(QueryT query, std::size_t limit, const std::optional<std::string> &cur
 }
 
 } // namespace
+
+std::size_t pageLimit() {
+    const char *mode = std::getenv("MIKROS_PMS_BACKEND");
+    if (mode && std::string(mode) == "shotgrid") {
+        return 500;
+    }
+    return 5;
+}
 
 RowPage<poco::Project> projects(std::size_t limit, std::optional<std::string> cursor) {
     return fetchPage<poco::Project>(pms::Project(), limit, cursor);

@@ -20,6 +20,16 @@
 namespace xstudio::mikros_shotbrowser::dal {
 
 /**
+ * @brief Page size for catalog reads.
+ *
+ * The fake backend stays at 5 so paging stays visible. ShotGrid uses 500, the
+ * maximum its REST search accepts.
+ *
+ * @return Rows requested per page for the active backend.
+ */
+std::size_t pageLimit();
+
+/**
  * @brief One page of POCO rows with an optional continuation cursor.
  * @tparam Row POCO type with `id` and `name` members.
  */
