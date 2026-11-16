@@ -171,13 +171,22 @@ std::string formatPage(const char *source, const std::string &entity, const pms:
     return out.str();
 }
 
+constexpr std::size_t kCacheEntries = 4096;          ///< Distinct pages kept for one project.
+constexpr std::size_t kCacheBytes = 64 * 1024 * 1024; ///< Counted size of those pages.
+
 /**
- * @brief Cache trace hooks. The DAL formats every line.
+ * @brief Cache trace hooks and the production page budget.
+ *
+ * Shots are one query per sequence. A project of a few hundred sequences, plus
+ * its version pages, needs more than the library default of 128 entries and 4 MiB.
+ *
  * @param backendName `shotgrid` or `fake`.
  * @return Options passed to `CachingBackend`.
  */
 pms::CacheOptions buildCacheOptions(const std::string &backendName) {
     pms::CacheOptions options;
+    options.max_entries = kCacheEntries;
+    options.max_bytes = kCacheBytes;
     options.backend_name = backendName;
     options.trace_ir = [](const pms::Ir &ir) {
         trace::info("request intermediate representation\n" + trimNewline(pms::dump(ir)));

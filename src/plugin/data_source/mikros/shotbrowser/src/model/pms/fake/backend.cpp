@@ -477,7 +477,7 @@ void FakeBackend::maybeSleep() const {
         return;
     }
     thread_local std::mt19937 rng{std::random_device{}()};
-    std::uniform_int_distribution<int> delay_ms(200, 2500);
+    std::uniform_int_distribution<int> delay_ms(50, 200);
     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms(rng)));
 }
 

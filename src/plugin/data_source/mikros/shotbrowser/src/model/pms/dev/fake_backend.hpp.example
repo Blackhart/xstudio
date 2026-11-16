@@ -21,7 +21,7 @@ namespace pms {
  * and may also belong to one or more playlists. In(playlist) uses that weak
  * membership. Returned sequence, shot, asset, playlist, and version records
  * expose only `id` and `name`. When `ir.limit` is set, find() keysets on `id`.
- * When `simulate_latency` is true, find() sleeps before returning.
+ * When `simulate_latency` is true, find() sleeps 50–200 ms before returning.
  */
 class FakeBackend : public Backend {
   public:
