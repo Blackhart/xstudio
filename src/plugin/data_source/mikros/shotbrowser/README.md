@@ -43,9 +43,9 @@ latence aléatoire ; le context appelle la DAL sur un thread worker.
 
 ```bash
 export MIKROS_PMS_BACKEND=shotgrid
-export MIKROS_SG_URL=https://your-site.shotgunstudio.com
-export MIKROS_SG_SCRIPT_NAME=your_script_name
-export MIKROS_SG_SCRIPT_KEY=your_script_key
+export SHOTGRID_URL=https://your-site.shotgunstudio.com
+export SHOTGRID_CLIENT_ID=your_script_name
+export SHOTGRID_CLIENT_SECRET=your_script_key
 # optionnel :
 # export MIKROS_SG_MAPPING=/path/to/mapping.yaml
 ```

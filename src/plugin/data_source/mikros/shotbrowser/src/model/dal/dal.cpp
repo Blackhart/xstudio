@@ -57,12 +57,12 @@ class SharedPms {
         if (!mode || std::string(mode) != "shotgrid") {
             return std::nullopt;
         }
-        const char *url = std::getenv("MIKROS_SG_URL");
-        const char *script = std::getenv("MIKROS_SG_SCRIPT_NAME");
-        const char *key = std::getenv("MIKROS_SG_SCRIPT_KEY");
+        const char *url = std::getenv("SHOTGRID_URL");
+        const char *script = std::getenv("SHOTGRID_CLIENT_ID");
+        const char *key = std::getenv("SHOTGRID_CLIENT_SECRET");
         if (!url || !script || !key || !*url || !*script || !*key) {
             throw pms::Error(
-                "shotgrid DAL: set MIKROS_SG_URL, MIKROS_SG_SCRIPT_NAME, MIKROS_SG_SCRIPT_KEY");
+                "shotgrid DAL: set SHOTGRID_URL, SHOTGRID_CLIENT_ID, SHOTGRID_CLIENT_SECRET");
         }
         const char *mapping = std::getenv("MIKROS_SG_MAPPING");
         const std::string mappingPath =
