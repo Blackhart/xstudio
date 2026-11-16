@@ -236,6 +236,8 @@ Item {
         property url iconSrc
         property var names
         property string selected
+        property string sequenceSelected: ""
+        property bool sequencesSelectable: false
         property string placeholder
         property bool boxedCount: false
         property bool loadedFooter: false
@@ -243,6 +245,7 @@ Item {
         property bool tree: false
 
         signal nodeToggled(string name)
+        signal nodeSelected(string name, int depth)
 
         readonly property int count: names && names.length ? names.length : 0
 
@@ -350,18 +353,23 @@ Item {
                     readonly property bool isParent: column.tree ? modelData.parent : false
                     readonly property bool isOpen: column.tree ? modelData.open : false
                     readonly property real chevronWidth: XsStyleSheet.widgetStdHeight / 1.2
+                    readonly property bool chosen: !column.tree
+                            ? label === column.selected
+                            : (depth === 0 && column.sequencesSelectable)
+                                ? label === column.sequenceSelected
+                                : label === column.selected
 
                     width: nameView.width
                     height: column.tree
                             ? XsStyleSheet.widgetStdHeight
                             : (XsStyleSheet.widgetStdHeight + 1) * 4
                     color: column.tree
-                           ? (label === column.selected
+                           ? (chosen
                               ? Qt.darker(XsStyleSheet.accentColor, 2)
                               : rowHover.hovered
                                 ? XsStyleSheet.widgetBgNormalColor
                                 : "transparent")
-                           : (label === column.selected
+                           : (chosen
                               ? Qt.darker(XsStyleSheet.accentColor, 5)
                               : "transparent")
                     border.width: 1
@@ -399,6 +407,10 @@ Item {
                             horizontalAlignment: Text.AlignLeft
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
+
+                            TapHandler {
+                                onTapped: column.nodeSelected(row.label, row.depth)
+                            }
                         }
                     }
 
@@ -642,6 +654,7 @@ Item {
     }
 
     Catalog { id: project; title: "Project"; source: shotbrowserAttributes }
+    Catalog { id: sequence; title: "Sequence"; source: shotbrowserAttributes }
     Catalog { id: shot; title: "Shot"; source: shotbrowserAttributes }
 
     XsAttributeValue {
@@ -827,11 +840,23 @@ Item {
                     tree: true
                     listColor: XsStyleSheet.panelBgColor
                     names: panel.browserMode === "shot" ? panel.shotTreeRows() : panel.assetTreeRows()
+                    sequencesSelectable: panel.browserMode === "shot"
+                    sequenceSelected: sequence.value
                     selected: panel.browserMode === "shot" ? shot.value : asset.value
                     placeholder: listPlaceholder(panel.browserMode === "shot" ? panel.shotTreeNodes().length : asset.names.length)
                     onNodeToggled: function(name) {
                         if (panel.browserMode === "shot")
                             panel.toggleSequence(name)
+                    }
+                    onNodeSelected: function(name, depth) {
+                        if (panel.browserMode === "asset") {
+                            asset.value = asset.value === name ? "" : name
+                            return
+                        }
+                        if (depth === 0)
+                            sequence.value = sequence.value === name ? "" : name
+                        else
+                            shot.value = shot.value === name ? "" : name
                     }
                 }
             }

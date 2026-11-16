@@ -53,8 +53,6 @@ class SharedPms {
 
     pms::Session &session() { return session_; }
 
-    void clearCache() { cache_.clear(); }
-
   private:
     SharedPms()
         : fake_(makeFake()),
@@ -173,16 +171,9 @@ RowPage<poco::Sequence> sequences(
 }
 
 RowPage<poco::Shot> shots(
-    std::int64_t projectId,
-    std::size_t limit,
-    std::optional<std::string> cursor,
-    std::optional<std::int64_t> sequenceId) {
-    if (sequenceId) {
-        return fetchPage<poco::Shot>(
-            pms::Shot().In(pms::scope::sequence == *sequenceId), limit, cursor);
-    }
+    std::int64_t sequenceId, std::size_t limit, std::optional<std::string> cursor) {
     return fetchPage<poco::Shot>(
-        pms::Shot().In(pms::scope::project == projectId), limit, cursor);
+        pms::Shot().In(pms::scope::sequence == sequenceId), limit, cursor);
 }
 
 RowPage<poco::Asset> assets(
@@ -191,20 +182,13 @@ RowPage<poco::Asset> assets(
         pms::Asset().In(pms::scope::project == projectId), limit, cursor);
 }
 
-RowPage<poco::Playlist> playlists(
-    std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
-    return fetchPage<poco::Playlist>(
-        pms::Playlist().In(pms::scope::project == projectId), limit, cursor);
-}
-
 RowPage<poco::Version> versions(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor,
     std::optional<std::int64_t> sequenceId,
     std::optional<std::int64_t> shotId,
-    std::optional<std::int64_t> assetId,
-    std::optional<std::int64_t> playlistId) {
+    std::optional<std::int64_t> assetId) {
     auto query = pms::Version();
     if (shotId) {
         query = query.In(pms::scope::shot == *shotId);
@@ -212,15 +196,10 @@ RowPage<poco::Version> versions(
         query = query.In(pms::scope::sequence == *sequenceId);
     } else if (assetId) {
         query = query.In(pms::scope::asset == *assetId);
-    } else if (!playlistId) {
+    } else {
         query = query.In(pms::scope::project == projectId);
-    }
-    if (playlistId) {
-        query = query.In(pms::scope::playlist == *playlistId);
     }
     return fetchPage<poco::Version>(std::move(query), limit, cursor);
 }
-
-void clearCache() { SharedPms::instance().clearCache(); }
 
 } // namespace xstudio::mikros_shotbrowser::dal
