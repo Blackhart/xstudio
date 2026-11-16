@@ -64,8 +64,9 @@ struct ShotGridSite {
  * Calls `POST /api/v1.1/entity/{collection}/_search` as documented at
  * https://developers.shotgridsoftware.com/rest-api/#searching . The collection
  * is the mapped type in plural snake_case. `fields`, `sort`, and `page` are
- * query parameters. The body is only the hash filter, omitted when the find
- * has no criterion. Returned attributes are mapped back to domain fields.
+ * query parameters. The body always contains `filters`: an empty array when the
+ * find has no criterion, otherwise a hash filter. Returned attributes are mapped
+ * back to domain fields.
  * Keyset pagination uses `greater_than` on id with page number 1. A debug
  * sink logs the JSON body. A notice sink reports a successful token fetch.
  * Network work is synchronous; call from a worker.
@@ -156,7 +157,7 @@ class ShotGridBackend : public Backend {
     void forgetTokens();
 
     /**
-     * @brief Builds the search body. Filters only, or `{}` when the find has no criterion.
+     * @brief Builds the search body. An empty array when the find has no criterion.
      * @param ir Incoming query.
      * @return JSON object sent as the POST body.
      */

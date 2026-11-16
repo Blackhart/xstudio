@@ -182,9 +182,11 @@ void ShotGridBackend::forgetTokens() {
 nlohmann::json ShotGridBackend::buildRequestBody(const Ir &ir) const {
     nlohmann::json body = nlohmann::json::object();
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping_);
-    if (!filters.is_null()) {
-        body["filters"] = wrapAsHashFilter(filters);
+    if (filters.is_null()) {
+        body["filters"] = nlohmann::json::array(); ///< No criterion: an empty array lists every row.
+        return body;
     }
+    body["filters"] = wrapAsHashFilter(filters);
     return body;
 }
 
@@ -223,7 +225,8 @@ void ShotGridBackend::logSearch(const std::string &url, const nlohmann::json &bo
 }
 
 httplib::Result ShotGridBackend::sendSearch(const std::string &url, const nlohmann::json &body) {
-    const char *contentType = body.contains("filters") ? kContentTypeHash : kContentTypeArray;
+    const bool hashFilter = body.at("filters").is_object();
+    const char *contentType = hashFilter ? kContentTypeHash : kContentTypeArray;
     auto client = openHttpClient(site_.base_url);
     const httplib::Headers headers = {
         {"Authorization", "Bearer " + *access_token_},

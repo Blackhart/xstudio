@@ -247,7 +247,7 @@ nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mappin
                             {"conditions", nlohmann::json::array({cursorFilter})}}
                       : andCombine(std::move(filters), std::move(cursorFilter));
     }
-    // SearchRequest.filters is optional. An empty object is not a hash filter.
+    // No criterion. The backend sends `filters: []`. An empty object is not a hash filter.
     if (filters.empty()) {
         return nullptr;
     }
