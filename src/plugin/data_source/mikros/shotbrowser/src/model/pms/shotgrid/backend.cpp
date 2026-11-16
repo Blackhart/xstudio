@@ -52,6 +52,10 @@ ShotGridBackend::ShotGridBackend(ShotGridSite site, const std::string &mapping_p
 ShotGridBackend::ShotGridBackend(ShotGridSite site, ShotGridMapping mapping)
     : site_(std::move(site)), mapping_(std::move(mapping)) {}
 
+void ShotGridBackend::setDebug(std::function<void(const std::string &)> debug) {
+    debug_ = std::move(debug);
+}
+
 void ShotGridBackend::ensureToken() {
     const auto now = std::chrono::steady_clock::now();
     if (access_token_ && now + std::chrono::seconds(30) < token_expires_) {
@@ -123,7 +127,11 @@ Page ShotGridBackend::find(const Ir &ir) {
         {"Content-Type", kContentTypeHash},
     };
     const std::string path = "/api/v1/entity/" + entity->shotgrid + "/_search";
-    auto response = client->Post(path.c_str(), headers, body.dump(), kContentTypeHash);
+    const std::string payload = body.dump();
+    if (debug_) {
+        debug_("POST " + path + "\n" + body.dump(2));
+    }
+    auto response = client->Post(path.c_str(), headers, payload, kContentTypeHash);
     if (!response) {
         throw Error("shotgrid: search request failed");
     }
@@ -136,7 +144,7 @@ Page ShotGridBackend::find(const Ir &ir) {
             {"Accept", kContentTypeHash},
             {"Content-Type", kContentTypeHash},
         };
-        response = client->Post(path.c_str(), headers, body.dump(), kContentTypeHash);
+        response = client->Post(path.c_str(), headers, payload, kContentTypeHash);
         if (!response) {
             throw Error("shotgrid: search request failed after re-auth");
         }

@@ -88,8 +88,104 @@ bool selectionMatches(
     return !selected;
 }
 
-/** @brief Page size used when streaming version names into the combo. */
-constexpr std::size_t kVersionPageLimit = 5;
+/** @brief Page size used when streaming catalog rows. */
+constexpr std::size_t kPageLimit = 5;
+
+/**
+ * @brief Optional parents carried with a catalog page.
+ *
+ * Shots set the sequence fields. Versions set whichever parents are selected.
+ */
+struct PageScope {
+    bool has_sequence = false;     ///< True when `sequence_id` filters the page.
+    std::int64_t sequence_id = 0;  ///< Sequence id when `has_sequence` is true.
+    bool has_shot = false;         ///< True when `shot_id` filters the page.
+    std::int64_t shot_id = 0;      ///< Shot id when `has_shot` is true.
+    bool has_asset = false;        ///< True when `asset_id` filters the page.
+    std::int64_t asset_id = 0;     ///< Asset id when `has_asset` is true.
+    bool has_playlist = false;     ///< True when `playlist_id` filters the page.
+    std::int64_t playlist_id = 0;  ///< Playlist id when `has_playlist` is true.
+};
+
+/**
+ * @brief Replaces or extends a catalog and refreshes its combo labels.
+ *
+ * The first page clears the combo value. Later pages keep a selection made
+ * while earlier pages were already visible.
+ *
+ * @tparam Row POCO with `id` and `name`.
+ * @param stored Rows accumulated for this combo.
+ * @param attr Combo attribute.
+ * @param rows Rows from the latest page.
+ * @param append False for the first page of a request.
+ */
+template <typename Row>
+void applyCatalogPage(
+    std::vector<Row> &stored,
+    module::StringChoiceAttribute *attr,
+    std::vector<Row> rows,
+    bool append) {
+    if (!append) {
+        stored = std::move(rows);
+        attr->set_role_data(module::Attribute::StringChoices, uniqueLabels(stored));
+        attr->set_value("");
+        return;
+    }
+    if (rows.empty()) {
+        return;
+    }
+    stored.insert(stored.end(), rows.begin(), rows.end());
+    attr->set_role_data(module::Attribute::StringChoices, uniqueLabels(stored));
+}
+
+/**
+ * @brief Loads every page of a catalog and mails each one to the actor.
+ * @tparam Row POCO returned by `fetch`.
+ * @tparam Fetch Callable taking a cursor and returning `dal::RowPage<Row>`.
+ * @param weak Actor to receive the pages.
+ * @param request_id Request that must still be current when the page is applied.
+ * @param catalog Catalog name stored on the message (`project`, `sequence`, …).
+ * @param project_id Parent project id, or 0 for the project catalog.
+ * @param fetch One DAL page call.
+ * @param scope Optional parents that must still match when the page is applied.
+ */
+template <typename Row, typename Fetch>
+void publishPages(
+    const caf::weak_actor_ptr &weak,
+    std::uint64_t request_id,
+    const std::string &catalog,
+    std::int64_t project_id,
+    Fetch fetch,
+    PageScope scope = {}) {
+    std::optional<std::string> cursor;
+    bool append = false;
+    for (;;) {
+        const dal::RowPage<Row> page = fetch(cursor);
+        if (auto handle = weak.lock()) {
+            anon_mail(
+                data_source::put_data_atom_v,
+                request_id,
+                catalog,
+                project_id,
+                scope.has_sequence,
+                scope.sequence_id,
+                scope.has_shot,
+                scope.shot_id,
+                scope.has_asset,
+                scope.asset_id,
+                scope.has_playlist,
+                scope.playlist_id,
+                append,
+                namedRowsToJson(page.rows))
+                .send(caf::actor_cast<caf::actor>(handle));
+        }
+        if (!page.next_cursor) {
+            break;
+        }
+        cursor = page.next_cursor;
+        append = true;
+    }
+}
 
 } // namespace
 
@@ -132,26 +228,6 @@ MikrosShotBrowserContext::MikrosShotBrowserContext(
         5.0f);
 }
 
-std::vector<std::string> MikrosShotBrowserContext::projectLabels() const {
-    return uniqueLabels(projects_);
-}
-
-std::vector<std::string> MikrosShotBrowserContext::sequenceLabels() const {
-    return uniqueLabels(sequences_);
-}
-
-std::vector<std::string> MikrosShotBrowserContext::shotLabels() const {
-    return uniqueLabels(shots_);
-}
-
-std::vector<std::string> MikrosShotBrowserContext::assetLabels() const {
-    return uniqueLabels(assets_);
-}
-
-std::vector<std::string> MikrosShotBrowserContext::playlistLabels() const {
-    return uniqueLabels(playlists_);
-}
-
 std::optional<poco::Project> MikrosShotBrowserContext::projectForLabel(
     const std::string &label) const {
     return rowForLabel(projects_, label);
@@ -178,33 +254,44 @@ std::optional<poco::Playlist> MikrosShotBrowserContext::playlistForLabel(
 }
 
 void MikrosShotBrowserContext::clearSequenceBranch() {
+    ++shot_request_id_;
     selected_sequence_ = std::nullopt;
     selected_shot_ = std::nullopt;
     shots_.clear();
     if (!sequence_->value().empty()) {
-        sequence_->set_value("");
+        sequence_->set_value("", false);
     }
     shot_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
     if (!shot_->value().empty()) {
-        shot_->set_value("");
+        shot_->set_value("", false);
     }
 }
 
 void MikrosShotBrowserContext::clearAssetBranch() {
     selected_asset_ = std::nullopt;
     if (!asset_->value().empty()) {
-        asset_->set_value("");
+        asset_->set_value("", false);
     }
 }
 
 void MikrosShotBrowserContext::loadProjectsAsync() {
+    ++project_request_id_;
+    projects_.clear();
+    selected_project_ = std::nullopt;
+    project_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
+    project_->set_value("");
+
+    const std::uint64_t request_id = project_request_id_;
     const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak]() {
-        const utility::JsonStore payload = namedRowsToJson(dal::projects());
-        if (auto handle = weak.lock()) {
-            anon_mail(data_source::get_data_atom_v, payload)
-                .send(caf::actor_cast<caf::actor>(handle));
-        }
+    std::thread([weak, request_id]() {
+        publishPages<poco::Project>(
+            weak,
+            request_id,
+            "project",
+            0,
+            [](const std::optional<std::string> &cursor) {
+                return dal::projects(kPageLimit, cursor);
+            });
     }).detach();
 }
 
@@ -223,16 +310,14 @@ void MikrosShotBrowserContext::refreshSequences() {
     const std::int64_t project_id = selected_project_->id;
     const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
     std::thread([weak, request_id, project_id]() {
-        const utility::JsonStore payload = namedRowsToJson(dal::sequences(project_id));
-        if (auto handle = weak.lock()) {
-            anon_mail(
-                data_source::put_data_atom_v,
-                request_id,
-                std::string("sequence"),
-                project_id,
-                payload)
-                .send(caf::actor_cast<caf::actor>(handle));
-        }
+        publishPages<poco::Sequence>(
+            weak,
+            request_id,
+            "sequence",
+            project_id,
+            [project_id](const std::optional<std::string> &cursor) {
+                return dal::sequences(project_id, kPageLimit, cursor);
+            });
     }).detach();
 }
 
@@ -243,26 +328,30 @@ void MikrosShotBrowserContext::refreshShots() {
     shot_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
     shot_->set_value("");
 
-    if (!selected_sequence_) {
+    if (!selected_project_) {
         return;
     }
 
     const std::uint64_t request_id = shot_request_id_;
-    const std::int64_t project_id = selected_project_ ? selected_project_->id : std::int64_t{0};
-    const std::int64_t sequence_id = selected_sequence_->id;
+    const std::int64_t project_id = selected_project_->id;
+    const std::optional<std::int64_t> sequence_id =
+        selected_sequence_ ? std::optional<std::int64_t>{selected_sequence_->id} : std::nullopt;
+    const bool has_sequence = sequence_id.has_value();
+    const std::int64_t sequence_filter = sequence_id ? *sequence_id : std::int64_t{0};
     const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, request_id, project_id, sequence_id]() {
-        const utility::JsonStore payload = namedRowsToJson(dal::shots(sequence_id));
-        if (auto handle = weak.lock()) {
-            anon_mail(
-                data_source::put_data_atom_v,
-                request_id,
-                std::string("shot"),
-                project_id,
-                sequence_id,
-                payload)
-                .send(caf::actor_cast<caf::actor>(handle));
-        }
+    PageScope scope;
+    scope.has_sequence = has_sequence;
+    scope.sequence_id = sequence_filter;
+    std::thread([weak, request_id, project_id, sequence_id, scope]() {
+        publishPages<poco::Shot>(
+            weak,
+            request_id,
+            "shot",
+            project_id,
+            [project_id, sequence_id](const std::optional<std::string> &cursor) {
+                return dal::shots(project_id, kPageLimit, cursor, sequence_id);
+            },
+            scope);
     }).detach();
 }
 
@@ -281,16 +370,14 @@ void MikrosShotBrowserContext::refreshAssets() {
     const std::int64_t project_id = selected_project_->id;
     const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
     std::thread([weak, request_id, project_id]() {
-        const utility::JsonStore payload = namedRowsToJson(dal::assets(project_id));
-        if (auto handle = weak.lock()) {
-            anon_mail(
-                data_source::put_data_atom_v,
-                request_id,
-                std::string("asset"),
-                project_id,
-                payload)
-                .send(caf::actor_cast<caf::actor>(handle));
-        }
+        publishPages<poco::Asset>(
+            weak,
+            request_id,
+            "asset",
+            project_id,
+            [project_id](const std::optional<std::string> &cursor) {
+                return dal::assets(project_id, kPageLimit, cursor);
+            });
     }).detach();
 }
 
@@ -309,21 +396,20 @@ void MikrosShotBrowserContext::refreshPlaylists() {
     const std::int64_t project_id = selected_project_->id;
     const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
     std::thread([weak, request_id, project_id]() {
-        const utility::JsonStore payload = namedRowsToJson(dal::playlists(project_id));
-        if (auto handle = weak.lock()) {
-            anon_mail(
-                data_source::put_data_atom_v,
-                request_id,
-                std::string("playlist"),
-                project_id,
-                payload)
-                .send(caf::actor_cast<caf::actor>(handle));
-        }
+        publishPages<poco::Playlist>(
+            weak,
+            request_id,
+            "playlist",
+            project_id,
+            [project_id](const std::optional<std::string> &cursor) {
+                return dal::playlists(project_id, kPageLimit, cursor);
+            });
     }).detach();
 }
 
 void MikrosShotBrowserContext::refreshVersions() {
     ++version_request_id_;
+    versions_.clear();
     version_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
     version_->set_value("");
 
@@ -341,42 +427,34 @@ void MikrosShotBrowserContext::refreshVersions() {
         selected_asset_ ? std::optional<std::int64_t>{selected_asset_->id} : std::nullopt;
     const std::optional<std::int64_t> playlist_id =
         selected_playlist_ ? std::optional<std::int64_t>{selected_playlist_->id} : std::nullopt;
+    PageScope scope;
+    scope.has_sequence = sequence_id.has_value();
+    scope.sequence_id = sequence_id ? *sequence_id : std::int64_t{0};
+    scope.has_shot = shot_id.has_value();
+    scope.shot_id = shot_id ? *shot_id : std::int64_t{0};
+    scope.has_asset = asset_id.has_value();
+    scope.asset_id = asset_id ? *asset_id : std::int64_t{0};
+    scope.has_playlist = playlist_id.has_value();
+    scope.playlist_id = playlist_id ? *playlist_id : std::int64_t{0};
     const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, request_id, project_id, sequence_id, shot_id, asset_id, playlist_id]() {
-        std::optional<std::string> cursor;
-        bool append = false;
-        for (;;) {
-            const dal::NamePage page = dal::versionNames(
-                project_id,
-                kVersionPageLimit,
-                cursor,
-                sequence_id,
-                shot_id,
-                asset_id,
-                playlist_id);
-            if (auto handle = weak.lock()) {
-                anon_mail(
-                    data_source::get_data_atom_v,
-                    request_id,
+    std::thread([weak, request_id, project_id, sequence_id, shot_id, asset_id, playlist_id, scope]() {
+        publishPages<poco::Version>(
+            weak,
+            request_id,
+            "version",
+            project_id,
+            [project_id, sequence_id, shot_id, asset_id, playlist_id](
+                const std::optional<std::string> &cursor) {
+                return dal::versions(
                     project_id,
-                    sequence_id.has_value(),
-                    sequence_id ? *sequence_id : std::int64_t{0},
-                    shot_id.has_value(),
-                    shot_id ? *shot_id : std::int64_t{0},
-                    asset_id.has_value(),
-                    asset_id ? *asset_id : std::int64_t{0},
-                    playlist_id.has_value(),
-                    playlist_id ? *playlist_id : std::int64_t{0},
-                    append,
-                    page.names)
-                    .send(caf::actor_cast<caf::actor>(handle));
-            }
-            if (!page.next_cursor) {
-                break;
-            }
-            cursor = page.next_cursor;
-            append = true;
-        }
+                    kPageLimit,
+                    cursor,
+                    sequence_id,
+                    shot_id,
+                    asset_id,
+                    playlist_id);
+            },
+            scope);
     }).detach();
 }
 
@@ -399,7 +477,9 @@ void MikrosShotBrowserContext::attribute_changed(
         if (selected_sequence_) {
             clearAssetBranch();
         }
-        refreshShots();
+        if (!selected_asset_) {
+            refreshShots();
+        }
         refreshVersions();
     } else if (attr_uuid == shot_->uuid()) {
         selected_shot_ = shotForLabel(shot_->value());
@@ -411,6 +491,8 @@ void MikrosShotBrowserContext::attribute_changed(
         selected_asset_ = assetForLabel(asset_->value());
         if (selected_asset_) {
             clearSequenceBranch();
+        } else {
+            refreshShots();
         }
         refreshVersions();
     } else if (attr_uuid == playlist_->uuid()) {
@@ -423,74 +505,9 @@ void MikrosShotBrowserContext::attribute_changed(
 
 caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
     return caf::message_handler{
-        [=](data_source::get_data_atom, const utility::JsonStore &payload) {
-            projects_ = namedRowsFromJson<poco::Project>(payload);
-            selected_project_ = std::nullopt;
-            project_->set_role_data(module::Attribute::StringChoices, projectLabels());
-            project_->set_value("");
-            refreshSequences();
-            refreshShots();
-            refreshAssets();
-            refreshPlaylists();
-            refreshVersions();
-        },
         [=](data_source::put_data_atom,
             const std::uint64_t request_id,
             const std::string &catalog,
-            const std::int64_t project_id,
-            const utility::JsonStore &payload) {
-            if (!selected_project_ || selected_project_->id != project_id) {
-                return;
-            }
-            if (catalog == "sequence") {
-                if (request_id != sequence_request_id_) {
-                    return;
-                }
-                sequences_ = namedRowsFromJson<poco::Sequence>(payload);
-                selected_sequence_ = std::nullopt;
-                sequence_->set_role_data(module::Attribute::StringChoices, sequenceLabels());
-                sequence_->set_value("");
-                refreshShots();
-            } else if (catalog == "asset") {
-                if (request_id != asset_request_id_) {
-                    return;
-                }
-                assets_ = namedRowsFromJson<poco::Asset>(payload);
-                selected_asset_ = std::nullopt;
-                asset_->set_role_data(module::Attribute::StringChoices, assetLabels());
-                asset_->set_value("");
-            } else if (catalog == "playlist") {
-                if (request_id != playlist_request_id_) {
-                    return;
-                }
-                playlists_ = namedRowsFromJson<poco::Playlist>(payload);
-                selected_playlist_ = std::nullopt;
-                playlist_->set_role_data(module::Attribute::StringChoices, playlistLabels());
-                playlist_->set_value("");
-            }
-        },
-        [=](data_source::put_data_atom,
-            const std::uint64_t request_id,
-            const std::string &catalog,
-            const std::int64_t project_id,
-            const std::int64_t sequence_id,
-            const utility::JsonStore &payload) {
-            if (catalog != "shot" || request_id != shot_request_id_) {
-                return;
-            }
-            if (!selected_project_ || selected_project_->id != project_id) {
-                return;
-            }
-            if (!selected_sequence_ || selected_sequence_->id != sequence_id) {
-                return;
-            }
-            shots_ = namedRowsFromJson<poco::Shot>(payload);
-            selected_shot_ = std::nullopt;
-            shot_->set_role_data(module::Attribute::StringChoices, shotLabels());
-            shot_->set_value("");
-        },
-        [=](data_source::get_data_atom,
-            const std::uint64_t request_id,
             const std::int64_t project_id,
             const bool has_sequence,
             const std::int64_t sequence_id,
@@ -501,29 +518,63 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
             const bool has_playlist,
             const std::int64_t playlist_id,
             const bool append,
-            const std::vector<std::string> &names) {
-            if (request_id != version_request_id_) {
+            const utility::JsonStore &payload) {
+            if (catalog == "project") {
+                if (request_id != project_request_id_) {
+                    return;
+                }
+                applyCatalogPage(
+                    projects_, project_, namedRowsFromJson<poco::Project>(payload), append);
                 return;
             }
             if (!selected_project_ || selected_project_->id != project_id) {
                 return;
             }
-            if (!selectionMatches(has_sequence, sequence_id, selected_sequence_) ||
-                !selectionMatches(has_shot, shot_id, selected_shot_) ||
-                !selectionMatches(has_asset, asset_id, selected_asset_) ||
-                !selectionMatches(has_playlist, playlist_id, selected_playlist_)) {
-                return;
+            if (catalog == "sequence") {
+                if (request_id != sequence_request_id_) {
+                    return;
+                }
+                applyCatalogPage(
+                    sequences_,
+                    sequence_,
+                    namedRowsFromJson<poco::Sequence>(payload),
+                    append);
+            } else if (catalog == "shot") {
+                if (request_id != shot_request_id_ || selected_asset_) {
+                    return;
+                }
+                if (!selectionMatches(has_sequence, sequence_id, selected_sequence_)) {
+                    return;
+                }
+                applyCatalogPage(
+                    shots_, shot_, namedRowsFromJson<poco::Shot>(payload), append);
+            } else if (catalog == "asset") {
+                if (request_id != asset_request_id_) {
+                    return;
+                }
+                applyCatalogPage(
+                    assets_, asset_, namedRowsFromJson<poco::Asset>(payload), append);
+            } else if (catalog == "playlist") {
+                if (request_id != playlist_request_id_) {
+                    return;
+                }
+                applyCatalogPage(
+                    playlists_,
+                    playlist_,
+                    namedRowsFromJson<poco::Playlist>(payload),
+                    append);
+            } else if (catalog == "version") {
+                if (request_id != version_request_id_) {
+                    return;
+                }
+                if (!selectionMatches(has_sequence, sequence_id, selected_sequence_) ||
+                    !selectionMatches(has_shot, shot_id, selected_shot_) ||
+                    !selectionMatches(has_asset, asset_id, selected_asset_) ||
+                    !selectionMatches(has_playlist, playlist_id, selected_playlist_)) {
+                    return;
+                }
+                applyCatalogPage(
+                    versions_, version_, namedRowsFromJson<poco::Version>(payload), append);
             }
-            if (!append) {
-                version_->set_role_data(module::Attribute::StringChoices, names);
-                version_->set_value("");
-                return;
-            }
-            if (names.empty()) {
-                return;
-            }
-            std::vector<std::string> choices = version_->options();
-            choices.insert(choices.end(), names.begin(), names.end());
-            version_->set_role_data(module::Attribute::StringChoices, choices);
         }};
 }

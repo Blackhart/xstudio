@@ -29,6 +29,24 @@ Item {
         return options[index - 1]
     }
 
+    // ComboBox assigns currentIndex itself and drops a binding. Re-apply the
+    // attribute after the model settles so a parent change shows None.
+    function syncCombo(combo, options, selected) {
+        const next = indexForSelection(options, selected)
+        if (combo.currentIndex !== next)
+            combo.currentIndex = next
+    }
+
+    function deferSync(combo, optionsAttr, valueAttr) {
+        Qt.callLater(function() {
+            syncCombo(combo, optionsAttr.value, valueAttr.value)
+        })
+    }
+
+    function loadedCount(options) {
+        return options && options.length ? options.length : 0
+    }
+
     XsGradientRectangle {
         anchors.fill: parent
     }
@@ -140,15 +158,29 @@ Item {
             }
 
             XsComboBox {
+                id: projectCombo
                 visible: projectNames.value && projectNames.value.length > 0
                 Layout.fillWidth: true
                 Layout.preferredHeight: 24
                 placeholderText: "No project selected"
                 model: withNone(projectNames.value)
-                currentIndex: indexForSelection(projectNames.value, currentProject.value)
+                Component.onCompleted: panel.deferSync(projectCombo, projectNames, currentProject)
+                onModelChanged: panel.deferSync(projectCombo, projectNames, currentProject)
                 onActivated: function(index) {
                     currentProject.value = valueFromIndex(projectNames.value, index)
                 }
+                Connections {
+                    target: currentProject
+                    function onValueChanged() {
+                        panel.deferSync(projectCombo, projectNames, currentProject)
+                    }
+                }
+            }
+
+            XsText {
+                text: loadedCount(projectNames.value)
+                Layout.preferredWidth: 40
+                horizontalAlignment: Text.AlignRight
             }
         }
 
@@ -169,16 +201,30 @@ Item {
             }
 
             XsComboBox {
+                id: sequenceCombo
                 visible: !currentProject.value || (sequenceNames.value && sequenceNames.value.length > 0)
                 enabled: !!currentProject.value
                 Layout.fillWidth: true
                 Layout.preferredHeight: 24
                 placeholderText: currentProject.value ? "No sequence selected" : "No project selected"
                 model: withNone(sequenceNames.value)
-                currentIndex: indexForSelection(sequenceNames.value, currentSequence.value)
+                Component.onCompleted: panel.deferSync(sequenceCombo, sequenceNames, currentSequence)
+                onModelChanged: panel.deferSync(sequenceCombo, sequenceNames, currentSequence)
                 onActivated: function(index) {
                     currentSequence.value = valueFromIndex(sequenceNames.value, index)
                 }
+                Connections {
+                    target: currentSequence
+                    function onValueChanged() {
+                        panel.deferSync(sequenceCombo, sequenceNames, currentSequence)
+                    }
+                }
+            }
+
+            XsText {
+                text: loadedCount(sequenceNames.value)
+                Layout.preferredWidth: 40
+                horizontalAlignment: Text.AlignRight
             }
         }
 
@@ -193,22 +239,36 @@ Item {
             }
 
             XsText {
-                visible: currentSequence.value && (!shotNames.value || shotNames.value.length === 0)
+                visible: currentProject.value && !currentAsset.value && (!shotNames.value || shotNames.value.length === 0)
                 text: "Loading…"
                 Layout.fillWidth: true
             }
 
             XsComboBox {
-                visible: !currentSequence.value || (shotNames.value && shotNames.value.length > 0)
-                enabled: !!currentSequence.value
+                id: shotCombo
+                visible: !currentProject.value || !!currentAsset.value || (shotNames.value && shotNames.value.length > 0)
+                enabled: !!currentProject.value && !currentAsset.value
                 Layout.fillWidth: true
                 Layout.preferredHeight: 24
-                placeholderText: currentSequence.value ? "No shot selected" : "No sequence selected"
+                placeholderText: currentProject.value ? "No shot selected" : "No project selected"
                 model: withNone(shotNames.value)
-                currentIndex: indexForSelection(shotNames.value, currentShot.value)
+                Component.onCompleted: panel.deferSync(shotCombo, shotNames, currentShot)
+                onModelChanged: panel.deferSync(shotCombo, shotNames, currentShot)
                 onActivated: function(index) {
                     currentShot.value = valueFromIndex(shotNames.value, index)
                 }
+                Connections {
+                    target: currentShot
+                    function onValueChanged() {
+                        panel.deferSync(shotCombo, shotNames, currentShot)
+                    }
+                }
+            }
+
+            XsText {
+                text: loadedCount(shotNames.value)
+                Layout.preferredWidth: 40
+                horizontalAlignment: Text.AlignRight
             }
         }
 
@@ -229,16 +289,30 @@ Item {
             }
 
             XsComboBox {
+                id: assetCombo
                 visible: !currentProject.value || (assetNames.value && assetNames.value.length > 0)
                 enabled: !!currentProject.value
                 Layout.fillWidth: true
                 Layout.preferredHeight: 24
                 placeholderText: currentProject.value ? "No asset selected" : "No project selected"
                 model: withNone(assetNames.value)
-                currentIndex: indexForSelection(assetNames.value, currentAsset.value)
+                Component.onCompleted: panel.deferSync(assetCombo, assetNames, currentAsset)
+                onModelChanged: panel.deferSync(assetCombo, assetNames, currentAsset)
                 onActivated: function(index) {
                     currentAsset.value = valueFromIndex(assetNames.value, index)
                 }
+                Connections {
+                    target: currentAsset
+                    function onValueChanged() {
+                        panel.deferSync(assetCombo, assetNames, currentAsset)
+                    }
+                }
+            }
+
+            XsText {
+                text: loadedCount(assetNames.value)
+                Layout.preferredWidth: 40
+                horizontalAlignment: Text.AlignRight
             }
         }
 
@@ -259,16 +333,30 @@ Item {
             }
 
             XsComboBox {
+                id: playlistCombo
                 visible: !currentProject.value || (playlistNames.value && playlistNames.value.length > 0)
                 enabled: !!currentProject.value
                 Layout.fillWidth: true
                 Layout.preferredHeight: 24
                 placeholderText: currentProject.value ? "No playlist selected" : "No project selected"
                 model: withNone(playlistNames.value)
-                currentIndex: indexForSelection(playlistNames.value, currentPlaylist.value)
+                Component.onCompleted: panel.deferSync(playlistCombo, playlistNames, currentPlaylist)
+                onModelChanged: panel.deferSync(playlistCombo, playlistNames, currentPlaylist)
                 onActivated: function(index) {
                     currentPlaylist.value = valueFromIndex(playlistNames.value, index)
                 }
+                Connections {
+                    target: currentPlaylist
+                    function onValueChanged() {
+                        panel.deferSync(playlistCombo, playlistNames, currentPlaylist)
+                    }
+                }
+            }
+
+            XsText {
+                text: loadedCount(playlistNames.value)
+                Layout.preferredWidth: 40
+                horizontalAlignment: Text.AlignRight
             }
         }
 
@@ -289,16 +377,30 @@ Item {
             }
 
             XsComboBox {
+                id: versionCombo
                 visible: !currentProject.value || (versionNames.value && versionNames.value.length > 0)
                 enabled: !!currentProject.value
                 Layout.fillWidth: true
                 Layout.preferredHeight: 24
                 placeholderText: currentProject.value ? "No version selected" : "No project selected"
                 model: withNone(versionNames.value)
-                currentIndex: indexForSelection(versionNames.value, currentVersion.value)
+                Component.onCompleted: panel.deferSync(versionCombo, versionNames, currentVersion)
+                onModelChanged: panel.deferSync(versionCombo, versionNames, currentVersion)
                 onActivated: function(index) {
                     currentVersion.value = valueFromIndex(versionNames.value, index)
                 }
+                Connections {
+                    target: currentVersion
+                    function onValueChanged() {
+                        panel.deferSync(versionCombo, versionNames, currentVersion)
+                    }
+                }
+            }
+
+            XsText {
+                text: loadedCount(versionNames.value)
+                Layout.preferredWidth: 40
+                horizontalAlignment: Text.AlignRight
             }
         }
     }

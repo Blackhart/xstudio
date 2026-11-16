@@ -11,6 +11,7 @@
 #include "model/poco/project.hpp"
 #include "model/poco/sequence.hpp"
 #include "model/poco/shot.hpp"
+#include "model/poco/version.hpp"
 
 #include "xstudio/plugin_manager/plugin_base.hpp"
 
@@ -24,17 +25,23 @@ namespace xstudio::mikros_shotbrowser {
 /**
  * @brief Plugin actor that owns UI attributes, selection state, and async loads.
  *
- * Calls the DAL on worker threads and applies results via CAF messages. Version
- * pages are pushed to the combo as they arrive. Does not include `pms/pms.hpp`
- * and does not sleep in a handler.
+ * Calls the DAL on worker threads and applies results via CAF messages. Catalog
+ * and version pages are pushed to the combos as they arrive. Does not include
+ * `pms/pms.hpp` and does not sleep in a handler.
  *
- * Cascades after Project (Sequence and Asset are mutually exclusive):
+ * Two cascades. Changing a selector clears every child selector to none,
+ * then reloads the lists that remain:
  * - Project → Sequence → Shot → Version
+ *   Project lists sequences, shots, and versions of that project.
+ *   Sequence narrows shots and versions to that sequence and clears Shot.
+ *   Shot narrows versions to that shot and clears Version.
  * - Project → Asset → Version
+ *   Project lists assets and versions of that project.
+ *   Asset narrows versions to that asset and clears Version.
  *
- * Playlist is a weak optional filter AND-ed with the strong parent when both
- * are set (versions of a shot/sequence/asset that also sit in the playlist).
- * Playlist alone lists every version linked to that playlist.
+ * Sequence and Asset are mutually exclusive. Playlist is a weak optional
+ * filter AND-ed with the strong parent when both are set. Playlist alone
+ * lists every version linked to that playlist.
  */
 class MikrosShotBrowserContext : public plugin::StandardPlugin {
   public:
@@ -52,7 +59,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
 
   protected:
     /**
-     * @brief Handles async DAL payloads for catalogs and version names.
+     * @brief Handles async DAL payloads for catalog pages.
      * @return Extra CAF handlers merged into the plugin behavior.
      */
     caf::message_handler message_handler_extensions() override;
@@ -65,17 +72,6 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     void attribute_changed(const utility::Uuid &attr_uuid, const int role) override;
 
   private:
-    /** @brief Builds combo labels, appending ` (id)` when names collide. */
-    std::vector<std::string> projectLabels() const;
-    /** @brief Builds combo labels, appending ` (id)` when names collide. */
-    std::vector<std::string> sequenceLabels() const;
-    /** @brief Builds combo labels, appending ` (id)` when names collide. */
-    std::vector<std::string> shotLabels() const;
-    /** @brief Builds combo labels, appending ` (id)` when names collide. */
-    std::vector<std::string> assetLabels() const;
-    /** @brief Builds combo labels, appending ` (id)` when names collide. */
-    std::vector<std::string> playlistLabels() const;
-
     /** @brief Resolves a Project combo label to its POCO row. */
     std::optional<poco::Project> projectForLabel(const std::string &label) const;
     /** @brief Resolves a Sequence combo label to its POCO row. */
@@ -87,35 +83,37 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     /** @brief Resolves a Playlist combo label to its POCO row. */
     std::optional<poco::Playlist> playlistForLabel(const std::string &label) const;
 
-    /** @brief Clears sequence and shot selection and combo values. */
+    /** @brief Clears sequence and shot selection and drops in-flight shot replies. */
     void clearSequenceBranch();
     /** @brief Clears asset selection and combo value. */
     void clearAssetBranch();
 
-    /** @brief Starts a worker that loads projects via the DAL. */
+    /** @brief Clears then streams project pages via the DAL. */
     void loadProjectsAsync();
-    /** @brief Clears then reloads sequences for the selected project. */
+    /** @brief Clears then streams sequence pages for the selected project. */
     void refreshSequences();
-    /** @brief Clears then reloads shots for the selected sequence. */
+    /** @brief Clears then streams shot pages for the project, or the selected sequence. */
     void refreshShots();
-    /** @brief Clears then reloads assets for the selected project. */
+    /** @brief Clears then streams asset pages for the selected project. */
     void refreshAssets();
-    /** @brief Clears then reloads playlists for the selected project. */
+    /** @brief Clears then streams playlist pages for the selected project. */
     void refreshPlaylists();
-    /** @brief Clears then reloads version names for the current selection. */
+    /** @brief Clears then streams version pages for the current selection. */
     void refreshVersions();
 
-    std::vector<poco::Project> projects_;     ///< Last project catalog from the DAL.
-    std::vector<poco::Sequence> sequences_;   ///< Sequences for `selected_project_`.
-    std::vector<poco::Shot> shots_;           ///< Shots for `selected_sequence_`.
-    std::vector<poco::Asset> assets_;         ///< Assets for `selected_project_`.
-    std::vector<poco::Playlist> playlists_;   ///< Playlists for `selected_project_`.
+    std::vector<poco::Project> projects_;     ///< Project pages received so far.
+    std::vector<poco::Sequence> sequences_;   ///< Sequence pages for `selected_project_`.
+    std::vector<poco::Shot> shots_;           ///< Shot pages for the project, or `selected_sequence_`.
+    std::vector<poco::Asset> assets_;         ///< Asset pages for `selected_project_`.
+    std::vector<poco::Playlist> playlists_;   ///< Playlist pages for `selected_project_`.
+    std::vector<poco::Version> versions_;     ///< Version pages for the current selection.
     std::optional<poco::Project> selected_project_;     ///< Current Project combo selection.
     std::optional<poco::Sequence> selected_sequence_;   ///< Current Sequence combo selection.
     std::optional<poco::Shot> selected_shot_;           ///< Current Shot combo selection.
     std::optional<poco::Asset> selected_asset_;         ///< Current Asset combo selection.
     std::optional<poco::Playlist> selected_playlist_;   ///< Current Playlist combo selection.
 
+    std::uint64_t project_request_id_ = 0;   ///< Drops stale project worker replies.
     std::uint64_t sequence_request_id_ = 0;  ///< Drops stale sequence worker replies.
     std::uint64_t shot_request_id_ = 0;      ///< Drops stale shot worker replies.
     std::uint64_t asset_request_id_ = 0;     ///< Drops stale asset worker replies.

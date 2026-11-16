@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file dal.cpp
- * @brief pms find wrappers that return POCO rows or name lists.
+ * @brief pms find wrappers that return one page of POCO rows.
  */
 
 #include "model/dal/dal.hpp"
@@ -19,8 +19,6 @@
 
 namespace xstudio::mikros_shotbrowser::dal {
 namespace {
-
-constexpr std::size_t kDefaultPageLimit = 100;
 
 /**
  * @brief Shared backend + CachingBackend + Session for the plugin process.
@@ -72,7 +70,11 @@ class SharedPms {
         pms::ShotGridSite site;
         site.base_url = url;
         site.auth = pms::ShotGridScriptAuth{script, key};
-        return pms::ShotGridBackend(std::move(site), mappingPath);
+        pms::ShotGridBackend backend(std::move(site), mappingPath);
+        backend.setDebug([](const std::string &message) {
+            spdlog::info("Mikros Shot Browser shotgrid:\n{}", message);
+        });
+        return backend;
     }
 
     pms::Backend &innerBackend() {
@@ -97,32 +99,6 @@ class SharedPms {
 };
 
 /**
- * @brief Loads every page for a query through limited find() calls.
- * @tparam QueryT Fluent query type from a generated factory.
- * @param query Built query (In/Where already applied).
- * @return All matching rows in catalog order.
- */
-template <typename QueryT>
-pms::Records findAllPages(QueryT query) {
-    pms::Session &session = SharedPms::instance().session();
-    pms::Records rows;
-    std::optional<std::string> cursor;
-    for (;;) {
-        auto pageQuery = query.Limit(kDefaultPageLimit);
-        if (cursor) {
-            pageQuery = pageQuery.After(*cursor);
-        }
-        const pms::Page page = pageQuery.find(session);
-        rows.insert(rows.end(), page.rows.begin(), page.rows.end());
-        if (!page.next_cursor) {
-            break;
-        }
-        cursor = page.next_cursor;
-    }
-    return rows;
-}
-
-/**
  * @brief Maps `id`/`name` records to a POCO vector.
  * @tparam Row POCO type with `id` and `name` members.
  * @param rows Domain rows.
@@ -142,41 +118,71 @@ std::vector<Row> toPocos(const pms::Records &rows) {
 }
 
 /**
- * @brief Runs a catalog query and maps rows to POCOs, or returns {} on error.
+ * @brief Runs one limited find and maps the page to POCOs, or returns {} on error.
  * @tparam Row POCO type with `id` and `name`.
  * @tparam QueryT Fluent query type.
  * @param query Built query (In/Where already applied).
- * @return POCO rows, or empty when the lookup fails.
+ * @param limit Maximum rows in the page.
+ * @param cursor Continuation cursor, or empty for the first page.
+ * @return POCO page, or empty when the lookup fails.
  */
 template <typename Row, typename QueryT>
-std::vector<Row> fetchCatalog(QueryT query) {
+RowPage<Row>
+fetchPage(QueryT query, std::size_t limit, const std::optional<std::string> &cursor) {
     try {
-        return toPocos<Row>(findAllPages(std::move(query)));
+        auto limited = std::move(query).Limit(limit);
+        if (cursor && !cursor->empty()) {
+            limited = limited.After(*cursor);
+        }
+        const pms::Page page = limited.find(SharedPms::instance().session());
+        return RowPage<Row>{toPocos<Row>(page.rows), page.next_cursor};
     } catch (const std::exception &error) {
         spdlog::error("Mikros Shot Browser DAL: {}", error.what());
         return {};
     }
 }
 
-/**
- * @brief Extracts the `name` field from each record.
- * @param rows Domain rows.
- * @return Names in the same order as `rows`.
- */
-std::vector<std::string> namesOf(const pms::Records &rows) {
-    std::vector<std::string> names;
-    names.reserve(rows.size());
-    for (const pms::Record &row : rows) {
-        names.push_back(std::get<std::string>(row.at("name")));
-    }
-    return names;
+} // namespace
+
+RowPage<poco::Project> projects(std::size_t limit, std::optional<std::string> cursor) {
+    return fetchPage<poco::Project>(pms::Project(), limit, cursor);
 }
 
-/**
- * @brief Builds the version query with the strong parent and optional playlist.
- */
-decltype(pms::Version()) versionQuery(
+RowPage<poco::Sequence> sequences(
+    std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
+    return fetchPage<poco::Sequence>(
+        pms::Sequence().In(pms::scope::project == projectId), limit, cursor);
+}
+
+RowPage<poco::Shot> shots(
     std::int64_t projectId,
+    std::size_t limit,
+    std::optional<std::string> cursor,
+    std::optional<std::int64_t> sequenceId) {
+    if (sequenceId) {
+        return fetchPage<poco::Shot>(
+            pms::Shot().In(pms::scope::sequence == *sequenceId), limit, cursor);
+    }
+    return fetchPage<poco::Shot>(
+        pms::Shot().In(pms::scope::project == projectId), limit, cursor);
+}
+
+RowPage<poco::Asset> assets(
+    std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
+    return fetchPage<poco::Asset>(
+        pms::Asset().In(pms::scope::project == projectId), limit, cursor);
+}
+
+RowPage<poco::Playlist> playlists(
+    std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
+    return fetchPage<poco::Playlist>(
+        pms::Playlist().In(pms::scope::project == projectId), limit, cursor);
+}
+
+RowPage<poco::Version> versions(
+    std::int64_t projectId,
+    std::size_t limit,
+    std::optional<std::string> cursor,
     std::optional<std::int64_t> sequenceId,
     std::optional<std::int64_t> shotId,
     std::optional<std::int64_t> assetId,
@@ -194,51 +200,7 @@ decltype(pms::Version()) versionQuery(
     if (playlistId) {
         query = query.In(pms::scope::playlist == *playlistId);
     }
-    return query;
-}
-
-} // namespace
-
-std::vector<poco::Project> projects() {
-    return fetchCatalog<poco::Project>(pms::Project());
-}
-
-std::vector<poco::Sequence> sequences(std::int64_t projectId) {
-    return fetchCatalog<poco::Sequence>(pms::Sequence().In(pms::scope::project == projectId));
-}
-
-std::vector<poco::Shot> shots(std::int64_t sequenceId) {
-    return fetchCatalog<poco::Shot>(pms::Shot().In(pms::scope::sequence == sequenceId));
-}
-
-std::vector<poco::Asset> assets(std::int64_t projectId) {
-    return fetchCatalog<poco::Asset>(pms::Asset().In(pms::scope::project == projectId));
-}
-
-std::vector<poco::Playlist> playlists(std::int64_t projectId) {
-    return fetchCatalog<poco::Playlist>(pms::Playlist().In(pms::scope::project == projectId));
-}
-
-NamePage versionNames(
-    std::int64_t projectId,
-    std::size_t limit,
-    std::optional<std::string> cursor,
-    std::optional<std::int64_t> sequenceId,
-    std::optional<std::int64_t> shotId,
-    std::optional<std::int64_t> assetId,
-    std::optional<std::int64_t> playlistId) {
-    try {
-        auto query =
-            versionQuery(projectId, sequenceId, shotId, assetId, playlistId).Limit(limit);
-        if (cursor && !cursor->empty()) {
-            query = query.After(*cursor);
-        }
-        const pms::Page page = query.find(SharedPms::instance().session());
-        return NamePage{namesOf(page.rows), page.next_cursor};
-    } catch (const std::exception &error) {
-        spdlog::error("Mikros Shot Browser DAL: {}", error.what());
-        return {};
-    }
+    return fetchPage<poco::Version>(std::move(query), limit, cursor);
 }
 
 void clearCache() { SharedPms::instance().clearCache(); }
