@@ -11,6 +11,7 @@ set(CMAKE_AUTORCC ON)
 set(SOURCES
 	mikros_shotbrowser_plugin.cpp
 	model/dal/dal.cpp
+	model/log.cpp
 	model/context/mikros_shotbrowser_context.cpp
 	view/qml/MikrosShotBrowser.1/resources/mikros_shotbrowser.qrc
 )

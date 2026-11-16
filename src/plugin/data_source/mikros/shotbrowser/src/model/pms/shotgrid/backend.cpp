@@ -129,7 +129,7 @@ Page ShotGridBackend::find(const Ir &ir) {
     const std::string path = "/api/v1/entity/" + entity->shotgrid + "/_search";
     const std::string request_body = body.dump();
     if (debug_) {
-        debug_("POST " + path + "\n" + body.dump(2));
+        debug_(request_body);
     }
     auto response = client->Post(path.c_str(), headers, request_body, kContentTypeHash);
     if (!response) {

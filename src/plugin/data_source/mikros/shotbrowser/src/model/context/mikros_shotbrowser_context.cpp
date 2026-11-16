@@ -6,7 +6,11 @@
 
 #include "model/context/mikros_shotbrowser_context.hpp"
 
+#include "model/log.hpp"
+
 #include "xstudio/atoms.hpp"
+
+namespace trace = xstudio::mikros_shotbrowser::log;
 
 #include <map>
 #include <thread>
@@ -15,6 +19,21 @@ using namespace xstudio;
 using namespace xstudio::mikros_shotbrowser;
 
 namespace {
+
+/**
+ * @brief Logs one selector after it has been resolved.
+ * @tparam Row POCO with `id` and `name`.
+ * @param entity `project`, `sequence`, `shot`, or `asset`.
+ * @param row Chosen row, or empty when the selector is cleared.
+ */
+template <typename Row>
+void logRow(const char *entity, const std::optional<Row> &row) {
+    if (!row) {
+        trace::select(entity, false, 0, {});
+        return;
+    }
+    trace::select(entity, true, row->id, row->name);
+}
 
 template <typename Row>
 std::vector<std::string> uniqueLabels(const std::vector<Row> &rows) {
@@ -328,17 +347,25 @@ std::optional<poco::Asset> MikrosShotBrowserContext::assetForLabel(
 }
 
 void MikrosShotBrowserContext::clearSequenceBranch() {
+    const bool had = selected_sequence_.has_value() || !sequence_->value().empty();
     selected_sequence_ = std::nullopt;
     if (!sequence_->value().empty()) {
         sequence_->set_value("", false);
+    }
+    if (had) {
+        trace::select("sequence", false, 0, {});
     }
     clearShotSelection();
 }
 
 void MikrosShotBrowserContext::clearAssetBranch() {
+    const bool had = selected_asset_.has_value() || !asset_->value().empty();
     selected_asset_ = std::nullopt;
     if (!asset_->value().empty()) {
         asset_->set_value("", false);
+    }
+    if (had) {
+        trace::select("asset", false, 0, {});
     }
 }
 
@@ -365,9 +392,13 @@ void MikrosShotBrowserContext::loadProjectsAsync() {
 
 void MikrosShotBrowserContext::refreshSequences() {
     ++sequence_request_id_;
+    const bool hadSequence = selected_sequence_.has_value() || !sequence_->value().empty();
     selected_sequence_ = std::nullopt;
     if (!sequence_->value().empty()) {
         sequence_->set_value("", false);
+    }
+    if (hadSequence) {
+        trace::select("sequence", false, 0, {});
     }
     shot_tree_->set_value(nlohmann::json::array());
 
@@ -422,9 +453,13 @@ void MikrosShotBrowserContext::refreshSequences() {
 }
 
 void MikrosShotBrowserContext::clearShotSelection() {
+    const bool had = selected_shot_.has_value() || !shot_->value().empty();
     selected_shot_ = std::nullopt;
     if (!shot_->value().empty()) {
         shot_->set_value("", false);
+    }
+    if (had) {
+        trace::select("shot", false, 0, {});
     }
 }
 
@@ -574,6 +609,7 @@ void MikrosShotBrowserContext::attribute_changed(
 
     if (attr_uuid == project_->uuid()) {
         selected_project_ = projectForLabel(project_->value());
+        logRow("project", selected_project_);
         refreshSequences();
         clearShotSelection();
         refreshAssets();
@@ -583,6 +619,7 @@ void MikrosShotBrowserContext::attribute_changed(
         return;
     } else if (attr_uuid == sequence_->uuid()) {
         selected_sequence_ = sequenceForLabel(sequence_->value());
+        logRow("sequence", selected_sequence_);
         if (selected_sequence_) {
             clearAssetBranch();
         }
@@ -592,20 +629,24 @@ void MikrosShotBrowserContext::attribute_changed(
         refreshVersions();
     } else if (attr_uuid == shot_->uuid()) {
         selected_shot_ = shotForLabel(shot_->value());
+        logRow("shot", selected_shot_);
         if (selected_shot_) {
             clearAssetBranch();
             if (const std::optional<poco::Sequence> parent = sequenceForShotLabel(shot_->value())) {
+                const bool realign = sequence_->value() != parent->name;
                 selected_sequence_ = parent;
-                if (sequence_->value() != parent->name) {
+                if (realign) {
                     aligning_sequence_ = true;
                     sequence_->set_value(parent->name);
                     aligning_sequence_ = false;
+                    logRow("sequence", selected_sequence_);
                 }
             }
         }
         refreshVersions();
     } else if (attr_uuid == asset_->uuid()) {
         selected_asset_ = assetForLabel(asset_->value());
+        logRow("asset", selected_asset_);
         if (selected_asset_) {
             clearSequenceBranch();
         } else {
@@ -631,8 +672,10 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
             const std::int64_t asset_id,
             const bool append,
             const utility::JsonStore &payload) {
+            const auto stale = [&]() { trace::drop(catalog, request_id); };
             if (catalog == "project") {
                 if (request_id != project_request_id_) {
+                    stale();
                     return;
                 }
                 applyCatalogPage(
@@ -640,36 +683,43 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
                 return;
             }
             if (!selected_project_ || selected_project_->id != project_id) {
+                stale();
                 return;
             }
             if (catalog == "shot_tree") {
                 if (request_id != sequence_request_id_) {
+                    stale();
                     return;
                 }
                 shot_tree_->set_value(nlohmann::json(payload));
             } else if (catalog == "asset") {
                 if (request_id != asset_request_id_) {
+                    stale();
                     return;
                 }
                 applyCatalogPage(
                     assets_, asset_, namedRowsFromJson<poco::Asset>(payload), append);
             } else if (catalog == "playlist_tree") {
                 if (request_id != playlist_request_id_) {
+                    stale();
                     return;
                 }
                 if (!selectionMatches(has_sequence, sequence_id, selected_sequence_) ||
                     !selectionMatches(has_shot, shot_id, selected_shot_) ||
                     !selectionMatches(has_asset, asset_id, selected_asset_)) {
+                    stale();
                     return;
                 }
                 playlist_tree_->set_value(nlohmann::json(payload));
             } else if (catalog == "version") {
                 if (request_id != version_request_id_) {
+                    stale();
                     return;
                 }
                 if (!selectionMatches(has_sequence, sequence_id, selected_sequence_) ||
                     !selectionMatches(has_shot, shot_id, selected_shot_) ||
                     !selectionMatches(has_asset, asset_id, selected_asset_)) {
+                    stale();
                     return;
                 }
                 applyCatalogPage(

@@ -8,80 +8,9 @@
 
 #include "pms/error.hpp"
 
-#include <sstream>
 #include <utility>
-#include <variant>
 
 namespace pms {
-namespace {
-
-/**
- * @brief Renders one scalar for a debug page dump.
- * @param value Domain field value.
- * @return Quoted string, decimal int, or `YYYY-MM-DD`.
- */
-std::string formatValue(const Value &value) {
-    if (const auto *text = std::get_if<std::string>(&value)) {
-        return "\"" + *text + "\"";
-    }
-    if (const auto *number = std::get_if<std::int64_t>(&value)) {
-        return std::to_string(*number);
-    }
-    const Date &date = std::get<Date>(value);
-    std::ostringstream out;
-    out << date.year << '-' << date.month << '-' << date.day;
-    return out.str();
-}
-
-/**
- * @brief Renders one record as a flat field map.
- * @param row Domain row.
- * @return Text such as `{ id: 1, name: "paw01" }`.
- */
-std::string formatRecord(const Record &row) {
-    std::ostringstream out;
-    out << "{";
-    bool first = true;
-    for (const auto &[key, value] : row.fields) {
-        if (!first) {
-            out << ", ";
-        }
-        first = false;
-        out << ' ' << key << ": " << formatValue(value);
-    }
-    if (!first) {
-        out << ' ';
-    }
-    out << '}';
-    return out.str();
-}
-
-/**
- * @brief Renders page rows for a debug trace.
- * @param page Cached or freshly fetched page.
- * @return Multi-line list, or `[]` when empty.
- */
-std::string formatPage(const Page &page) {
-    std::ostringstream out;
-    out << "rows (" << page.rows.size() << "), next_cursor="
-        << (page.next_cursor ? ("\"" + *page.next_cursor + "\"") : std::string("-")) << '\n';
-    if (page.rows.empty()) {
-        out << "[]";
-        return out.str();
-    }
-    out << "[\n";
-    for (std::size_t index = 0; index < page.rows.size(); ++index) {
-        out << "  " << formatRecord(page.rows[index]);
-        if (index + 1 < page.rows.size()) {
-            out << ',';
-        }
-        out << '\n';
-    }
-    out << ']';
-    return out.str();
-}
-
-} // namespace
 
 CachingBackend::CachingBackend(Backend &inner, CacheOptions options, Clock clock)
     : inner_(&inner), options_(std::move(options)), clock_(std::move(clock)) {
@@ -100,13 +29,28 @@ std::chrono::steady_clock::time_point CachingBackend::now() const {
     return std::chrono::steady_clock::now();
 }
 
-void CachingBackend::debugTrace(const char *verdict, const Ir &ir, const Page &page) const {
-    if (!options_.debug) {
-        return;
+void CachingBackend::traceQuery(const Ir &ir) const {
+    if (options_.trace_ir) {
+        options_.trace_ir(ir);
     }
-    std::ostringstream out;
-    out << verdict << '\n' << dump(ir) << formatPage(page);
-    options_.debug(out.str());
+}
+
+void CachingBackend::traceLookup(const char *verdict, const Ir &ir) const {
+    if (options_.trace_cache) {
+        options_.trace_cache(verdict, ir.entity);
+    }
+}
+
+void CachingBackend::traceMiss(const Ir &ir) const {
+    if (options_.trace_fallback) {
+        options_.trace_fallback(options_.backend_name, ir.entity);
+    }
+}
+
+void CachingBackend::traceResult(const char *source, const Ir &ir, const Page &page) const {
+    if (options_.trace_page) {
+        options_.trace_page(source, ir.entity, page);
+    }
 }
 
 std::size_t CachingBackend::approxBytes(const Page &page) {
@@ -163,9 +107,12 @@ Page CachingBackend::store(
 
 Page CachingBackend::find(const Ir &ir) {
     std::lock_guard<std::mutex> lock(mutex_);
+    traceQuery(ir);
     if (!ir.limit) {
+        traceLookup("bypass", ir);
+        traceMiss(ir);
         Page page = inner_->find(ir);
-        debugTrace("bypass (unlimited)", ir, page);
+        traceResult("backend", ir, page);
         return page;
     }
 
@@ -177,19 +124,24 @@ Page CachingBackend::find(const Ir &ir) {
             order_.erase(found->second.order);
             order_.push_front(key);
             found->second.order = order_.begin();
-            debugTrace("hit", ir, found->second.page);
+            traceLookup("hit", ir);
+            traceResult("cache", ir, found->second.page);
             return found->second.page;
         }
         total_bytes_ -= found->second.bytes;
         order_.erase(found->second.order);
         map_.erase(found);
+        traceLookup("miss expired", ir);
+        traceMiss(ir);
         Page page = store(key, inner_->find(ir), nowPoint);
-        debugTrace("miss (expired)", ir, page);
+        traceResult("backend", ir, page);
         return page;
     }
 
+    traceLookup("miss", ir);
+    traceMiss(ir);
     Page page = store(key, inner_->find(ir), nowPoint);
-    debugTrace("miss", ir, page);
+    traceResult("backend", ir, page);
     return page;
 }
 

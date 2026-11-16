@@ -6,6 +6,8 @@
 #pragma once
 
 #include "pms/backend.hpp"
+#include "pms/ir.hpp"
+#include "pms/page.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -27,8 +29,17 @@ struct CacheOptions {
     std::chrono::seconds ttl{60};      ///< Lifetime of each cached page.
     std::size_t max_entries{128};      ///< Hard cap on distinct queries.
     std::size_t max_bytes{4 * 1024 * 1024}; ///< Approximate byte budget for pages.
-    /// Optional sink for hit/miss traces (query dump + page payload).
-    std::function<void(const std::string &)> debug;
+    /// Name of the wrapped backend, forwarded on a cache miss (`fake`, `shotgrid`).
+    std::string backend_name{"backend"};
+    /// Incoming IR, called before the cache lookup. Empty disables the trace.
+    std::function<void(const Ir &)> trace_ir;
+    /// Cache verdict: `hit`, `miss`, `miss expired`, or `bypass`.
+    std::function<void(const char *verdict, const std::string &entity)> trace_cache;
+    /// Called only when the inner backend runs. Receives `backend_name` and the entity.
+    std::function<void(const std::string &backend, const std::string &entity)> trace_fallback;
+    /// Page returned to the caller. `source` is `cache` or `backend`.
+    std::function<void(const char *source, const std::string &entity, const Page &page)>
+        trace_page;
 };
 
 /**
@@ -110,13 +121,17 @@ class CachingBackend : public Backend {
      */
     std::chrono::steady_clock::time_point now() const;
 
+    /** @brief Forwards the incoming IR when `trace_ir` is set. */
+    void traceQuery(const Ir &ir) const;
+    /** @brief Forwards a cache verdict when `trace_cache` is set. */
+    void traceLookup(const char *verdict, const Ir &ir) const;
+    /** @brief Forwards a miss to the inner backend when `trace_fallback` is set. */
+    void traceMiss(const Ir &ir) const;
     /**
-     * @brief Emits a debug line when options_.debug is set.
-     * @param verdict hit, miss, expired, or bypass.
-     * @param ir Query that keyed the lookup.
-     * @param page Rows returned to the caller.
+     * @brief Forwards the page handed back to the caller.
+     * @param source `cache` or `backend`.
      */
-    void debugTrace(const char *verdict, const Ir &ir, const Page &page) const;
+    void traceResult(const char *source, const Ir &ir, const Page &page) const;
 
     Backend *inner_ = nullptr; ///< Non-owning wrapped backend.
     CacheOptions options_;     ///< TTL and capacity.

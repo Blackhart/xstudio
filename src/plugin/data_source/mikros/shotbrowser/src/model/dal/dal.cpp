@@ -6,21 +6,24 @@
 
 #include "model/dal/dal.hpp"
 
+#include "model/log.hpp"
+
 #include "pms/fake/backend.hpp"
 #include "pms/pms.hpp"
 #include "pms/shotgrid/backend.hpp"
 
 #include "xstudio/utility/helpers.hpp"
-#include "xstudio/utility/logging.hpp"
 
 #include <cstdlib>
-#include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <variant>
 
 namespace xstudio::mikros_shotbrowser::dal {
 namespace {
+
+namespace trace = ::xstudio::mikros_shotbrowser::log;
 
 /**
  * @brief Path to schema.yaml at runtime.
@@ -42,7 +45,8 @@ std::string schemaPath() {
  * Backend selected by `MIKROS_PMS_BACKEND` (`fake` default, or `shotgrid`).
  * ShotGrid also requires `SHOTGRID_URL`, `SHOTGRID_CLIENT_ID`,
  * `SHOTGRID_CLIENT_SECRET`, and `SHOTGRID_MAPPING` (path to the YAML, outside
- * the source tree). CachingBackend serializes access and owns the query log.
+ * the source tree). CachingBackend serializes access. Trace lines are formatted
+ * by the DAL, for both FakeBackend and ShotGrid.
  */
 class SharedPms {
   public:
@@ -57,7 +61,7 @@ class SharedPms {
     SharedPms()
         : fake_(makeFake()),
           shotgrid_(makeShotGrid()),
-          cache_(innerBackend(), makeCacheOptions()),
+          cache_(innerBackend(), makeCacheOptions(shotgrid_ ? "shotgrid" : "fake")),
           session_(pms::Schema::load(schemaPath()), cache_) {}
 
     static std::optional<pms::FakeBackend> makeFake() {
@@ -87,8 +91,8 @@ class SharedPms {
         site.base_url = url;
         site.auth = pms::ShotGridScriptAuth{script, key};
         pms::ShotGridBackend backend(std::move(site), mappingPath);
-        backend.setDebug([](const std::string &message) {
-            spdlog::info("Mikros Shot Browser shotgrid:\n{}", message);
+        backend.setDebug([](const std::string &payload) {
+            trace::info("shotgrid payload " + payload);
         });
         return backend;
     }
@@ -100,10 +104,73 @@ class SharedPms {
         return *fake_;
     }
 
-    static pms::CacheOptions makeCacheOptions() {
+    /**
+     * @brief Escapes a name so it can sit inside a quoted log field.
+     * @param text Raw domain name.
+     * @return Text with quotes and backslashes escaped.
+     */
+    static std::string escape(const std::string &text) {
+        std::string out;
+        out.reserve(text.size());
+        for (const char ch : text) {
+            if (ch == '\\' || ch == '"') {
+                out.push_back('\\');
+            }
+            out.push_back(ch);
+        }
+        return out;
+    }
+
+    /**
+     * @brief Renders the domain page the caller receives.
+     * @param source `cache` or `backend`.
+     * @param entity Queried entity name.
+     * @param page Rows and continuation cursor.
+     * @return One `[mikros] page` body, including the id/name lines.
+     */
+    static std::string formatPage(
+        const char *source, const std::string &entity, const pms::Page &page) {
+        std::ostringstream out;
+        out << "page source=" << source << " entity=" << entity << " rows=" << page.rows.size()
+            << " next_cursor=";
+        if (page.next_cursor) {
+            out << '"' << escape(*page.next_cursor) << '"';
+        } else {
+            out << '-';
+        }
+        for (const pms::Record &row : page.rows) {
+            out << "\n  { id: " << std::get<std::int64_t>(row.at("id")) << ", name: \""
+                << escape(std::get<std::string>(row.at("name"))) << "\" }";
+        }
+        return out.str();
+    }
+
+    /**
+     * @brief Drops a trailing newline so the IR block does not end blank.
+     * @param text dump() output.
+     * @return The same text without a final newline.
+     */
+    static std::string trimNewline(std::string text) {
+        if (!text.empty() && text.back() == '\n') {
+            text.pop_back();
+        }
+        return text;
+    }
+
+    static pms::CacheOptions makeCacheOptions(const std::string &backend) {
         pms::CacheOptions options;
-        options.debug = [](const std::string &message) {
-            spdlog::info("Mikros Shot Browser cache:\n{}", message);
+        options.backend_name = backend;
+        options.trace_ir = [](const pms::Ir &ir) {
+            trace::info("ir\n" + trimNewline(pms::dump(ir)));
+        };
+        options.trace_cache = [](const char *verdict, const std::string &entity) {
+            trace::info(std::string("cache ") + verdict + " entity=" + entity);
+        };
+        options.trace_fallback = [](const std::string &name, const std::string &entity) {
+            trace::info("fallback backend=" + name + " entity=" + entity);
+        };
+        options.trace_page = [](const char *source, const std::string &entity, const pms::Page &page) {
+            trace::info(formatPage(source, entity, page));
         };
         return options;
     }
@@ -153,7 +220,7 @@ fetchPage(QueryT query, std::size_t limit, const std::optional<std::string> &cur
         const pms::Page page = limited.find(SharedPms::instance().session());
         return RowPage<Row>{toPocos<Row>(page.rows), page.next_cursor};
     } catch (const std::exception &error) {
-        spdlog::error("Mikros Shot Browser DAL: {}", error.what());
+        trace::failure(error);
         return {};
     }
 }
