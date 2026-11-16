@@ -24,7 +24,9 @@ namespace {
  * @brief Shared backend + CachingBackend + Session for the plugin process.
  *
  * Backend selected by `MIKROS_PMS_BACKEND` (`fake` default, or `shotgrid`).
- * CachingBackend serializes access and owns the query log.
+ * ShotGrid also requires `SHOTGRID_URL`, `SHOTGRID_CLIENT_ID`,
+ * `SHOTGRID_CLIENT_SECRET`, and `SHOTGRID_MAPPING` (path to the YAML, outside
+ * the source tree). CachingBackend serializes access and owns the query log.
  */
 class SharedPms {
   public:
@@ -60,13 +62,13 @@ class SharedPms {
         const char *url = std::getenv("SHOTGRID_URL");
         const char *script = std::getenv("SHOTGRID_CLIENT_ID");
         const char *key = std::getenv("SHOTGRID_CLIENT_SECRET");
-        if (!url || !script || !key || !*url || !*script || !*key) {
+        const char *mapping = std::getenv("SHOTGRID_MAPPING");
+        if (!url || !script || !key || !mapping || !*url || !*script || !*key || !*mapping) {
             throw pms::Error(
-                "shotgrid DAL: set SHOTGRID_URL, SHOTGRID_CLIENT_ID, SHOTGRID_CLIENT_SECRET");
+                "shotgrid DAL: set SHOTGRID_URL, SHOTGRID_CLIENT_ID, "
+                "SHOTGRID_CLIENT_SECRET, SHOTGRID_MAPPING");
         }
-        const char *mapping = std::getenv("MIKROS_SG_MAPPING");
-        const std::string mappingPath =
-            mapping && *mapping ? mapping : std::string(PMS_SHOTGRID_MAPPING_PATH);
+        const std::string mappingPath = mapping;
         pms::ShotGridSite site;
         site.base_url = url;
         site.auth = pms::ShotGridScriptAuth{script, key};

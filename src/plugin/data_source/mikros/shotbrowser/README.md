@@ -11,7 +11,7 @@ shotbrowser/
     model/
       pms/             bibliothèque C++17 pure, sans Qt ni CAF
         fake/          FakeBackend (local, gitignored)
-        shotgrid/      ShotGridBackend + mapping.yaml + translate
+        shotgrid/      ShotGridBackend + translate
         schema/        schema.yaml (domaine)
         tools/         gen_entities.py
         tests/         doctest
@@ -37,8 +37,7 @@ latence aléatoire ; le context appelle la DAL sur un thread worker.
 
 ## Backend ShotGrid
 
-1. Remplir [`src/model/pms/shotgrid/mapping.yaml`](src/model/pms/shotgrid/mapping.yaml)
-   (noms d'entités / champs / liens ShotGrid du studio).
+1. Garder le YAML de mapping hors du dépôt (noms d'entités / champs / liens du studio).
 2. Lancer xSTUDIO avec :
 
 ```bash
@@ -46,8 +45,7 @@ export MIKROS_PMS_BACKEND=shotgrid
 export SHOTGRID_URL=https://your-site.shotgunstudio.com
 export SHOTGRID_CLIENT_ID=your_script_name
 export SHOTGRID_CLIENT_SECRET=your_script_key
-# optionnel :
-# export MIKROS_SG_MAPPING=/path/to/mapping.yaml
+export SHOTGRID_MAPPING=/path/to/mapping.yaml
 ```
 
 Auth runtime = script (`client_credentials`). L'API `ShotGridBackend` accepte

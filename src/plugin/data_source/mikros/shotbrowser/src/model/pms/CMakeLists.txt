@@ -130,7 +130,6 @@ if(BUILD_TESTING)
     target_link_libraries(pms_tests PRIVATE pms doctest::doctest)
     target_compile_definitions(pms_tests PRIVATE
         PMS_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.yaml"
-        PMS_SHOTGRID_MAPPING_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shotgrid/mapping.yaml"
         PMS_SHOTGRID_MAPPING_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/shotgrid/fixtures/mapping_filled.yaml"
     )
     add_test(NAME pms_tests COMMAND pms_tests)

@@ -70,7 +70,7 @@ class ShotGridBackend : public Backend {
     /**
      * @brief Builds a backend bound to a site and a mapping file.
      * @param site Base URL and credentials.
-     * @param mapping_path Path to `shotgrid_mapping.yaml`.
+     * @param mapping_path Path to the ShotGrid mapping YAML. The DAL passes `SHOTGRID_MAPPING`.
      * @throw Error When the mapping file cannot be loaded.
      */
     ShotGridBackend(ShotGridSite site, const std::string &mapping_path);

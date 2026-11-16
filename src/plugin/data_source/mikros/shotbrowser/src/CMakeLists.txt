@@ -39,7 +39,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS_NO_SHARED true)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
 	PMS_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/model/pms/schema/schema.yaml"
-	PMS_SHOTGRID_MAPPING_PATH="${CMAKE_CURRENT_SOURCE_DIR}/model/pms/shotgrid/mapping.yaml"
 )
 
 qt_add_qml_module(${PROJECT_NAME}

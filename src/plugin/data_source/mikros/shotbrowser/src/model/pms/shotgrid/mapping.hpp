@@ -64,7 +64,7 @@ class ShotGridMapping {
   public:
     /**
      * @brief Loads a mapping YAML file.
-     * @param path Path to `shotgrid_mapping.yaml`.
+     * @param path Path to a ShotGrid mapping YAML file.
      * @return The loaded mapping.
      * @throw Error When the file cannot be read or an entry is malformed.
      */
