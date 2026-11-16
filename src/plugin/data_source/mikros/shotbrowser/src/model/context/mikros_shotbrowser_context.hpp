@@ -90,7 +90,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
 
     /** @brief Clears then streams project pages via the DAL. */
     void loadProjectsAsync();
-    /** @brief Clears then streams sequence pages for the selected project. */
+    /** @brief Clears then streams sequence pages and the expandable shot tree. */
     void refreshSequences();
     /** @brief Clears then streams shot pages for the project, or the selected sequence. */
     void refreshShots();
@@ -123,6 +123,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     module::StringChoiceAttribute *project_ = nullptr;   ///< Project combo.
     module::StringChoiceAttribute *sequence_ = nullptr;  ///< Sequence combo.
     module::StringChoiceAttribute *shot_ = nullptr;      ///< Shot combo.
+    module::JsonAttribute *shot_tree_ = nullptr;         ///< Sequences with their shot names.
     module::StringChoiceAttribute *asset_ = nullptr;     ///< Asset combo.
     module::StringChoiceAttribute *playlist_ = nullptr;  ///< Playlist combo.
     module::StringChoiceAttribute *version_ = nullptr;   ///< Version combo.

@@ -37,6 +37,11 @@ target_link_libraries(${PROJECT_NAME}
 
 set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS_NO_SHARED true)
 
+add_preference(
+	plugin_data_source_mikros_shotbrowser.json
+	${CMAKE_CURRENT_SOURCE_DIR}/../share/preference
+	${PROJECT_NAME})
+
 # Install schema under share/xstudio/; dal.cpp resolves it via XSTUDIO_ROOT
 # (or PMS_SCHEMA_PATH) at runtime — never bake CMAKE_CURRENT_SOURCE_DIR.
 add_resource(

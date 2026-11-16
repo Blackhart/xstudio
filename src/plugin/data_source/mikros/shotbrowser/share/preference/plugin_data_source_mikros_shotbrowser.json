@@ -1,0 +1,28 @@
+{
+    "plugin": {
+        "data_source": {
+            "mikros_shotbrowser": {
+                "browser_mode": {
+                    "context": [
+                        "PLUGIN"
+                    ],
+                    "datatype": "string",
+                    "default_value": "shot",
+                    "description": "Shot or asset tree shown in the Mikros Shot Browser.",
+                    "path": "/plugin/data_source/mikros_shotbrowser/browser_mode",
+                    "value": "shot"
+                },
+                "left_pane_width": {
+                    "context": [
+                        "PLUGIN"
+                    ],
+                    "datatype": "double",
+                    "default_value": 0.0,
+                    "description": "Left column width in pixels. Zero keeps the default ratio.",
+                    "path": "/plugin/data_source/mikros_shotbrowser/left_pane_width",
+                    "value": 0.0
+                }
+            }
+        }
+    }
+}

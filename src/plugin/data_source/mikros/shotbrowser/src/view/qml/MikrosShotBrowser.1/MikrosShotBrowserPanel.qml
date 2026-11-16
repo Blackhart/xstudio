@@ -18,10 +18,34 @@ Item {
     readonly property real leftRatio: 0.3
     readonly property int splitMin: 80
     readonly property int splitFreeMax: 100000
-    readonly property url assetIcon: "qrc:/mikros_shotbrowser_icons/nature.svg"
-    readonly property url versionIcon: "qrc:/mikros_shotbrowser_icons/segment.svg"
 
     property string browserMode: "shot"
+    property string treeQuery: ""
+    property var openSequences: ({})
+    property real leftPaneWidth: 0
+
+    function restoreMode() {
+        Qt.callLater(function() {
+            const saved = modePref.value
+            if (saved === "shot" || saved === "asset")
+                browserMode = saved
+        })
+    }
+
+    function restoreWidth() {
+        Qt.callLater(function() {
+            const width = Number(widthPref.value)
+            if (width >= splitMin)
+                leftPaneWidth = width
+        })
+    }
+
+    function rememberWidth(width) {
+        if (width < splitMin)
+            return
+        leftPaneWidth = width
+        widthPref.value = width
+    }
 
     function withNone(options) {
         return [noneLabel].concat(options && options.length ? options : [])
@@ -52,8 +76,100 @@ Item {
         })
     }
 
-    function listPlaceholder() {
-        return project.value ? "Loading…" : "No project selected"
+    function listPlaceholder(sourceCount) {
+        if (!project.value)
+            return "No project selected"
+        if (!sourceCount)
+            return "Loading…"
+        return "No results"
+    }
+
+    function shotTreeNodes() {
+        let value = shotTree.value
+        if (!value)
+            return []
+        if (typeof value === "string") {
+            try {
+                value = JSON.parse(value)
+            } catch (error) {
+                return []
+            }
+        }
+        return value.length ? value : []
+    }
+
+    function toggleSequence(name) {
+        const next = Object.assign({}, openSequences)
+        next[name] = !next[name]
+        openSequences = next
+    }
+
+    function shotTreeRows() {
+        const nodes = shotTreeNodes()
+        const query = treeQuery.toLowerCase()
+        const rows = []
+        for (let i = 0; i < nodes.length; i++) {
+            const name = String(nodes[i].name)
+            const shots = nodes[i].shots && nodes[i].shots.length ? nodes[i].shots : []
+            const shotNames = []
+            for (let s = 0; s < shots.length; s++)
+                shotNames.push(String(shots[s]))
+            const nameHit = !query || name.toLowerCase().indexOf(query) !== -1
+            const matchedShots = []
+            for (let s = 0; s < shotNames.length; s++) {
+                if (!query || shotNames[s].toLowerCase().indexOf(query) !== -1)
+                    matchedShots.push(shotNames[s])
+            }
+            if (query && !nameHit && matchedShots.length === 0)
+                continue
+            const expanded = !!openSequences[name] || (query !== "" && !nameHit && matchedShots.length > 0)
+            rows.push({
+                name: name,
+                depth: 0,
+                parent: shotNames.length > 0,
+                open: expanded
+            })
+            if (!expanded)
+                continue
+            const visibleShots = query && !nameHit ? matchedShots : shotNames
+            for (let s = 0; s < visibleShots.length; s++) {
+                rows.push({
+                    name: visibleShots[s],
+                    depth: 1,
+                    parent: false,
+                    open: false
+                })
+            }
+        }
+        return rows
+    }
+
+    function assetTreeRows() {
+        const labels = filteredNames(asset.names)
+        const rows = []
+        for (let i = 0; i < labels.length; i++) {
+            rows.push({
+                name: labels[i],
+                depth: 0,
+                parent: false,
+                open: false
+            })
+        }
+        return rows
+    }
+
+    function filteredNames(names) {
+        if (!names || !names.length)
+            return []
+        if (!treeQuery)
+            return names
+        const query = treeQuery.toLowerCase()
+        const matched = []
+        for (let i = 0; i < names.length; i++) {
+            if (String(names[i]).toLowerCase().indexOf(query) !== -1)
+                matched.push(names[i])
+        }
+        return matched
     }
 
     // One catalog attribute: the current label and the choice list.
@@ -94,6 +210,26 @@ Item {
         Layout.maximumHeight: barHeight
     }
 
+    component InfoCell: Rectangle {
+        id: cell
+        property string label: "N/A"
+        property color labelColor: XsStyleSheet.hintColor
+        property int hAlign: Text.AlignHCenter
+        color: XsStyleSheet.widgetBgNormalColor
+
+        XsText {
+            anchors.fill: parent
+            text: cell.label
+            color: cell.labelColor
+            font.pixelSize: XsStyleSheet.fontSize * 1.1
+            horizontalAlignment: cell.hAlign
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: cell.hAlign === Text.AlignLeft ? XsStyleSheet.panelPadding : 4
+            rightPadding: 4
+            elide: Text.ElideRight
+        }
+    }
+
     component NameColumn: ColumnLayout {
         id: column
         property string title
@@ -101,12 +237,19 @@ Item {
         property var names
         property string selected
         property string placeholder
+        property bool boxedCount: false
+        property bool loadedFooter: false
+        property color listColor: "transparent"
+        property bool tree: false
+
+        signal nodeToggled(string name)
 
         readonly property int count: names && names.length ? names.length : 0
 
         spacing: XsStyleSheet.panelPadding
 
         Bar {
+            visible: column.title !== ""
             spacing: 1
 
             XsIcon {
@@ -124,22 +267,40 @@ Item {
             }
 
             XsText {
+                visible: !column.loadedFooter && !column.boxedCount
                 text: column.count
                 opacity: 0.5
                 font.pixelSize: XsStyleSheet.fontSize * 1.2
                 horizontalAlignment: Text.AlignRight
             }
+
+            Rectangle {
+                visible: !column.loadedFooter && column.boxedCount
+                Layout.preferredWidth: 72
+                Layout.fillHeight: true
+                color: XsStyleSheet.panelBgColor
+                border.width: 1
+                border.color: XsStyleSheet.menuBorderColor
+
+                XsText {
+                    anchors.centerIn: parent
+                    text: column.count
+                    font.pixelSize: XsStyleSheet.fontSize * 1.2
+                }
+            }
         }
 
         Rectangle {
+            visible: column.title !== ""
             Layout.fillWidth: true
             Layout.preferredHeight: 2
             color: XsStyleSheet.panelBgColor
         }
 
-        Item {
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            color: column.listColor
 
             XsLabel {
                 anchors.fill: parent
@@ -155,8 +316,25 @@ Item {
                 anchors.fill: parent
                 visible: column.count > 0
                 clip: true
-                spacing: 0
+                spacing: column.tree ? 1 : XsStyleSheet.panelPadding
                 model: column.names
+                // Version cards are tall. The default flick keeps travelling
+                // for a long way; DNEG's list stops almost immediately.
+                flickDeceleration: column.tree ? 1500 : 100000
+                maximumFlickVelocity: column.tree ? 2500 : 800
+                boundsBehavior: column.tree ? Flickable.DragAndOvershootBounds : Flickable.StopAtBounds
+
+                WheelHandler {
+                    enabled: !column.tree
+                    onWheel: function(event) {
+                        let step = event.pixelDelta.y !== 0
+                                   ? event.pixelDelta.y
+                                   : (event.angleDelta.y / 120) * XsStyleSheet.widgetStdHeight
+                        let limit = Math.max(0, nameView.contentHeight - nameView.height)
+                        nameView.contentY = Math.max(0, Math.min(nameView.contentY - step, limit))
+                        event.accepted = true
+                    }
+                }
 
                 ScrollBar.vertical: XsScrollBar {
                     visible: nameView.height < nameView.contentHeight
@@ -165,26 +343,265 @@ Item {
 
                 delegate: Rectangle {
                     id: row
-                    required property string modelData
+                    required property var modelData
+
+                    readonly property string label: column.tree ? modelData.name : String(modelData)
+                    readonly property int depth: column.tree ? modelData.depth : 0
+                    readonly property bool isParent: column.tree ? modelData.parent : false
+                    readonly property bool isOpen: column.tree ? modelData.open : false
+                    readonly property real chevronWidth: XsStyleSheet.widgetStdHeight / 1.2
 
                     width: nameView.width
-                    height: XsStyleSheet.widgetStdHeight
-                    color: modelData === column.selected
-                           ? Qt.darker(XsStyleSheet.accentColor, 2)
-                           : rowHover.hovered
-                             ? XsStyleSheet.widgetBgNormalColor
-                             : "transparent"
+                    height: column.tree
+                            ? XsStyleSheet.widgetStdHeight
+                            : (XsStyleSheet.widgetStdHeight + 1) * 4
+                    color: column.tree
+                           ? (label === column.selected
+                              ? Qt.darker(XsStyleSheet.accentColor, 2)
+                              : rowHover.hovered
+                                ? XsStyleSheet.widgetBgNormalColor
+                                : "transparent")
+                           : (label === column.selected
+                              ? Qt.darker(XsStyleSheet.accentColor, 5)
+                              : "transparent")
                     border.width: 1
-                    border.color: rowHover.hovered ? XsStyleSheet.accentColor : "transparent"
+                    border.color: column.tree
+                                   ? (rowHover.hovered ? XsStyleSheet.accentColor : "transparent")
+                                   : (rowHover.hovered ? XsStyleSheet.accentColor : XsStyleSheet.widgetBgNormalColor)
 
-                    XsText {
+                    RowLayout {
                         anchors.fill: parent
-                        leftPadding: 2
-                        rightPadding: 8
-                        text: modelData
-                        font.pixelSize: XsStyleSheet.fontSize * 1.2
-                        elide: Text.ElideRight
-                        verticalAlignment: Text.AlignVCenter
+                        anchors.leftMargin: row.depth === 0 ? 0 : (row.depth + 1) * row.chevronWidth
+                        spacing: 1
+                        visible: column.tree
+
+                        XsSecondaryButton {
+                            visible: row.depth === 0
+                            Layout.preferredWidth: visible ? row.chevronWidth : 0
+                            Layout.preferredHeight: row.height
+                            Layout.maximumHeight: row.height
+                            imgSrc: "qrc:/icons/chevron_right.svg"
+                            isActive: row.isOpen
+                            enabled: row.isParent
+                            opacity: enabled ? 1 : 0.5
+                            imageDiv.rotation: row.isOpen ? 90 : 0
+                            onClicked: column.nodeToggled(row.label)
+                        }
+
+                        XsText {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            leftPadding: 2
+                            rightPadding: 8
+                            text: row.label
+                            color: XsStyleSheet.primaryTextColor
+                            font.pixelSize: XsStyleSheet.fontSize * 1.2
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        spacing: 1
+                        visible: !column.tree
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                            Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                            color: XsStyleSheet.widgetBgNormalColor
+
+                            XsText {
+                                anchors.fill: parent
+                                leftPadding: XsStyleSheet.panelPadding
+                                text: row.label
+                                font.pixelSize: XsStyleSheet.fontSize * 1.1
+                                font.bold: true
+                                horizontalAlignment: Text.AlignLeft
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideMiddle
+                            }
+
+                            XsText {
+                                anchors.fill: parent
+                                rightPadding: XsStyleSheet.panelPadding
+                                text: "N/A"
+                                font.pixelSize: XsStyleSheet.fontSize * 1.1
+                                font.bold: true
+                                horizontalAlignment: Text.AlignRight
+                                verticalAlignment: Text.AlignVCenter
+                                opacity: 0.5
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: 1
+
+                            Rectangle {
+                                Layout.preferredWidth: 154
+                                Layout.maximumWidth: 154
+                                Layout.fillHeight: true
+                                color: XsStyleSheet.widgetBgNormalColor
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    spacing: 1
+
+                                    ColumnLayout {
+                                        Layout.preferredWidth: 20
+                                        Layout.maximumWidth: 20
+                                        Layout.fillHeight: true
+                                        spacing: 1
+
+                                        Repeater {
+                                            model: ["N", "D", "C"]
+
+                                            XsPrimaryButton {
+                                                required property string modelData
+                                                Layout.fillWidth: true
+                                                Layout.fillHeight: true
+                                                text: modelData
+                                                enabled: false
+                                                opacity: 0.5
+                                                font.pixelSize: XsStyleSheet.fontSize * 1.2
+                                                textDiv.color: XsStyleSheet.hintColor
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        color: "black"
+
+                                        Image {
+                                            anchors.fill: parent
+                                            anchors.margins: 4
+                                            source: "qrc:/mikros_shotbrowser_icons/no_preview.jpg"
+                                            fillMode: Image.PreserveAspectFit
+                                        }
+                                    }
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                Layout.minimumWidth: 115
+                                spacing: 1
+
+                                InfoCell {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                                    labelColor: XsStyleSheet.primaryTextColor
+                                    hAlign: Text.AlignLeft
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                                    spacing: 1
+
+                                    InfoCell {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        hAlign: Text.AlignLeft
+                                    }
+
+                                    InfoCell {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        hAlign: Text.AlignLeft
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    color: XsStyleSheet.widgetBgNormalColor
+
+                                    XsText {
+                                        anchors.fill: parent
+                                        anchors.margins: XsStyleSheet.panelPadding
+                                        text: "N/A"
+                                        color: XsStyleSheet.primaryTextColor
+                                        horizontalAlignment: Text.AlignLeft
+                                        verticalAlignment: Text.AlignTop
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.preferredWidth: 157
+                                Layout.maximumWidth: 157
+                                Layout.fillHeight: true
+                                spacing: 1
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                                    spacing: 1
+
+                                    InfoCell {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        labelColor: XsStyleSheet.primaryTextColor
+                                    }
+
+                                    InfoCell {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                    }
+                                }
+
+                                InfoCell {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                                    labelColor: XsStyleSheet.primaryTextColor
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight - 1
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight - 1
+                                    spacing: 1
+
+                                    Repeater {
+                                        model: ["prs", "mtl", "bgl"]
+
+                                        Rectangle {
+                                            required property string modelData
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            color: Qt.lighter(XsStyleSheet.panelBgColor, 1.5)
+                                            opacity: 0.5
+
+                                            XsLabel {
+                                                anchors.fill: parent
+                                                text: modelData
+                                                font.pixelSize: XsStyleSheet.fontSize / 1.4
+                                                font.weight: Font.Medium
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                }
+                            }
+                        }
                     }
 
                     HoverHandler {
@@ -193,10 +610,30 @@ Item {
                 }
             }
         }
-    }
 
-    XsGradientRectangle {
-        anchors.fill: parent
+        Rectangle {
+            visible: column.loadedFooter
+            Layout.fillWidth: true
+            Layout.preferredHeight: 2
+            Layout.maximumHeight: 2
+            color: XsStyleSheet.panelBgColor
+        }
+
+        XsText {
+            visible: column.loadedFooter
+            Layout.fillWidth: true
+            Layout.fillHeight: false
+            Layout.preferredHeight: implicitHeight
+            Layout.maximumHeight: implicitHeight
+            text: column.count === 0 ? "No versions found"
+                  : column.count === 1 ? "1 version loaded"
+                  : column.count + " versions loaded"
+            color: "white"
+            font.pixelSize: XsStyleSheet.fontSize * 0.8
+            horizontalAlignment: Text.AlignRight
+            verticalAlignment: Text.AlignVCenter
+            rightPadding: XsStyleSheet.panelPadding
+        }
     }
 
     XsModuleData {
@@ -205,23 +642,48 @@ Item {
     }
 
     Catalog { id: project; title: "Project"; source: shotbrowserAttributes }
-    Catalog { id: sequence; title: "Sequence"; source: shotbrowserAttributes }
     Catalog { id: shot; title: "Shot"; source: shotbrowserAttributes }
+
+    XsAttributeValue {
+        id: shotTree
+        attributeTitle: "ShotTree"
+        model: shotbrowserAttributes
+    }
+
+    Connections {
+        target: project
+        function onValueChanged() {
+            panel.openSequences = ({})
+        }
+    }
+
+    XsPreference {
+        id: modePref
+        path: "/plugin/data_source/mikros_shotbrowser/browser_mode"
+        onValueChanged: panel.restoreMode()
+    }
+
+    XsPreference {
+        id: widthPref
+        path: "/plugin/data_source/mikros_shotbrowser/left_pane_width"
+        onValueChanged: panel.restoreWidth()
+    }
     Catalog { id: asset; title: "Asset"; source: shotbrowserAttributes }
     Catalog { id: version; title: "Version"; source: shotbrowserAttributes }
 
     XsSplitView {
         id: mainSplit
         anchors.fill: parent
-        anchors.margins: panel.panelPadding
 
-        // Until the handle is pressed, the left pane is clamped to leftRatio.
-        // SplitView otherwise keeps the column's implicit width.
-        property bool dragStarted: false
-        property real draggedWidth: 0
+        // Until the user drags, or a saved width is restored, the left pane
+        // stays at leftRatio. SplitView otherwise keeps the implicit width.
+        property bool dragging: false
+        readonly property bool widthSaved: panel.leftPaneWidth >= panel.splitMin
+        readonly property bool widthFree: widthSaved || dragging
         readonly property real startupWidth: Math.max(1, width * panel.leftRatio)
 
         handle: Rectangle {
+            id: splitHandle
             implicitWidth: XsStyleSheet.panelPadding / 2
             implicitHeight: XsStyleSheet.panelPadding / 2
             color: XsStyleSheet.panelBgColor
@@ -234,10 +696,9 @@ Item {
 
             property bool handlePressed: SplitHandle.pressed
             onHandlePressedChanged: {
-                if (handlePressed) {
-                    mainSplit.dragStarted = true
-                    mainSplit.draggedWidth = leftPane.width
-                }
+                mainSplit.dragging = handlePressed
+                if (!handlePressed && panel.leftPaneWidth >= panel.splitMin)
+                    widthPref.value = panel.leftPaneWidth
             }
         }
 
@@ -245,20 +706,54 @@ Item {
             id: leftPane
             SplitView.fillHeight: true
             SplitView.minimumWidth: panel.splitMin
-            SplitView.preferredWidth: mainSplit.dragStarted ? mainSplit.draggedWidth : mainSplit.startupWidth
-            SplitView.maximumWidth: mainSplit.dragStarted ? panel.splitFreeMax : mainSplit.startupWidth
+            SplitView.preferredWidth: mainSplit.widthSaved ? panel.leftPaneWidth : mainSplit.startupWidth
+            SplitView.maximumWidth: mainSplit.widthFree ? panel.splitFreeMax : mainSplit.startupWidth
             onWidthChanged: {
-                if (mainSplit.dragStarted)
-                    mainSplit.draggedWidth = width
+                if (mainSplit.dragging)
+                    panel.leftPaneWidth = width
+            }
+
+            XsGradientRectangle {
+                anchors.fill: parent
             }
 
             ColumnLayout {
                 anchors.fill: parent
+                anchors.margins: panel.panelPadding
                 spacing: panel.panelPadding
 
                 Bar {
                     barHeight: panel.tabHeight
                     spacing: panel.buttonSpacing
+
+                    XsPrimaryButton {
+                        Layout.preferredWidth: panel.tabHeight
+                        Layout.fillHeight: true
+                        imgSrc: "qrc:/icons/movie.svg"
+                        toolTip: "Shot Tree View"
+                        isActive: panel.browserMode === "shot"
+                        onClicked: {
+                            panel.browserMode = "shot"
+                            modePref.value = "shot"
+                        }
+                    }
+
+                    XsPrimaryButton {
+                        Layout.preferredWidth: panel.tabHeight
+                        Layout.fillHeight: true
+                        imgSrc: "qrc:/icons/deployed_cube.svg"
+                        toolTip: "Asset Tree View"
+                        isActive: panel.browserMode === "asset"
+                        onClicked: {
+                            panel.browserMode = "asset"
+                            modePref.value = "asset"
+                        }
+                    }
+
+                    Item {
+                        Layout.preferredWidth: XsStyleSheet.panelPadding * 4
+                        Layout.fillHeight: true
+                    }
 
                     XsText {
                         visible: project.names.length === 0
@@ -291,7 +786,7 @@ Item {
                     }
 
                     XsPrimaryButton {
-                        Layout.preferredWidth: panel.tabHeight
+                        Layout.preferredWidth: XsStyleSheet.primaryButtonStdWidth * 0.8
                         Layout.fillHeight: true
                         imgSrc: "qrc:/icons/filter.svg"
                         toolTip: "Status"
@@ -299,90 +794,68 @@ Item {
                     }
                 }
 
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 2
+                    color: XsStyleSheet.panelBgColor
+                }
+
                 Bar {
                     barHeight: panel.tabHeight
                     spacing: panel.buttonSpacing
 
-                    Repeater {
-                        model: [
-                            { label: "Shot", mode: "shot" },
-                            { label: "Asset", mode: "asset" }
-                        ]
+                    XsSearchBar {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        placeholderText: "Search..."
+                        onTextChanged: panel.treeQuery = text
+                    }
 
-                        XsPrimaryButton {
-                            required property var modelData
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            font.weight: Font.Medium
-                            text: modelData.label
-                            toolTip: modelData.label
-                            isActive: panel.browserMode === modelData.mode
-                            onClicked: panel.browserMode = modelData.mode
-                        }
+                    XsPrimaryButton {
+                        Layout.preferredWidth: XsStyleSheet.primaryButtonStdWidth
+                        Layout.fillHeight: true
+                        imgSrc: "qrc:/icons/filter.svg"
+                        toolTip: "Filter"
+                        isActive: false
                     }
                 }
 
-                Item {
+                NameColumn {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-
-                    XsSplitView {
-                        id: treeSplit
-                        anchors.fill: parent
-                        visible: panel.browserMode === "shot"
-
-                        property real sequencePaneWidth: -1
-
-                        NameColumn {
-                            id: sequenceColumn
-                            SplitView.minimumWidth: panel.splitMin
-                            SplitView.fillHeight: true
-                            SplitView.preferredWidth: treeSplit.sequencePaneWidth < 0
-                                                      ? Math.max(panel.splitMin, treeSplit.width * 0.5)
-                                                      : treeSplit.sequencePaneWidth
-                            onWidthChanged: {
-                                if (SplitView.view && SplitView.view.resizing)
-                                    treeSplit.sequencePaneWidth = width
-                            }
-                            title: "Sequence"
-                            names: sequence.names
-                            selected: sequence.value
-                            placeholder: listPlaceholder()
-                        }
-
-                        NameColumn {
-                            SplitView.fillWidth: true
-                            SplitView.minimumWidth: panel.splitMin
-                            SplitView.fillHeight: true
-                            title: "Shot"
-                            names: shot.names
-                            selected: shot.value
-                            placeholder: listPlaceholder()
-                        }
-                    }
-
-                    NameColumn {
-                        anchors.fill: parent
-                        visible: panel.browserMode === "asset"
-                        title: "Asset"
-                        iconSrc: panel.assetIcon
-                        names: asset.names
-                        selected: asset.value
-                        placeholder: listPlaceholder()
+                    title: ""
+                    tree: true
+                    listColor: XsStyleSheet.panelBgColor
+                    names: panel.browserMode === "shot" ? panel.shotTreeRows() : panel.assetTreeRows()
+                    selected: panel.browserMode === "shot" ? shot.value : asset.value
+                    placeholder: listPlaceholder(panel.browserMode === "shot" ? panel.shotTreeNodes().length : asset.names.length)
+                    onNodeToggled: function(name) {
+                        if (panel.browserMode === "shot")
+                            panel.toggleSequence(name)
                     }
                 }
             }
         }
 
-        NameColumn {
+        Item {
             SplitView.fillWidth: true
             SplitView.fillHeight: true
-            SplitView.minimumWidth: 160
-            title: "Version"
-            iconSrc: panel.versionIcon
-            names: version.names
-            selected: version.value
-            placeholder: listPlaceholder()
+            SplitView.minimumWidth: 500
+
+            XsGradientRectangle {
+                anchors.fill: parent
+            }
+
+            NameColumn {
+                anchors.fill: parent
+                anchors.margins: 4
+                title: "Version"
+                loadedFooter: true
+                listColor: XsStyleSheet.panelBgColor
+                names: version.names
+                selected: version.value
+                placeholder: listPlaceholder(version.names.length)
+            }
         }
     }
 }

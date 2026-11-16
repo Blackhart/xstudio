@@ -150,6 +150,21 @@ void applyCatalogPage(
  * @param scope Optional parents that must still match when the page is applied.
  */
 template <typename Row, typename Fetch>
+std::vector<Row> collectPages(Fetch fetch) {
+    std::vector<Row> rows;
+    std::optional<std::string> cursor;
+    for (;;) {
+        const dal::RowPage<Row> page = fetch(cursor);
+        rows.insert(rows.end(), page.rows.begin(), page.rows.end());
+        if (!page.next_cursor) {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+    return rows;
+}
+
+template <typename Row, typename Fetch>
 void publishPages(
     const caf::weak_actor_ptr &weak,
     std::uint64_t request_id,
@@ -201,6 +216,9 @@ MikrosShotBrowserContext::MikrosShotBrowserContext(
 
     shot_ = add_string_choice_attribute("Shot", "Shot", "", {}, {});
     shot_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
+    shot_tree_ = add_json_attribute("ShotTree", "ShotTree", nlohmann::json::array());
+    shot_tree_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 
     asset_ = add_string_choice_attribute("Asset", "Asset", "", {}, {});
     asset_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
@@ -301,6 +319,7 @@ void MikrosShotBrowserContext::refreshSequences() {
     selected_sequence_ = std::nullopt;
     sequence_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
     sequence_->set_value("");
+    shot_tree_->set_value(nlohmann::json::array());
 
     if (!selected_project_) {
         return;
@@ -318,6 +337,41 @@ void MikrosShotBrowserContext::refreshSequences() {
             [project_id](const std::optional<std::string> &cursor) {
                 return dal::sequences(project_id, kPageLimit, cursor);
             });
+
+        const std::vector<poco::Sequence> sequences = collectPages<poco::Sequence>(
+            [project_id](const std::optional<std::string> &cursor) {
+                return dal::sequences(project_id, kPageLimit, cursor);
+            });
+        nlohmann::json tree = nlohmann::json::array();
+        for (const poco::Sequence &sequence : sequences) {
+            const std::vector<poco::Shot> shots = collectPages<poco::Shot>(
+                [project_id, sequenceId = sequence.id](const std::optional<std::string> &cursor) {
+                    return dal::shots(project_id, kPageLimit, cursor, sequenceId);
+                });
+            nlohmann::json names = nlohmann::json::array();
+            for (const std::string &label : uniqueLabels(shots)) {
+                names.push_back(label);
+            }
+            tree.push_back({{"name", sequence.name}, {"shots", std::move(names)}});
+        }
+        if (auto handle = weak.lock()) {
+            anon_mail(
+                data_source::put_data_atom_v,
+                request_id,
+                std::string("shot_tree"),
+                project_id,
+                false,
+                std::int64_t{0},
+                false,
+                std::int64_t{0},
+                false,
+                std::int64_t{0},
+                false,
+                std::int64_t{0},
+                false,
+                utility::JsonStore(std::move(tree)))
+                .send(caf::actor_cast<caf::actor>(handle));
+        }
     }).detach();
 }
 
@@ -539,6 +593,11 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
                     sequence_,
                     namedRowsFromJson<poco::Sequence>(payload),
                     append);
+            } else if (catalog == "shot_tree") {
+                if (request_id != sequence_request_id_) {
+                    return;
+                }
+                shot_tree_->set_value(nlohmann::json(payload));
             } else if (catalog == "shot") {
                 if (request_id != shot_request_id_ || selected_asset_) {
                     return;
