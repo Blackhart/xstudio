@@ -12,6 +12,16 @@
                     "path": "/plugin/data_source/mikros_shotbrowser/browser_mode",
                     "value": "shot"
                 },
+                "result_view": {
+                    "context": [
+                        "PLUGIN"
+                    ],
+                    "datatype": "string",
+                    "default_value": "versions",
+                    "description": "Versions or playlist list shown in the Mikros Shot Browser.",
+                    "path": "/plugin/data_source/mikros_shotbrowser/result_view",
+                    "value": "versions"
+                },
                 "left_pane_width": {
                     "context": [
                         "PLUGIN"

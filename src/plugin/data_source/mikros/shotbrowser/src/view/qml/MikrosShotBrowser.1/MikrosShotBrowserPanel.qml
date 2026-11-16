@@ -34,6 +34,14 @@ Item {
         })
     }
 
+    function restoreResult() {
+        Qt.callLater(function() {
+            const saved = resultPref.value
+            if (saved === "versions" || saved === "playlist")
+                resultView = saved
+        })
+    }
+
     function restoreWidth() {
         Qt.callLater(function() {
             const width = Number(widthPref.value)
@@ -913,6 +921,12 @@ Item {
     }
 
     XsPreference {
+        id: resultPref
+        path: "/plugin/data_source/mikros_shotbrowser/result_view"
+        onValueChanged: panel.restoreResult()
+    }
+
+    XsPreference {
         id: widthPref
         path: "/plugin/data_source/mikros_shotbrowser/left_pane_width"
         onValueChanged: panel.restoreWidth()
@@ -1114,7 +1128,10 @@ Item {
                 switcherHeight: panel.tabHeight
                 switcherSpacing: panel.buttonSpacing * 2
                 resultMode: panel.resultView
-                onResultChosen: function(mode) { panel.resultView = mode }
+                onResultChosen: function(mode) {
+                    panel.resultView = mode
+                    resultPref.value = mode
+                }
                 loadedFooter: true
                 footerNoun: panel.resultView === "versions" ? "version" : "playlist"
                 listColor: XsStyleSheet.panelBgColor
