@@ -127,11 +127,11 @@ Page ShotGridBackend::find(const Ir &ir) {
         {"Content-Type", kContentTypeHash},
     };
     const std::string path = "/api/v1/entity/" + entity->shotgrid + "/_search";
-    const std::string payload = body.dump();
+    const std::string request_body = body.dump();
     if (debug_) {
         debug_("POST " + path + "\n" + body.dump(2));
     }
-    auto response = client->Post(path.c_str(), headers, payload, kContentTypeHash);
+    auto response = client->Post(path.c_str(), headers, request_body, kContentTypeHash);
     if (!response) {
         throw Error("shotgrid: search request failed");
     }
@@ -144,7 +144,7 @@ Page ShotGridBackend::find(const Ir &ir) {
             {"Accept", kContentTypeHash},
             {"Content-Type", kContentTypeHash},
         };
-        response = client->Post(path.c_str(), headers, payload, kContentTypeHash);
+        response = client->Post(path.c_str(), headers, request_body, kContentTypeHash);
         if (!response) {
             throw Error("shotgrid: search request failed after re-auth");
         }
