@@ -27,7 +27,7 @@ namespace xstudio::mikros_shotbrowser::dal {
  *
  * @return Rows requested per page for the active backend.
  */
-std::size_t pageLimit();
+std::size_t readPageLimit();
 
 /**
  * @brief One page of POCO rows with an optional continuation cursor.
@@ -48,7 +48,7 @@ template <typename Row> struct RowPage {
  * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
  * @return Page of projects. Empty when the lookup fails.
  */
-RowPage<poco::Project> projects(
+RowPage<poco::Project> findProjects(
     std::size_t limit, std::optional<std::string> cursor = std::nullopt);
 
 /**
@@ -59,7 +59,7 @@ RowPage<poco::Project> projects(
  * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
  * @return Page of sequences. Empty when none match or the lookup fails.
  */
-RowPage<poco::Sequence> sequences(
+RowPage<poco::Sequence> findSequences(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor = std::nullopt);
@@ -74,7 +74,7 @@ RowPage<poco::Sequence> sequences(
  * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
  * @return Page of shots. Empty when none match or the lookup fails.
  */
-RowPage<poco::Shot> shots(
+RowPage<poco::Shot> findShots(
     std::int64_t sequenceId,
     std::size_t limit,
     std::optional<std::string> cursor = std::nullopt);
@@ -87,7 +87,7 @@ RowPage<poco::Shot> shots(
  * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
  * @return Page of assets. Empty when none match or the lookup fails.
  */
-RowPage<poco::Asset> assets(
+RowPage<poco::Asset> findAssets(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor = std::nullopt);
@@ -102,7 +102,7 @@ RowPage<poco::Asset> assets(
  * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
  * @return Page of playlists. Empty when none match or the lookup fails.
  */
-RowPage<poco::Playlist> playlists(
+RowPage<poco::Playlist> findPlaylists(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor = std::nullopt);
@@ -123,7 +123,7 @@ RowPage<poco::Playlist> playlists(
  * @param playlistId Optional playlist `id`.
  * @return Page of versions. Empty when none match or the lookup fails.
  */
-RowPage<poco::Version> versions(
+RowPage<poco::Version> findVersions(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor = std::nullopt,

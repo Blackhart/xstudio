@@ -49,8 +49,8 @@ void drop(const std::string &catalog, std::uint64_t request);
  * Messages that start with `shotgrid:` become `shotgrid error`. HTML bodies
  * are replaced by their size. Anything else becomes `dal error`.
  *
- * @param failure Exception caught around a DAL find.
+ * @param caught Exception caught around a DAL find.
  */
-void failure(const std::exception &failure);
+void failure(const std::exception &caught);
 
 } // namespace xstudio::mikros_shotbrowser::log

@@ -73,39 +73,122 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     void attribute_changed(const utility::Uuid &attr_uuid, const int role) override;
 
   private:
+    /** @brief Registers the combos and trees the panel binds to. */
+    void addPanelAttributes();
+
     /** @brief Resolves a Project combo label to its POCO row. */
-    std::optional<poco::Project> projectForLabel(const std::string &label) const;
+    std::optional<poco::Project> findProjectByLabel(const std::string &label) const;
     /** @brief Resolves a sequence name from the shot tree. */
-    std::optional<poco::Sequence> sequenceForLabel(const std::string &label) const;
+    std::optional<poco::Sequence> findSequenceByLabel(const std::string &label) const;
     /** @brief Resolves a shot label from the shot tree. */
-    std::optional<poco::Shot> shotForLabel(const std::string &label) const;
-    /** @brief Finds a shot id stored on the shot tree. */
-    std::optional<poco::Shot> shotFromTree(const std::string &label) const;
+    std::optional<poco::Shot> findShotByLabel(const std::string &label) const;
     /** @brief Sequence that owns a shot label in the expandable tree. */
-    std::optional<poco::Sequence> sequenceForShotLabel(const std::string &label) const;
+    std::optional<poco::Sequence> findSequenceOwningShot(const std::string &shotLabel) const;
     /** @brief Resolves an Asset combo label to its POCO row. */
-    std::optional<poco::Asset> assetForLabel(const std::string &label) const;
+    std::optional<poco::Asset> findAssetByLabel(const std::string &label) const;
 
-    /** @brief Clears sequence and shot selection. */
+    /** @brief Clears the sequence selection and logs it when one was set. */
+    void clearSequenceSelection();
+    /** @brief Clears the shot selection and logs it when one was set. */
+    void clearShotSelection();
+    /** @brief Clears the asset selection and logs it when one was set. */
+    void clearAssetSelection();
+    /** @brief Clears the sequence and the shot under it. */
     void clearSequenceBranch();
-    /** @brief Clears asset selection and combo value. */
-    void clearAssetBranch();
 
+    /** @brief Empties the project combo. The empty value notifies and clears the children. */
+    void resetProjectCatalog();
     /** @brief Clears then streams project pages via the DAL. */
     void loadProjectsAsync();
-    /** @brief Clears then streams the expandable shot tree for the project. */
-    void refreshSequences();
-    /** @brief Clears the shot selection without reloading a shot catalog. */
-    void clearShotSelection();
+    /** @brief Streams project pages for one request id. */
+    void startProjectLoad(std::uint64_t requestId);
+
+    /** @brief Clears the sequence and the visible shot tree, then reloads it. */
+    void refreshShotTree();
+    /** @brief Builds the shot tree for one project on a worker. */
+    void startShotTreeLoad(std::uint64_t requestId, std::int64_t projectId);
+
+    /** @brief Empties the asset combo. The empty value notifies. */
+    void resetAssetCatalog();
     /** @brief Clears then streams asset pages for the selected project. */
     void refreshAssets();
+    /** @brief Streams asset pages for one project. */
+    void startAssetLoad(std::uint64_t requestId, std::int64_t projectId);
+
+    /** @brief Empties the version combo. */
+    void resetVersionCatalog();
     /** @brief Clears then streams version pages for the current selection. */
     void refreshVersions();
     /**
-     * @brief Rebuilds playlists for the project, with versions matching the
-     * current sequence, shot, or asset selection.
+     * @brief Streams version pages for the current sequence, shot, or asset.
+     * @param requestId Request that must still be current when a page arrives.
+     * @param projectId Selected project id.
      */
+    void startVersionLoad(std::uint64_t requestId, std::int64_t projectId);
+
+    /** @brief Rebuilds playlists for the project, filtered like the version list. */
     void refreshPlaylistTree();
+    /**
+     * @brief Builds the playlist tree for one project on a worker.
+     * @param requestId Request that must still be current when the tree arrives.
+     * @param projectId Selected project id.
+     */
+    void startPlaylistLoad(std::uint64_t requestId, std::int64_t projectId);
+
+    /** @brief Applies a new project: reload the shot tree, assets, and versions. */
+    void onProjectChosen();
+    /** @brief Applies a new sequence and narrows the versions. */
+    void onSequenceChosen();
+    /** @brief Applies a new shot, aligns its sequence, and narrows the versions. */
+    void onShotChosen();
+    /** @brief Sets the sequence that owns the shot, without clearing that shot. */
+    void alignSequenceWithShot(const std::string &shotLabel);
+    /** @brief Applies a new asset and narrows the versions. */
+    void onAssetChosen();
+
+    /**
+     * @brief True when `projectId` is still the selected project.
+     * @param projectId Project id carried by a worker reply.
+     */
+    bool projectStillSelected(std::int64_t projectId) const;
+    /**
+     * @brief True when the sequence, shot, and asset on a reply are still selected.
+     */
+    bool versionParentsStillSelected(
+        bool hasSequence,
+        std::int64_t sequenceId,
+        bool hasShot,
+        std::int64_t shotId,
+        bool hasAsset,
+        std::int64_t assetId) const;
+
+    /** @brief Applies one project page when the request is still current. */
+    void applyProjectPage(std::uint64_t requestId, bool append, const utility::JsonStore &payload);
+    /** @brief Applies a shot tree when the request is still current. */
+    void applyShotTree(std::uint64_t requestId, const utility::JsonStore &payload);
+    /** @brief Applies one asset page when the request is still current. */
+    void applyAssetPage(std::uint64_t requestId, bool append, const utility::JsonStore &payload);
+    /** @brief Applies a playlist tree when the request and parents still match. */
+    void applyPlaylistTree(
+        std::uint64_t requestId,
+        bool hasSequence,
+        std::int64_t sequenceId,
+        bool hasShot,
+        std::int64_t shotId,
+        bool hasAsset,
+        std::int64_t assetId,
+        const utility::JsonStore &payload);
+    /** @brief Applies one version page when the request and parents still match. */
+    void applyVersionPage(
+        std::uint64_t requestId,
+        bool hasSequence,
+        std::int64_t sequenceId,
+        bool hasShot,
+        std::int64_t shotId,
+        bool hasAsset,
+        std::int64_t assetId,
+        bool append,
+        const utility::JsonStore &payload);
 
     std::vector<poco::Project> projects_;   ///< Project pages received so far.
     std::vector<poco::Asset> assets_;       ///< Asset pages for `selected_project_`.

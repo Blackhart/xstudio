@@ -21,7 +21,7 @@ constexpr std::size_t kDetailLimit = 200;
  * @param text Raw text.
  * @return Text safe to wrap in double quotes.
  */
-std::string escape(const std::string &text) {
+std::string escapeQuoted(const std::string &text) {
     std::string out;
     out.reserve(text.size());
     for (const char ch : text) {
@@ -38,7 +38,7 @@ std::string escape(const std::string &text) {
  * @param body HTTP response body.
  * @return True for a doctype or html tag, ignoring case and leading space.
  */
-bool isHtml(const std::string &body) {
+bool bodyIsHtml(const std::string &body) {
     std::size_t start = 0;
     while (start < body.size() && std::isspace(static_cast<unsigned char>(body[start]))) {
         ++start;
@@ -57,8 +57,8 @@ bool isHtml(const std::string &body) {
  * @param body Raw HTTP or exception detail.
  * @return A single short field, or `html response (N bytes)`.
  */
-std::string brief(const std::string &body) {
-    if (isHtml(body)) {
+std::string shortenDetail(const std::string &body) {
+    if (bodyIsHtml(body)) {
         return "html response (" + std::to_string(body.size()) + " bytes)";
     }
     std::string flat;
@@ -82,34 +82,74 @@ std::string brief(const std::string &body) {
 }
 
 /**
+ * @brief HTTP status parsed out of a ShotGrid error message.
+ */
+struct ParsedHttpStatus {
+    bool present = false; ///< True when `code` was read after `"HTTP "`.
+    int code = 0;         ///< Status digits, or 0 when `present` is false.
+    std::string detail;   ///< Body after `": "`, empty when the separator is absent.
+};
+
+/**
  * @brief Reads an HTTP status that follows `"HTTP "` in a shotgrid message.
  * @param text Text after the `shotgrid: ` prefix.
- * @param status Receives the parsed status when one is present.
- * @param detail Receives the body after `": "`, or the whole text when no status.
- * @return True when `text` contains an HTTP status.
+ * @return The status when the digits are present, otherwise `present == false`.
  */
-bool httpStatus(const std::string &text, int &status, std::string &detail) {
+ParsedHttpStatus parseHttpStatus(const std::string &text) {
+    ParsedHttpStatus parsed;
     const std::string marker = "HTTP ";
     const std::size_t at = text.find(marker);
     if (at == std::string::npos) {
-        detail = text;
-        return false;
+        return parsed;
     }
     const std::size_t digits = at + marker.size();
     if (digits >= text.size() || !std::isdigit(static_cast<unsigned char>(text[digits]))) {
-        detail = text;
-        return false;
+        return parsed;
     }
-    status = 0;
+    parsed.present = true;
     std::size_t cursor = digits;
     while (cursor < text.size() && std::isdigit(static_cast<unsigned char>(text[cursor]))) {
-        status = status * 10 + (text[cursor] - '0');
+        parsed.code = parsed.code * 10 + (text[cursor] - '0');
         ++cursor;
     }
     const std::string sep = ": ";
     const std::size_t body = text.find(sep, cursor);
-    detail = body == std::string::npos ? std::string() : text.substr(body + sep.size());
-    return true;
+    parsed.detail = body == std::string::npos ? std::string() : text.substr(body + sep.size());
+    return parsed;
+}
+
+/**
+ * @brief True when the exception text was produced by the ShotGrid backend.
+ * @param what `exception::what()`.
+ * @return True when the text starts with `shotgrid: `.
+ */
+bool isShotGridMessage(const std::string &what) {
+    constexpr std::string_view kPrefix = "shotgrid: ";
+    return what.rfind(kPrefix, 0) == 0;
+}
+
+/**
+ * @brief Formats a ShotGrid failure as one log line.
+ * @param what Exception text, including the `shotgrid: ` prefix.
+ * @return `shotgrid error status=... detail="..."`.
+ */
+std::string formatShotGridFailure(const std::string &what) {
+    constexpr std::string_view kPrefix = "shotgrid: ";
+    const std::string rest = what.substr(kPrefix.size());
+    const ParsedHttpStatus http = parseHttpStatus(rest);
+    const std::string status = http.present ? std::to_string(http.code) : "-";
+    const std::string detail = http.present ? http.detail : rest;
+    return "shotgrid error status=" + status + " detail=\"" + escapeQuoted(shortenDetail(detail)) +
+           "\"";
+}
+
+/**
+ * @brief Formats a non-ShotGrid failure as one log line.
+ * @param what Exception text.
+ * @return `dal error detail="..."`.
+ */
+std::string formatDalFailure(const std::string &what) {
+    return "dal error detail=\"" + escapeQuoted(what) + "\"";
 }
 
 } // namespace
@@ -125,7 +165,7 @@ void select(const char *entity, bool chosen, std::int64_t id, const std::string 
     }
     info(
         "select " + std::string(entity) + " id=" + std::to_string(id) + " name=\"" +
-        escape(name) + "\"");
+        escapeQuoted(name) + "\"");
 }
 
 void drop(const std::string &catalog, std::uint64_t request) {
@@ -133,20 +173,13 @@ void drop(const std::string &catalog, std::uint64_t request) {
         "drop catalog=" + catalog + " request=" + std::to_string(request) + " reason=stale");
 }
 
-void failure(const std::exception &failure) {
-    const std::string what = failure.what();
-    constexpr std::string_view kPrefix = "shotgrid: ";
-    if (what.rfind(kPrefix, 0) == 0) {
-        const std::string rest = what.substr(kPrefix.size());
-        int status = 0;
-        std::string detail;
-        const bool http = httpStatus(rest, status, detail);
-        error(
-            "shotgrid error status=" + (http ? std::to_string(status) : std::string("-")) +
-            " detail=\"" + escape(brief(http ? detail : rest)) + "\"");
+void failure(const std::exception &caught) {
+    const std::string what = caught.what();
+    if (isShotGridMessage(what)) {
+        error(formatShotGridFailure(what)); ///< ShotGrid text keeps its HTTP status.
         return;
     }
-    error("dal error detail=\"" + escape(what) + "\"");
+    error(formatDalFailure(what));
 }
 
 } // namespace xstudio::mikros_shotbrowser::log
