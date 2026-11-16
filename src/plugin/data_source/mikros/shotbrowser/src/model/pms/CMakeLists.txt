@@ -36,17 +36,6 @@ if(NOT nlohmann_json_FOUND)
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
-find_package(httplib QUIET CONFIG)
-if(NOT httplib_FOUND)
-    set(HTTPLIB_REQUIRE_OPENSSL ON CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-        httplib
-        GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-        GIT_TAG v0.16.3
-    )
-    FetchContent_MakeAvailable(httplib)
-endif()
-
 find_package(OpenSSL REQUIRED)
 
 set(PMS_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -91,13 +80,13 @@ target_include_directories(pms
     PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/.."
         "${PMS_GEN_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../../../extern/include"
 )
 target_compile_features(pms PUBLIC cxx_std_17)
 target_compile_definitions(pms PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
 target_link_libraries(pms PUBLIC
     yaml-cpp::yaml-cpp
     nlohmann_json::nlohmann_json
-    httplib::httplib
     OpenSSL::SSL
     OpenSSL::Crypto
 )

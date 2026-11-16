@@ -9,7 +9,7 @@
 #include "pms/error.hpp"
 #include "pms/shotgrid/translate.hpp"
 
-#include <httplib.h>
+#include <cpp-httplib/httplib.h>
 #include <nlohmann/json.hpp>
 
 #include <memory>
