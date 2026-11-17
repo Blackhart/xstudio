@@ -23,6 +23,7 @@ struct FieldSpec {
     bool canSet = false; ///< True when a later slice may assign the field.
     bool requiredOnCreate = false; ///< True when a later create must send the field.
     std::vector<std::string> ops;  ///< Comparison names allowed for `type`.
+    std::vector<std::string> providers; ///< Ways a worker may read this field, such as `http`.
 };
 
 /**

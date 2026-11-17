@@ -7,8 +7,14 @@
 #include "model/context/mikros_shotbrowser_context.hpp"
 
 #include "model/log.hpp"
+#include "model/thumb_fetch.hpp"
+#include "model/thumb_store.hpp"
 
 #include "xstudio/atoms.hpp"
+#include "xstudio/utility/helpers.hpp"
+
+#include <type_traits>
+#include <utility>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
 
@@ -110,6 +116,47 @@ std::vector<Row> rowsFromJson(const utility::JsonStore &json) {
             entry.at("id").template get<std::int64_t>(),
             entry.at("name").template get<std::string>(),
         });
+    }
+    return rows;
+}
+
+/**
+ * @brief Writes a version page, including the image source and its provider.
+ * @param rows Versions to send to the actor.
+ * @return JSON store the worker message can carry.
+ */
+template <>
+utility::JsonStore rowsToJson<poco::Version>(const std::vector<poco::Version> &rows) {
+    nlohmann::json out = nlohmann::json::array();
+    for (const poco::Version &row : rows) {
+        out.push_back(
+            {{"id", row.id},
+             {"name", row.name},
+             {"image", row.image},
+             {"image_provider", row.image_provider}});
+    }
+    return utility::JsonStore(out);
+}
+
+/**
+ * @brief Reads a version page, including the image source and its provider.
+ * @param json Payload from `rowsToJson`.
+ * @return Versions, or empty when `json` is not an array.
+ */
+template <>
+std::vector<poco::Version> rowsFromJson<poco::Version>(const utility::JsonStore &json) {
+    std::vector<poco::Version> rows;
+    if (!json.is_array()) {
+        return rows;
+    }
+    rows.reserve(json.size());
+    for (const auto &entry : json) {
+        poco::Version row;
+        row.id = entry.at("id").get<std::int64_t>();
+        row.name = entry.at("name").get<std::string>();
+        row.image = entry.value("image", std::string());
+        row.image_provider = entry.value("image_provider", std::string());
+        rows.push_back(std::move(row));
     }
     return rows;
 }
@@ -277,6 +324,52 @@ void sendCatalog(
 }
 
 /**
+ * @brief Stores one page of images without blocking the actor.
+ * @param weak Actor that receives the local file URLs.
+ * @param projectId Project the page belongs to.
+ * @param rows Versions of this page, with their image source.
+ */
+void scheduleThumbPage(
+    const caf::weak_actor_ptr &weak,
+    std::int64_t projectId,
+    const std::vector<poco::Version> &rows) {
+    if (rows.empty()) {
+        return;
+    }
+    std::thread([weak, projectId, rows]() {
+        const std::filesystem::path root = thumb::thumbRoot();
+        nlohmann::json found = nlohmann::json::array();
+        for (const poco::Version &row : rows) {
+            const thumb::ThumbPlan plan =
+                thumb::planThumb(root, row.image, row.image_provider, projectId, row.id);
+            std::filesystem::path ready;
+            if (plan.kind == thumb::ThumbKind::Ready) {
+                ready = plan.path; ///< Cache hit or a file the card can open directly.
+            } else if (plan.kind == thumb::ThumbKind::Fetch) {
+                if (thumb::writeBytesIfMissing(plan.path, thumb::fetchJpeg(row.image))) {
+                    ready = plan.path;
+                }
+            }
+            if (ready.empty()) {
+                continue;
+            }
+            found.push_back({{"versionId", row.id}, {"image", thumb::toFileUrl(ready)}});
+        }
+        if (found.empty()) {
+            return;
+        }
+        sendCatalog(
+            weak,
+            0,
+            "version_thumbs",
+            projectId,
+            {},
+            false,
+            utility::JsonStore(std::move(found)));
+    }).detach();
+}
+
+/**
  * @brief Loads every page of a catalog and mails each one to the actor.
  * @tparam Row POCO returned by `fetch`.
  * @tparam Fetch Callable taking a cursor and returning `dal::RowPage<Row>`.
@@ -300,6 +393,9 @@ void publishPages(
     for (;;) {
         const dal::RowPage<Row> page = fetch(cursor);
         sendCatalog(weak, requestId, catalog, projectId, scope, append, rowsToJson(page.rows));
+        if constexpr (std::is_same_v<Row, poco::Version>) {
+            scheduleThumbPage(weak, projectId, page.rows); ///< Names are already on the way.
+        }
         if (!page.next_cursor) {
             break;
         }
@@ -358,11 +454,13 @@ void writeShots(nlohmann::json &node, const std::vector<poco::Shot> &shots) {
  * @param versions Versions received for that playlist so far.
  */
 void writeVersions(nlohmann::json &node, const std::vector<poco::Version> &versions) {
-    nlohmann::json names = nlohmann::json::array();
-    for (const std::string &label : buildUniqueLabels(versions)) {
-        names.push_back(label);
+    const std::vector<std::string> labels = buildUniqueLabels(versions);
+    nlohmann::json entries = nlohmann::json::array();
+    for (std::size_t index = 0; index < versions.size(); ++index) {
+        entries.push_back(
+            {{"name", labels[index]}, {"id", versions[index].id}, {"image", std::string()}});
     }
-    node["versions"] = std::move(names);
+    node["versions"] = std::move(entries);
 }
 
 /**
@@ -486,6 +584,7 @@ void publishVersionsOfPlaylist(
             playlistId);
         if (!page.rows.empty()) {
             versions.insert(versions.end(), page.rows.begin(), page.rows.end());
+            scheduleThumbPage(mail.weak, mail.projectId, page.rows);
         }
         const bool complete = !page.next_cursor;
         if (!versions.empty() || complete) {
@@ -524,6 +623,24 @@ void publishPlaylistNames(const TreeMail &mail) {
     }
 }
 
+/**
+ * @brief Logs every path the Shot Browser writes.
+ */
+void logWriteLocations() {
+    const std::string preferences = utility::preference_path_context("PLUGIN");
+    const std::filesystem::path root = thumb::thumbRoot();
+    if (root.empty()) {
+        trace::info(
+            "writes preferences " + preferences +
+            " (browser_mode, result_view, left_pane_width); thumbnail directory unavailable "
+            "because HOME is not set");
+        return;
+    }
+    trace::info(
+        "writes preferences " + preferences +
+        " (browser_mode, result_view, left_pane_width); thumbnails " + root.string());
+}
+
 } // namespace
 
 MikrosShotBrowserContext::MikrosShotBrowserContext(
@@ -531,6 +648,7 @@ MikrosShotBrowserContext::MikrosShotBrowserContext(
     : plugin::StandardPlugin(cfg, "MikrosShotBrowserPlugin", init_settings) {
 
     addPanelAttributes(); ///< Combos and trees the panel binds to.
+    logWriteLocations(); ///< Preferences file and thumbnail directory, resolved now.
     make_behavior();
     connect_to_ui();
     loadProjectsAsync(); ///< First catalog, before the panel asks.
@@ -568,6 +686,9 @@ void MikrosShotBrowserContext::addPanelAttributes() {
 
     versions_loaded_ = add_boolean_attribute("VersionsLoaded", "VersionsLoaded", false);
     versions_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
+    version_cards_ = add_json_attribute("VersionCards", "VersionCards", nlohmann::json::array());
+    version_cards_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 
     playlist_tree_ = add_json_attribute("PlaylistTree", "PlaylistTree", nlohmann::json::array());
     playlist_tree_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
@@ -815,6 +936,9 @@ void MikrosShotBrowserContext::resetVersionCatalog() {
     ++version_request_id_; ///< Drop pages from the previous version load.
     versions_.clear();
     versions_loaded_->set_value(false); ///< An empty combo is a load in progress, not a result.
+    if (version_cards_) {
+        version_cards_->set_value(nlohmann::json::array());
+    }
     version_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
     version_->set_value("");
 }
@@ -1195,6 +1319,7 @@ void MikrosShotBrowserContext::applyPlaylistVersions(
             node["versionsLoaded"] = true;
         }
         playlist_tree_->set_value(tree);
+        stampPlaylistThumbs(); ///< A file stored earlier can show with this page.
         return;
     }
 }
@@ -1245,6 +1370,79 @@ void MikrosShotBrowserContext::applyVersionPage(
     }
     applyCatalogPage(versions_, version_, rowsFromJson<poco::Version>(payload), append);
     versions_loaded_->set_value(true); ///< Zero rows is a finished load.
+    publishVersionCards();
+}
+
+std::string MikrosShotBrowserContext::thumbFor(std::int64_t projectId, std::int64_t versionId) const {
+    const auto found = thumb_paths_.find({projectId, versionId});
+    if (found == thumb_paths_.end()) {
+        return {};
+    }
+    return found->second;
+}
+
+void MikrosShotBrowserContext::rememberThumbs(
+    std::int64_t projectId, const utility::JsonStore &payload) {
+    if (!payload.is_array()) {
+        return;
+    }
+    for (const auto &entry : payload) {
+        if (!entry.contains("versionId") || !entry.contains("image")) {
+            continue;
+        }
+        const std::string image = entry["image"].get<std::string>();
+        if (image.empty()) {
+            continue;
+        }
+        thumb_paths_[{projectId, entry["versionId"].get<std::int64_t>()}] = image;
+    }
+}
+
+void MikrosShotBrowserContext::publishVersionCards() {
+    if (!version_cards_) {
+        return;
+    }
+    nlohmann::json cards = nlohmann::json::array();
+    if (selected_project_) {
+        const std::vector<std::string> labels = buildUniqueLabels(versions_);
+        for (std::size_t index = 0; index < versions_.size(); ++index) {
+            cards.push_back(
+                {{"name", labels[index]},
+                 {"image", thumbFor(selected_project_->id, versions_[index].id)}});
+        }
+    }
+    version_cards_->set_value(std::move(cards));
+}
+
+void MikrosShotBrowserContext::stampPlaylistThumbs() {
+    if (!playlist_tree_ || !selected_project_) {
+        return;
+    }
+    nlohmann::json tree = playlist_tree_->value();
+    if (!tree.is_array()) {
+        return;
+    }
+    bool changed = false;
+    for (auto &node : tree) {
+        if (!node.is_object() || !node.contains("versions") || !node["versions"].is_array()) {
+            continue;
+        }
+        for (auto &entry : node["versions"]) {
+            if (!entry.is_object() || !entry.contains("id")) {
+                continue;
+            }
+            const std::string image =
+                thumbFor(selected_project_->id, entry["id"].get<std::int64_t>());
+            if (entry.value("image", std::string()) == image) {
+                continue;
+            }
+            entry["image"] = image;
+            changed = true;
+        }
+    }
+    if (changed) {
+        playlist_tree_->set_value(std::move(tree));
+    }
 }
 
 caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
@@ -1261,6 +1459,14 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
             const std::int64_t assetId,
             const bool append,
             const utility::JsonStore &payload) {
+            if (catalog == "version_thumbs") {
+                rememberThumbs(projectId, payload); ///< Keep the file even if the filter moved on.
+                if (projectStillSelected(projectId)) {
+                    publishVersionCards();
+                    stampPlaylistThumbs();
+                }
+                return;
+            }
             if (catalog == "project") {
                 applyProjectPage(requestId, append, payload);
                 return;

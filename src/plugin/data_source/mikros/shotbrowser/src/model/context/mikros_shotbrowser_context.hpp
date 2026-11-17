@@ -15,8 +15,10 @@
 #include "xstudio/plugin_manager/plugin_base.hpp"
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace xstudio::mikros_shotbrowser {
@@ -214,6 +216,19 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
         bool hasAsset,
         std::int64_t assetId,
         const utility::JsonStore &payload);
+    /** @brief Stores file URLs and refreshes cards still on screen. */
+    void rememberThumbs(std::int64_t projectId, const utility::JsonStore &payload);
+    /** @brief Publishes name and local image for each visible version. */
+    void publishVersionCards();
+    /** @brief Copies stored file URLs onto playlist version rows. */
+    void stampPlaylistThumbs();
+    /**
+     * @brief File URL already stored for one version.
+     * @param projectId Numeric project id.
+     * @param versionId Numeric version id.
+     * @return `file://` URL, or empty when the image is not ready.
+     */
+    std::string thumbFor(std::int64_t projectId, std::int64_t versionId) const;
     /** @brief Applies one version page when the request and parents still match. */
     void applyVersionPage(
         std::uint64_t requestId,
@@ -256,7 +271,9 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     module::StringChoiceAttribute *asset_ = nullptr;     ///< Asset combo.
     module::StringChoiceAttribute *version_ = nullptr;   ///< Version combo.
     module::BooleanAttribute *versions_loaded_ = nullptr; ///< True once the current version request has delivered a page.
-    module::JsonAttribute *playlist_tree_ = nullptr;     ///< Playlists with their version names.
+    module::JsonAttribute *version_cards_ = nullptr;     ///< Visible versions: name and local image.
+    module::JsonAttribute *playlist_tree_ = nullptr;     ///< Playlists with their version rows.
+    std::map<std::pair<std::int64_t, std::int64_t>, std::string> thumb_paths_; ///< `(projectId, versionId)` to `file://`.
 };
 
 } // namespace xstudio::mikros_shotbrowser

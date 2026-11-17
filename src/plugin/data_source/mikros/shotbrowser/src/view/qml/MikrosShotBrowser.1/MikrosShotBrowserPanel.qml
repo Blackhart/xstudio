@@ -104,6 +104,20 @@ Item {
         return "No results"
     }
 
+    function versionCards() {
+        let value = versionCardsAttr.value
+        if (!value)
+            return []
+        if (typeof value === "string") {
+            try {
+                value = JSON.parse(value)
+            } catch (error) {
+                return []
+            }
+        }
+        return value.length ? value : []
+    }
+
     function shotTreeNodes() {
         let value = shotTree.value
         if (!value)
@@ -202,23 +216,24 @@ Item {
             const name = String(nodes[i].name)
             const versionsLoaded = !!nodes[i].versionsLoaded
             const versions = nodes[i].versions && nodes[i].versions.length ? nodes[i].versions : []
-            const versionNames = []
-            for (let v = 0; v < versions.length; v++)
-                versionNames.push(String(versions[v]))
             const expanded = !!openPlaylists[name]
             rows.push({
                 name: name,
                 depth: 0,
-                parent: !versionsLoaded || versionNames.length > 0,
+                parent: !versionsLoaded || versions.length > 0,
                 open: expanded,
                 kind: "playlist",
-                childCount: versionNames.length
+                childCount: versions.length
             })
             if (!expanded)
                 continue
-            for (let v = 0; v < versionNames.length; v++) {
+            for (let v = 0; v < versions.length; v++) {
+                const entry = versions[v]
+                const versionName = entry && entry.name !== undefined ? String(entry.name) : String(entry)
+                const versionImage = entry && entry.image ? String(entry.image) : ""
                 rows.push({
-                    name: versionNames[v],
+                    name: versionName,
+                    image: versionImage,
                     depth: 1,
                     parent: false,
                     open: false,
@@ -294,26 +309,6 @@ Item {
         Layout.preferredHeight: barHeight
         Layout.minimumHeight: barHeight
         Layout.maximumHeight: barHeight
-    }
-
-    component InfoCell: Rectangle {
-        id: cell
-        property string label: "N/A"
-        property color labelColor: XsStyleSheet.hintColor
-        property int hAlign: Text.AlignHCenter
-        color: XsStyleSheet.widgetBgNormalColor
-
-        XsText {
-            anchors.fill: parent
-            text: cell.label
-            color: cell.labelColor
-            font.pixelSize: XsStyleSheet.fontSize * 1.1
-            horizontalAlignment: cell.hAlign
-            verticalAlignment: Text.AlignVCenter
-            leftPadding: cell.hAlign === Text.AlignLeft ? XsStyleSheet.panelPadding : 4
-            rightPadding: 4
-            elide: Text.ElideRight
-        }
     }
 
     component NameColumn: ColumnLayout {
@@ -482,9 +477,15 @@ Item {
                     readonly property string label: {
                         if (modelData === undefined || modelData === null)
                             return ""
-                        if (!column.tree)
-                            return String(modelData)
-                        return modelData.name !== undefined ? String(modelData.name) : ""
+                        if (modelData.name !== undefined)
+                            return String(modelData.name)
+                        return String(modelData)
+                    }
+                    readonly property string imageSource: {
+                        if (modelData === undefined || modelData === null
+                                || modelData.image === undefined || !modelData.image)
+                            return ""
+                        return String(modelData.image)
                     }
                     readonly property int depth: {
                         if (!column.tree || modelData === undefined || modelData === null
@@ -528,7 +529,7 @@ Item {
                     height: playlistCard
                             ? XsStyleSheet.widgetStdHeight * 2
                             : versionCard
-                              ? (XsStyleSheet.widgetStdHeight + 1) * 4
+                              ? (width * 9 / 16 + XsStyleSheet.widgetStdHeight + 4)
                               : XsStyleSheet.widgetStdHeight
                     color: playlistCard
                            ? XsStyleSheet.widgetBgNormalColor
@@ -715,197 +716,31 @@ Item {
 
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight
-                            Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                            color: XsStyleSheet.widgetBgNormalColor
+                            Layout.fillHeight: true
+                            color: "black"
 
-                            XsText {
+                            Image {
                                 anchors.fill: parent
-                                leftPadding: XsStyleSheet.panelPadding
-                                text: row.label
-                                font.pixelSize: XsStyleSheet.fontSize * 1.1
-                                font.bold: true
-                                horizontalAlignment: Text.AlignLeft
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideMiddle
-                            }
-
-                            XsText {
-                                anchors.fill: parent
-                                rightPadding: XsStyleSheet.panelPadding
-                                text: "N/A"
-                                font.pixelSize: XsStyleSheet.fontSize * 1.1
-                                font.bold: true
-                                horizontalAlignment: Text.AlignRight
-                                verticalAlignment: Text.AlignVCenter
-                                opacity: 0.5
+                                anchors.margins: 2
+                                source: row.imageSource !== ""
+                                        ? row.imageSource
+                                        : "qrc:/mikros_shotbrowser_icons/no_preview.jpg"
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
                             }
                         }
 
-                        RowLayout {
+                        XsText {
                             Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            spacing: 1
-
-                            Rectangle {
-                                Layout.preferredWidth: 154
-                                Layout.maximumWidth: 154
-                                Layout.fillHeight: true
-                                color: XsStyleSheet.widgetBgNormalColor
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    spacing: 1
-
-                                    ColumnLayout {
-                                        Layout.preferredWidth: 20
-                                        Layout.maximumWidth: 20
-                                        Layout.fillHeight: true
-                                        spacing: 1
-
-                                        Repeater {
-                                            model: ["N", "D", "C"]
-
-                                            XsPrimaryButton {
-                                                required property string modelData
-                                                Layout.fillWidth: true
-                                                Layout.fillHeight: true
-                                                text: modelData
-                                                enabled: false
-                                                opacity: 0.5
-                                                font.pixelSize: XsStyleSheet.fontSize * 1.2
-                                                textDiv.color: XsStyleSheet.hintColor
-                                            }
-                                        }
-                                    }
-
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        color: "black"
-
-                                        Image {
-                                            anchors.fill: parent
-                                            anchors.margins: 4
-                                            source: "qrc:/mikros_shotbrowser_icons/no_preview.jpg"
-                                            fillMode: Image.PreserveAspectFit
-                                        }
-                                    }
-                                }
-                            }
-
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                Layout.minimumWidth: 115
-                                spacing: 1
-
-                                InfoCell {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
-                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                                    labelColor: XsStyleSheet.primaryTextColor
-                                    hAlign: Text.AlignLeft
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
-                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                                    spacing: 1
-
-                                    InfoCell {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        hAlign: Text.AlignLeft
-                                    }
-
-                                    InfoCell {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        hAlign: Text.AlignLeft
-                                    }
-                                }
-
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    color: XsStyleSheet.widgetBgNormalColor
-
-                                    XsText {
-                                        anchors.fill: parent
-                                        anchors.margins: XsStyleSheet.panelPadding
-                                        text: "N/A"
-                                        color: XsStyleSheet.primaryTextColor
-                                        horizontalAlignment: Text.AlignLeft
-                                        verticalAlignment: Text.AlignTop
-                                        wrapMode: Text.WordWrap
-                                    }
-                                }
-                            }
-
-                            ColumnLayout {
-                                Layout.preferredWidth: 157
-                                Layout.maximumWidth: 157
-                                Layout.fillHeight: true
-                                spacing: 1
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
-                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                                    spacing: 1
-
-                                    InfoCell {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        labelColor: XsStyleSheet.primaryTextColor
-                                    }
-
-                                    InfoCell {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                    }
-                                }
-
-                                InfoCell {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
-                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                                    labelColor: XsStyleSheet.primaryTextColor
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight - 1
-                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight - 1
-                                    spacing: 1
-
-                                    Repeater {
-                                        model: ["prs", "mtl", "bgl"]
-
-                                        Rectangle {
-                                            required property string modelData
-                                            Layout.fillWidth: true
-                                            Layout.fillHeight: true
-                                            color: Qt.lighter(XsStyleSheet.panelBgColor, 1.5)
-                                            opacity: 0.5
-
-                                            XsLabel {
-                                                anchors.fill: parent
-                                                text: modelData
-                                                font.pixelSize: XsStyleSheet.fontSize / 1.4
-                                                font.weight: Font.Medium
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Item {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                }
-                            }
+                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                            Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                            leftPadding: XsStyleSheet.panelPadding
+                            text: row.label
+                            font.pixelSize: XsStyleSheet.fontSize * 1.1
+                            font.bold: true
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideMiddle
                         }
                     }
 
@@ -1017,6 +852,12 @@ Item {
     XsAttributeValue {
         id: versionsLoaded
         attributeTitle: "VersionsLoaded"
+        model: shotbrowserAttributes
+    }
+
+    XsAttributeValue {
+        id: versionCardsAttr
+        attributeTitle: "VersionCards"
         model: shotbrowserAttributes
     }
 
@@ -1226,7 +1067,7 @@ Item {
                 listColor: XsStyleSheet.panelBgColor
                 tree: panel.resultView === "playlist"
                 playlistTree: panel.resultView === "playlist"
-                names: panel.resultView === "versions" ? version.names : panel.playlistTreeRows()
+                names: panel.resultView === "versions" ? panel.versionCards() : panel.playlistTreeRows()
                 footerCount: panel.resultView === "playlist" ? panel.playlistTreeNodes().length : -1
                 selected: version.value
                 placeholder: panel.resultView === "versions"

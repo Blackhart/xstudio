@@ -350,6 +350,11 @@ Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridSchema &s
             }
         }
     }
+    for (const ShotGridSchemaField &field : schema.fields) {
+        if (!field.provider.empty()) {
+            out.fields[field.domain + "_provider"] = field.provider; ///< Constant from the mapping.
+        }
+    }
     if (out.fields.find("id") == out.fields.end()) {
         throw Error("shotgrid: record missing id");
     }

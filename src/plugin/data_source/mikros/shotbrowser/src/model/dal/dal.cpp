@@ -319,6 +319,40 @@ template <typename Row> std::vector<Row> mapRecordsToRows(const pms::Records &re
 }
 
 /**
+ * @brief Reads one optional string field.
+ * @param record Domain row.
+ * @param key Field name, such as `"image"`.
+ * @return The string, or empty when the field is absent or not a string.
+ */
+std::string optionalString(const pms::Record &record, const std::string &key) {
+    const auto found = record.fields.find(key);
+    if (found == record.fields.end() || !std::holds_alternative<std::string>(found->second)) {
+        return {};
+    }
+    return std::get<std::string>(found->second);
+}
+
+/**
+ * @brief Maps version records, including the image source and its provider.
+ * @param records Domain rows.
+ * @return Version rows in the same order. Image fields stay empty when absent.
+ */
+template <>
+std::vector<poco::Version> mapRecordsToRows<poco::Version>(const pms::Records &records) {
+    std::vector<poco::Version> rows;
+    rows.reserve(records.size());
+    for (const pms::Record &record : records) {
+        poco::Version row;
+        row.id = std::get<std::int64_t>(record.at("id"));
+        row.name = std::get<std::string>(record.at("name"));
+        row.image = optionalString(record, "image");
+        row.image_provider = optionalString(record, "image_provider");
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+/**
  * @brief Turns one pms page into a POCO page.
  * @tparam Row POCO type with `id` and `name`.
  * @param page Domain page from `find`.

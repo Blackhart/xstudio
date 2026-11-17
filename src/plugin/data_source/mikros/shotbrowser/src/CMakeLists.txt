@@ -2,7 +2,7 @@ project(mikros_shotbrowser VERSION ${XSTUDIO_GLOBAL_VERSION} LANGUAGES CXX)
 
 add_subdirectory(model/pms)
 
-find_package(Qt6 COMPONENTS Core Widgets Qml Quick REQUIRED)
+find_package(Qt6 COMPONENTS Core Gui Widgets Qml Quick Network REQUIRED)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
@@ -12,6 +12,8 @@ set(SOURCES
 	mikros_shotbrowser_plugin.cpp
 	model/dal/dal.cpp
 	model/log.cpp
+	model/thumb_store.cpp
+	model/thumb_fetch.cpp
 	model/context/mikros_shotbrowser_context.cpp
 	view/qml/MikrosShotBrowser.1/resources/mikros_shotbrowser.qrc
 )
@@ -29,9 +31,11 @@ target_link_libraries(${PROJECT_NAME}
 		xstudio::utility
 		xstudio::plugin_manager
 		Qt6::Core
+		Qt6::Gui
 		Qt6::Qml
 		Qt6::Quick
 		Qt6::Widgets
+		Qt6::Network
 	PRIVATE
 		pms::pms
 )

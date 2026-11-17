@@ -69,6 +69,9 @@ ShotGridMapping ShotGridMapping::parse(const std::string &yaml) {
                     "\" missing shotgrid");
             }
             field.shotgrid = fieldBody["shotgrid"].as<std::string>("");
+            if (fieldBody["provider"]) {
+                field.provider = fieldBody["provider"].as<std::string>("");
+            }
             schema.fields.push_back(std::move(field));
         }
         if (body["links"]) {

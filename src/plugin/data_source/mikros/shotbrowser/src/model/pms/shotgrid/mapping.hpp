@@ -16,6 +16,7 @@ namespace pms {
 struct ShotGridSchemaField {
     std::string domain;   ///< Domain field key, such as `"name"`.
     std::string shotgrid; ///< REST attribute name. Empty until filled in.
+    std::string provider; ///< How a worker reads the value. Empty when the field is plain text.
 };
 
 /**

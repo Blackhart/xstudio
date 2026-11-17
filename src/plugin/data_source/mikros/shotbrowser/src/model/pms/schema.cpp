@@ -86,6 +86,13 @@ Schema Schema::load(const std::string &path) {
             spec.filter = meta["filter"].as<bool>(false);
             spec.canSet = meta["set"].as<bool>(false);
             spec.requiredOnCreate = meta["required_on_create"].as<bool>(false);
+            if (meta["providers"]) {
+                for (YAML::const_iterator provider = meta["providers"].begin();
+                     provider != meta["providers"].end();
+                     ++provider) {
+                    spec.providers.push_back(provider->as<std::string>());
+                }
+            }
             spec.ops = loadOps(root["types"], spec.type);
             entity.fields.push_back(std::move(spec));
         }

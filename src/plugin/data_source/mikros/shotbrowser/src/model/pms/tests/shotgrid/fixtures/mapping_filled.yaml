@@ -46,8 +46,9 @@ entities:
   version:
     shotgrid: Version
     fields:
-      id:   { shotgrid: id }
-      name: { shotgrid: code }
+      id:    { shotgrid: id }
+      name:  { shotgrid: code }
+      image: { shotgrid: image, provider: http }
     links:
       project:  { shotgrid: entity, target: project }
       shot:     { shotgrid: entity, target: shot }

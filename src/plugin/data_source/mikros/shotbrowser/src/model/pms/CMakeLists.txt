@@ -109,6 +109,8 @@ if(BUILD_TESTING)
         tests/test_caching_backend.cpp
         tests/shotgrid/test_mapping.cpp
         tests/shotgrid/test_translate.cpp
+        tests/test_thumb_store.cpp
+        ../thumb_store.cpp
     )
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fake/test_fake_backend.cpp"
        AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fake/backend.cpp")
@@ -117,9 +119,11 @@ if(BUILD_TESTING)
 
     add_executable(pms_tests ${PMS_TEST_SOURCES})
     target_link_libraries(pms_tests PRIVATE pms doctest::doctest)
+    target_include_directories(pms_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../..")
     target_compile_definitions(pms_tests PRIVATE
         PMS_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.yaml"
         PMS_SHOTGRID_MAPPING_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/shotgrid/fixtures/mapping_filled.yaml"
+        PMS_SHOTGRID_MAPPING_EXAMPLE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shotgrid/mapping.yaml.example"
     )
     add_test(NAME pms_tests COMMAND pms_tests)
     set_tests_properties(pms_tests PROPERTIES TIMEOUT 30)

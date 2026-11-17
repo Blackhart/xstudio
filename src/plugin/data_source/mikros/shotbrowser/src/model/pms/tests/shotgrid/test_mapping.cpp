@@ -12,5 +12,15 @@ TEST_CASE("filled fixture parses and names are present") {
     CHECK_NOTHROW(mapping.throwIfNamesMissing());
     CHECK(mapping.findSchema("project")->shotgridName == "Project");
     CHECK(mapping.findSchema("version")->findField("name")->shotgrid == "code");
+    CHECK(mapping.findSchema("version")->findField("image")->provider == "http");
+    CHECK(mapping.findSchema("version")->findField("image")->shotgrid == "image");
     CHECK(mapping.findSchema("shot")->findLink("sequence")->shotgrid == "sg_sequence");
+}
+
+TEST_CASE("example mapping stores version images over http") {
+    const ShotGridMapping mapping = ShotGridMapping::load(PMS_SHOTGRID_MAPPING_EXAMPLE_PATH);
+    const ShotGridSchemaField *image = mapping.findSchema("version")->findField("image");
+    REQUIRE(image != nullptr);
+    CHECK(image->shotgrid == "image");
+    CHECK(image->provider == "http");
 }

@@ -151,3 +151,17 @@ TEST_CASE("record maps attributes to domain fields") {
     CHECK(std::get<std::string>(record.at("status")) == "ip");
     CHECK(std::get<Date>(record.at("start_date")) == Date{2026, 1, 2});
 }
+
+TEST_CASE("version image copies the url and the mapping provider") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const nlohmann::json row = {
+        {"type", "Version"},
+        {"id", 4},
+        {"attributes", {{"code", "v001"}, {"image", "https://example.test/a.jpg"}}}};
+    const Record record = shotgridRecordFromJson(row, *version);
+    CHECK(std::get<std::string>(record.at("name")) == "v001");
+    CHECK(std::get<std::string>(record.at("image")) == "https://example.test/a.jpg");
+    CHECK(std::get<std::string>(record.at("image_provider")) == "http");
+}

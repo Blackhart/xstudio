@@ -114,6 +114,14 @@ TEST_CASE("schema loads the version entity") {
     const FieldSpec *name = version->field("name");
     REQUIRE(name != nullptr);
     CHECK(name->type == "string");
+
+    const FieldSpec *image = version->field("image");
+    REQUIRE(image != nullptr);
+    CHECK(image->type == "string");
+    CHECK_FALSE(image->filter);
+    REQUIRE(image->providers.size() == 2);
+    CHECK(image->providers[0] == "http");
+    CHECK(image->providers[1] == "file");
 }
 
 TEST_CASE("generated proxies use the schema keys") {
@@ -143,6 +151,7 @@ TEST_CASE("generated proxies use the schema keys") {
 
     CHECK(std::string(version::id.key) == "id");
     CHECK(std::string(version::name.key) == "name");
+    CHECK(std::string(version::image.key) == "image");
     CHECK(Version().ir().entity == "version");
     CHECK(std::string(scope::project.key) == "project");
     CHECK(std::string(scope::sequence.key) == "sequence");
