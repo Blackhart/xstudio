@@ -26,7 +26,7 @@ namespace xstudio::mikros_shotbrowser {
 /**
  * @brief Plugin actor that owns UI attributes, selection state, and async loads.
  *
- * Calls the DAL on worker threads and applies results via CAF messages. Catalog
+ * Calls the DAL on a detached actor per load and applies results via CAF messages. Catalog
  * and version pages are pushed to the combos as they arrive. Does not include
  * `pms/pms.hpp` and does not sleep in a handler.
  *
@@ -105,7 +105,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
 
     /** @brief Clears the shot tree and streams sequences, without their shots. */
     void refreshShotTree();
-    /** @brief Streams sequence rows for one project on a worker. */
+    /** @brief Streams sequence rows for one project on a detached actor. */
     void startShotTreeLoad(std::uint64_t requestId, std::int64_t projectId);
     /**
      * @brief Streams the shots of one sequence into its tree node.
@@ -149,7 +149,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     /** @brief True when that playlist's versions were already requested to completion. */
     bool playlistVersionsReady(std::int64_t playlistId) const;
     /**
-     * @brief Builds the playlist tree for one project on a worker.
+     * @brief Builds the playlist tree for one project on a detached actor.
      * @param requestId Request that must still be current when the tree arrives.
      * @param projectId Selected project id.
      */

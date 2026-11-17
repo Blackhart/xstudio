@@ -15,6 +15,7 @@ set(SOURCES
 	model/log.cpp
 	model/thumb_store.cpp
 	model/thumb_fetch.cpp
+	model/context/catalog_load_actor.cpp
 	model/context/mikros_shotbrowser_context.cpp
 	view/qml/MikrosShotBrowser.1/resources/mikros_shotbrowser.qrc
 )

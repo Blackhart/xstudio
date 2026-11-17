@@ -6,6 +6,7 @@
 
 #include "model/context/mikros_shotbrowser_context.hpp"
 
+#include "model/context/catalog_load_actor.hpp"
 #include "model/constants.hpp"
 #include "model/log.hpp"
 #include "model/thumb_fetch.hpp"
@@ -325,6 +326,30 @@ void sendCatalog(
 }
 
 /**
+ * @brief Names where one version image came from.
+ *
+ * `Ready` covers both a cache hit and a direct file. The provider splits them.
+ * `planThumb` itself is unchanged.
+ *
+ * @param provider `http`, `file`, or anything else.
+ * @param kind Decision from `planThumb`.
+ * @param stored True when a download wrote the cache file.
+ * @return `cache`, `download`, `file`, or `none`.
+ */
+const char *thumbOrigin(const std::string &provider, thumb::ThumbKind kind, bool stored) {
+    if (kind == thumb::ThumbKind::Ready && provider == "http") {
+        return "cache";
+    }
+    if (kind == thumb::ThumbKind::Ready && provider == "file") {
+        return "file";
+    }
+    if (kind == thumb::ThumbKind::Fetch && stored) {
+        return "download";
+    }
+    return "none"; ///< No image, inaccessible file, unknown provider, or a failed download.
+}
+
+/**
  * @brief Stores one page of images without blocking the actor.
  * @param weak Actor that receives the local file URLs.
  * @param projectId Project the page belongs to.
@@ -343,14 +368,20 @@ void scheduleThumbPage(
         for (const poco::Version &row : rows) {
             const thumb::ThumbPlan plan =
                 thumb::planThumb(root, row.image, row.image_provider, projectId, row.id);
+            bool stored = false;
             std::filesystem::path ready;
             if (plan.kind == thumb::ThumbKind::Ready) {
                 ready = plan.path; ///< Cache hit or a file the card can open directly.
             } else if (plan.kind == thumb::ThumbKind::Fetch) {
-                if (thumb::writeBytesIfMissing(plan.path, thumb::fetchJpeg(row.image))) {
+                stored = thumb::writeBytesIfMissing(plan.path, thumb::fetchJpeg(row.image));
+                if (stored) {
                     ready = plan.path;
                 }
             }
+            trace::info(
+                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+                std::to_string(row.id) + " origin=" +
+                thumbOrigin(row.image_provider, plan.kind, stored));
             if (ready.empty()) {
                 continue;
             }
@@ -702,13 +733,140 @@ void logWriteLocations() {
         " (browser_mode, result_view, left_pane_width); thumbnails " + root.string());
 }
 
+/**
+ * @brief Spawns one detached load and sends it the request.
+ *
+ * The handle is dropped after the send. The actor is not linked to the panel,
+ * so a failed load does not stop the panel.
+ *
+ * @param system Actor system that owns the panel.
+ * @param request Catalog, request id, project, and parents.
+ */
+void launchCatalogLoad(caf::actor_system &system, CatalogLoadRequest request) {
+    auto worker = system.spawn<CatalogLoadActor, caf::detached>();
+    anon_mail(std::move(request)).send(worker);
+}
+
+/**
+ * @brief Fills the fields every catalog request carries.
+ * @param panel Actor that receives the pages.
+ * @param kind Catalog to load.
+ * @param requestId Id the panel checks before applying a page.
+ * @param projectId Project, or 0 for the project catalog.
+ * @return A request with no sequence, shot, asset, or playlist parent yet.
+ */
+CatalogLoadRequest makeCatalogRequest(
+    caf::event_based_actor *panel,
+    CatalogKind kind,
+    std::uint64_t requestId,
+    std::int64_t projectId) {
+    CatalogLoadRequest request;
+    request.kind = kind;
+    request.panel = caf::actor_cast<caf::weak_actor_ptr>(panel);
+    request.request_id = requestId;
+    request.project_id = projectId;
+    return request;
+}
+
+/**
+ * @brief Copies the version filter carried by a load request.
+ * @param request Request whose sequence, shot, and asset may be set.
+ * @return Parents for `findVersions` and the page scope.
+ */
+VersionParents versionParentsOf(const CatalogLoadRequest &request) {
+    return VersionParents{request.sequence, request.shot, request.asset};
+}
+
+/**
+ * @brief Address of one tree mail built from a load request.
+ * @param request Panel, request id, and project.
+ * @param catalog `shot_tree`, `sequence_shots`, `playlist_tree`, or `playlist_versions`.
+ * @param scope Parents that must still match when the page is applied.
+ * @return Mail the publish functions send.
+ */
+TreeMail treeMail(const CatalogLoadRequest &request, const std::string &catalog, PageScope scope) {
+    TreeMail mail;
+    mail.weak = request.panel;
+    mail.requestId = request.request_id;
+    mail.catalog = catalog;
+    mail.projectId = request.project_id;
+    mail.scope = std::move(scope);
+    return mail;
+}
+
 } // namespace
+
+namespace xstudio::mikros_shotbrowser {
+
+void executeCatalogLoad(const CatalogLoadRequest &request) {
+    switch (request.kind) {
+    case CatalogKind::Project:
+        publishPages<poco::Project>(
+            request.panel,
+            request.request_id,
+            "project",
+            0,
+            [](const std::optional<std::string> &cursor) {
+                return dal::findProjects(dal::readPageLimit(), cursor);
+            });
+        return;
+    case CatalogKind::ShotTree:
+        publishSequences(treeMail(request, "shot_tree", {})); ///< Shots wait for an unfold.
+        return;
+    case CatalogKind::SequenceShots:
+        publishShotsOfSequence(treeMail(request, "sequence_shots", {}), request.sequence_id);
+        return;
+    case CatalogKind::Asset:
+        publishPages<poco::Asset>(
+            request.panel,
+            request.request_id,
+            "asset",
+            request.project_id,
+            [projectId = request.project_id](const std::optional<std::string> &cursor) {
+                return dal::findAssets(projectId, dal::readPageLimit(), cursor);
+            });
+        return;
+    case CatalogKind::Version: {
+        const VersionParents parents = versionParentsOf(request);
+        publishPages<poco::Version>(
+            request.panel,
+            request.request_id,
+            "version",
+            request.project_id,
+            [projectId = request.project_id, parents](const std::optional<std::string> &cursor) {
+                return dal::findVersions(
+                    projectId,
+                    dal::readPageLimit(),
+                    cursor,
+                    parents.sequenceId,
+                    parents.shotId,
+                    parents.assetId);
+            },
+            pageScope(parents));
+        return;
+    }
+    case CatalogKind::PlaylistTree:
+        publishPlaylistNames(treeMail(request, "playlist_tree", {})); ///< Versions wait for an unfold.
+        return;
+    case CatalogKind::PlaylistVersions: {
+        const VersionParents parents = versionParentsOf(request);
+        publishVersionsOfPlaylist(
+            treeMail(request, "playlist_versions", pageScope(parents)),
+            parents,
+            request.playlist_id);
+        return;
+    }
+    }
+}
+
+} // namespace xstudio::mikros_shotbrowser
 
 MikrosShotBrowserContext::MikrosShotBrowserContext(
     caf::actor_config &cfg, const utility::JsonStore &init_settings)
     : plugin::StandardPlugin(cfg, "MikrosShotBrowserPlugin", init_settings) {
 
-    addPanelAttributes(); ///< Combos and trees the panel binds to.
+    registerCatalogLoadType(); ///< Before the first detached load sends a request.
+    addPanelAttributes();      ///< Combos and trees the panel binds to.
     logSettings();       ///< Each environment variable, and whether it is set or default.
     logWriteLocations(); ///< Preferences file and thumbnail directory, resolved now.
     make_behavior();
@@ -900,17 +1058,7 @@ void MikrosShotBrowserContext::loadProjectsAsync() {
 }
 
 void MikrosShotBrowserContext::startProjectLoad(std::uint64_t requestId) {
-    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, requestId]() {
-        publishPages<poco::Project>(
-            weak,
-            requestId,
-            "project",
-            0,
-            [](const std::optional<std::string> &cursor) {
-                return dal::findProjects(dal::readPageLimit(), cursor);
-            });
-    }).detach();
+    launchCatalogLoad(system(), makeCatalogRequest(this, CatalogKind::Project, requestId, 0));
 }
 
 void MikrosShotBrowserContext::refreshShotTree() {
@@ -926,15 +1074,10 @@ void MikrosShotBrowserContext::refreshShotTree() {
 
 void MikrosShotBrowserContext::startSequenceShotLoad(
     std::uint64_t requestId, std::int64_t projectId, std::int64_t sequenceId) {
-    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, requestId, projectId, sequenceId]() {
-        TreeMail mail;
-        mail.weak = weak;
-        mail.requestId = requestId;
-        mail.catalog = "sequence_shots";
-        mail.projectId = projectId;
-        publishShotsOfSequence(mail, sequenceId);
-    }).detach();
+    CatalogLoadRequest request =
+        makeCatalogRequest(this, CatalogKind::SequenceShots, requestId, projectId);
+    request.sequence_id = sequenceId;
+    launchCatalogLoad(system(), std::move(request));
 }
 
 bool MikrosShotBrowserContext::sequenceShotsReady(std::int64_t sequenceId) const {
@@ -952,15 +1095,8 @@ bool MikrosShotBrowserContext::sequenceShotsReady(std::int64_t sequenceId) const
 }
 
 void MikrosShotBrowserContext::startShotTreeLoad(std::uint64_t requestId, std::int64_t projectId) {
-    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, requestId, projectId]() {
-        TreeMail mail;
-        mail.weak = weak;
-        mail.requestId = requestId;
-        mail.catalog = "shot_tree";
-        mail.projectId = projectId;
-        publishSequences(mail); ///< Sequence names only. Shots wait for an unfold.
-    }).detach();
+    launchCatalogLoad(
+        system(), makeCatalogRequest(this, CatalogKind::ShotTree, requestId, projectId));
 }
 
 void MikrosShotBrowserContext::resetAssetCatalog() {
@@ -981,17 +1117,8 @@ void MikrosShotBrowserContext::refreshAssets() {
 }
 
 void MikrosShotBrowserContext::startAssetLoad(std::uint64_t requestId, std::int64_t projectId) {
-    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, requestId, projectId]() {
-        publishPages<poco::Asset>(
-            weak,
-            requestId,
-            "asset",
-            projectId,
-            [projectId](const std::optional<std::string> &cursor) {
-                return dal::findAssets(projectId, dal::readPageLimit(), cursor);
-            });
-    }).detach();
+    launchCatalogLoad(
+        system(), makeCatalogRequest(this, CatalogKind::Asset, requestId, projectId));
 }
 
 void MikrosShotBrowserContext::resetVersionCatalog() {
@@ -1017,25 +1144,12 @@ void MikrosShotBrowserContext::refreshVersions() {
 void MikrosShotBrowserContext::startVersionLoad(std::uint64_t requestId, std::int64_t projectId) {
     const VersionParents parents =
         readVersionParents(selected_sequence_, selected_shot_, selected_asset_);
-    const PageScope scope = pageScope(parents);
-    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, requestId, projectId, parents, scope]() {
-        publishPages<poco::Version>(
-            weak,
-            requestId,
-            "version",
-            projectId,
-            [projectId, parents](const std::optional<std::string> &cursor) {
-                return dal::findVersions(
-                    projectId,
-                    dal::readPageLimit(),
-                    cursor,
-                    parents.sequenceId,
-                    parents.shotId,
-                    parents.assetId);
-            },
-            scope);
-    }).detach();
+    CatalogLoadRequest request =
+        makeCatalogRequest(this, CatalogKind::Version, requestId, projectId);
+    request.sequence = parents.sequenceId;
+    request.shot = parents.shotId;
+    request.asset = parents.assetId;
+    launchCatalogLoad(system(), std::move(request));
 }
 
 void MikrosShotBrowserContext::refreshPlaylistTree() {
@@ -1052,17 +1166,13 @@ void MikrosShotBrowserContext::startPlaylistVersionLoad(
     std::uint64_t requestId, std::int64_t projectId, std::int64_t playlistId) {
     const VersionParents parents =
         readVersionParents(selected_sequence_, selected_shot_, selected_asset_);
-    const PageScope scope = pageScope(parents);
-    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, requestId, projectId, playlistId, parents, scope]() {
-        TreeMail mail;
-        mail.weak = weak;
-        mail.requestId = requestId;
-        mail.catalog = "playlist_versions";
-        mail.projectId = projectId;
-        mail.scope = scope;
-        publishVersionsOfPlaylist(mail, parents, playlistId);
-    }).detach();
+    CatalogLoadRequest request =
+        makeCatalogRequest(this, CatalogKind::PlaylistVersions, requestId, projectId);
+    request.playlist_id = playlistId;
+    request.sequence = parents.sequenceId;
+    request.shot = parents.shotId;
+    request.asset = parents.assetId;
+    launchCatalogLoad(system(), std::move(request));
 }
 
 bool MikrosShotBrowserContext::playlistVersionsReady(std::int64_t playlistId) const {
@@ -1081,15 +1191,8 @@ bool MikrosShotBrowserContext::playlistVersionsReady(std::int64_t playlistId) co
 
 void MikrosShotBrowserContext::startPlaylistLoad(
     std::uint64_t requestId, std::int64_t projectId) {
-    const caf::weak_actor_ptr weak = caf::actor_cast<caf::weak_actor_ptr>(this);
-    std::thread([weak, requestId, projectId]() {
-        TreeMail mail;
-        mail.weak = weak;
-        mail.requestId = requestId;
-        mail.catalog = "playlist_tree";
-        mail.projectId = projectId;
-        publishPlaylistNames(mail); ///< Playlist names only. Versions wait for an unfold.
-    }).detach();
+    launchCatalogLoad(
+        system(), makeCatalogRequest(this, CatalogKind::PlaylistTree, requestId, projectId));
 }
 
 void MikrosShotBrowserContext::clearAssetCatalog() {
