@@ -13,6 +13,10 @@ set(SOURCES
 	model/constants.cpp
 	model/dal/dal.cpp
 	model/log.cpp
+	model/media_plan.cpp
+	model/media_files.cpp
+	model/media_fetch.cpp
+	model/media_open.cpp
 	model/thumb_store.cpp
 	model/thumb_fetch.cpp
 	model/context/catalog_load_actor.cpp
@@ -31,6 +35,7 @@ target_link_libraries(${PROJECT_NAME}
 	PUBLIC
 		xstudio::ui::qml::helper
 		xstudio::utility
+		xstudio::session
 		xstudio::plugin_manager
 		Qt6::Core
 		Qt6::Gui

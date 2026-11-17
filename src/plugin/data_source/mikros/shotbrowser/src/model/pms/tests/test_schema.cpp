@@ -132,6 +132,22 @@ TEST_CASE("schema loads the version entity") {
     const FieldSpec *synced = version->field("synced_to_client");
     REQUIRE(synced != nullptr);
     CHECK(synced->type == "int");
+
+    const FieldSpec *frames = version->field("frames");
+    REQUIRE(frames != nullptr);
+    CHECK(frames->type == "string");
+    REQUIRE(frames->providers.size() == 1);
+    CHECK(frames->providers[0] == "fileSeq");
+
+    const FieldSpec *movie = version->field("movie");
+    REQUIRE(movie != nullptr);
+    REQUIRE(movie->providers.size() == 1);
+    CHECK(movie->providers[0] == "file");
+
+    const FieldSpec *uploaded = version->field("uploaded_movie");
+    REQUIRE(uploaded != nullptr);
+    REQUIRE(uploaded->providers.size() == 1);
+    CHECK(uploaded->providers[0] == "url");
 }
 
 TEST_CASE("generated proxies use the schema keys") {

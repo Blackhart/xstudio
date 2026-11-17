@@ -194,3 +194,25 @@ TEST_CASE("version card fields copy entities, notes, the client flag, and sites"
     CHECK(std::get<std::int64_t>(record.at("synced_to_client")) == 1);
     CHECK(std::get<std::string>(record.at("sites")) == "Paris,Montreal");
 }
+
+TEST_CASE("uploaded movie keeps a signed url from a string or an object") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const nlohmann::json row = {
+        {"type", "Version"},
+        {"id", 4},
+        {"attributes",
+         {{"code", "v001"},
+          {"sg_path_to_frames", "/shows/paw/sh010.####.exr"},
+          {"sg_path_to_movie", "/shows/paw/sh010.mov"},
+          {"sg_uploaded_movie_mp4",
+           {{"url", "https://example.test/signed.mp4"}, {"name", "sh010.mp4"}}}}}};
+    const Record record = shotgridRecordFromJson(row, *version);
+    CHECK(std::get<std::string>(record.at("frames")) == "/shows/paw/sh010.####.exr");
+    CHECK(std::get<std::string>(record.at("frames_provider")) == "fileSeq");
+    CHECK(std::get<std::string>(record.at("movie")) == "/shows/paw/sh010.mov");
+    CHECK(std::get<std::string>(record.at("movie_provider")) == "file");
+    CHECK(std::get<std::string>(record.at("uploaded_movie")) == "https://example.test/signed.mp4");
+    CHECK(std::get<std::string>(record.at("uploaded_movie_provider")) == "url");
+}

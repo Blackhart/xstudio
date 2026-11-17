@@ -30,6 +30,12 @@ struct Version {
     std::string sites;          ///< ShotGrid site names, joined by commas.
     bool has_notes = false;     ///< True when the version has at least one note.
     bool synced_to_client = false; ///< True when the version was sent to the client.
+    std::string frames;            ///< Image-sequence path. Empty when ShotGrid has none.
+    std::string frames_provider;   ///< `fileSeq`, or empty.
+    std::string movie;             ///< On-disk movie path. Empty when ShotGrid has none.
+    std::string movie_provider;    ///< `file`, or empty.
+    std::string uploaded_movie;    ///< Signed movie URL. Empty when ShotGrid has none.
+    std::string uploaded_movie_provider; ///< `url`, or empty.
 };
 
 } // namespace xstudio::mikros_shotbrowser::poco

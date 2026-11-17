@@ -6,6 +6,7 @@
 #pragma once
 
 #include "model/dal/dal.hpp"
+#include "model/media_open.hpp"
 #include "model/poco/asset.hpp"
 #include "model/poco/project.hpp"
 #include "model/poco/sequence.hpp"
@@ -273,7 +274,19 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     module::BooleanAttribute *versions_loaded_ = nullptr; ///< True once the current version request has delivered a page.
     module::JsonAttribute *version_cards_ = nullptr;     ///< Visible versions: name and local image.
     module::JsonAttribute *playlist_tree_ = nullptr;     ///< Playlists with their version rows.
+    module::StringAttribute *open_version_ = nullptr;   ///< JSON request from a double-click or the menu.
+    module::StringAttribute *opened_media_ = nullptr;   ///< JSON result the panel selects when asked.
     std::map<std::pair<std::int64_t, std::int64_t>, std::string> thumb_paths_; ///< `(projectId, versionId)` to `file://`.
+
+    /** @brief Adds one resolved version to its playlist. */
+    void placeOpenedMedia(const OpenReady &ready);
+
+    /** @brief Spawns the sources and inserts the media. */
+    void addOpenedSources(
+        const OpenReady &ready, caf::actor playlist, const utility::FrameRate &rate);
+
+    /** @brief Reads one open request and starts the disk check. */
+    void startOpen(const std::string &json);
 };
 
 } // namespace xstudio::mikros_shotbrowser

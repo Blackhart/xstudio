@@ -4,6 +4,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
 import xStudio 1.0
+import xstudio.qml.helpers 1.0
 import xstudio.qml.models 1.0
 
 Item {
@@ -114,6 +115,102 @@ Item {
         if (!entry || entry[key] === undefined || entry[key] === null)
             return false
         return entry[key] === true || entry[key] === 1 || entry[key] === "1"
+    }
+
+    property string openToken: ""
+
+    function playlistUuidOf(index) {
+        if (!index || !index.valid)
+            return ""
+        let target = index
+        if (theSessionData.getPlaylistIndex)
+            target = theSessionData.getPlaylistIndex(index)
+        if (!target || !target.valid)
+            return ""
+        if (theSessionData.get(target, "typeRole") !== "Playlist")
+            return ""
+        const uuid = theSessionData.get(target, "actorUuidRole")
+        if (uuid === undefined || uuid === null)
+            return ""
+        const text = String(uuid)
+        if (text === "" || text === "{00000000-0000-0000-0000-000000000000}")
+            return ""
+        return text
+    }
+
+    function currentPlaylistUuid() {
+        return playlistUuidOf(theSessionData.currentMediaContainerIndex)
+    }
+
+    function ensurePlaylist(uuid) {
+        if (uuid)
+            return uuid
+        const created = theSessionData.createPlaylist(theSessionData.getNextName("Playlist {}"))
+        return playlistUuidOf(created)
+    }
+
+    function sessionPlaylists() {
+        const root = theSessionData.playlistsRootIdx
+        const rows = []
+        if (!root || !root.valid)
+            return rows
+        const count = theSessionData.rowCount(root)
+        for (let i = 0; i < count; i++) {
+            const idx = theSessionData.index(i, 0, root)
+            const uuid = playlistUuidOf(idx)
+            if (!uuid)
+                continue
+            rows.push({
+                name: String(theSessionData.get(idx, "nameRole")),
+                uuid: uuid
+            })
+        }
+        return rows
+    }
+
+    function openVersion(row, playlistUuid, select) {
+        if (!row || !row.versionId)
+            return
+        const uuid = select ? ensurePlaylist(playlistUuid) : playlistUuid
+        if (!uuid)
+            return
+        const token = Date.now()
+        openToken = String(token)
+        openVersionRequest.value = JSON.stringify({
+            token: token,
+            select: !!select,
+            versionId: row.versionId,
+            name: row.label,
+            playlistUuid: uuid,
+            frames: row.framesPath,
+            frameRange: row.frameRange,
+            movie: row.moviePath,
+            uploadedMovie: row.uploadedMovie
+        })
+    }
+
+    function openInCurrent(row) {
+        openVersion(row, currentPlaylistUuid(), true)
+    }
+
+    function applyOpenedMedia(value) {
+        if (!value)
+            return
+        let data = value
+        if (typeof value === "string") {
+            try {
+                data = JSON.parse(value)
+            } catch (error) {
+                return
+            }
+        }
+        if (!data || !data.select || String(data.token) !== openToken)
+            return
+        const playlist = theSessionData.searchRecursive(data.playlistUuid, "actorUuidRole")
+        if (!playlist || !playlist.valid)
+            return
+        mediaSelectionModel.selectFirstNewMedia(
+            playlist, [helpers.QVariantFromUuidString(data.mediaUuid)])
     }
 
     function versionCards() {
@@ -256,6 +353,13 @@ Item {
                     sites: cardValue(entry, "sites"),
                     hasNotes: cardFlag(entry, "hasNotes"),
                     syncedToClient: cardFlag(entry, "syncedToClient"),
+                    id: entry && entry.id !== undefined ? entry.id : 0,
+                    frames: cardValue(entry, "frames"),
+                    framesProvider: cardValue(entry, "framesProvider"),
+                    movie: cardValue(entry, "movie"),
+                    movieProvider: cardValue(entry, "movieProvider"),
+                    uploadedMovie: cardValue(entry, "uploadedMovie"),
+                    uploadedMovieProvider: cardValue(entry, "uploadedMovieProvider"),
                     depth: 1,
                     parent: false,
                     open: false,
@@ -519,6 +623,15 @@ Item {
                     readonly property string sites: panel.cardValue(modelData, "sites")
                     readonly property bool hasNotes: panel.cardFlag(modelData, "hasNotes")
                     readonly property bool syncedToClient: panel.cardFlag(modelData, "syncedToClient")
+                    readonly property int versionId: {
+                        if (modelData === undefined || modelData === null
+                                || modelData.id === undefined)
+                            return 0
+                        return Number(modelData.id)
+                    }
+                    readonly property string framesPath: panel.cardValue(modelData, "frames")
+                    readonly property string moviePath: panel.cardValue(modelData, "movie")
+                    readonly property string uploadedMovie: panel.cardValue(modelData, "uploadedMovie")
 
                     function shown(value) {
                         return value === "" ? "N/A" : value
@@ -588,15 +701,15 @@ Item {
                                 : "transparent")
                              : (chosen
                                 ? Qt.darker(XsStyleSheet.accentColor, 2)
-                                : rowHover.hovered
+                                : rowHover.hovered || versionPress.containsMouse
                                   ? XsStyleSheet.widgetBgNormalColor
                                   : "transparent")
                     border.width: 1
                     border.color: playlistCard
-                                   ? (rowHover.hovered ? XsStyleSheet.accentColor : "transparent")
+                                   ? (rowHover.hovered || versionPress.containsMouse ? XsStyleSheet.accentColor : "transparent")
                                    : versionCard
-                                     ? (rowHover.hovered ? XsStyleSheet.accentColor : XsStyleSheet.widgetBgNormalColor)
-                                     : (rowHover.hovered ? XsStyleSheet.accentColor : "transparent")
+                                     ? (rowHover.hovered || versionPress.containsMouse ? XsStyleSheet.accentColor : XsStyleSheet.widgetBgNormalColor)
+                                     : (rowHover.hovered || versionPress.containsMouse ? XsStyleSheet.accentColor : "transparent")
 
                     RowLayout {
                         anchors.fill: parent
@@ -1002,6 +1115,19 @@ Item {
                     HoverHandler {
                         id: rowHover
                     }
+
+                    MouseArea {
+                        id: versionPress
+                        anchors.fill: parent
+                        enabled: row.versionCard
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onDoubleClicked: panel.openInCurrent(row)
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton)
+                                versionMenu.showFor(row, versionPress, mouse.x, mouse.y)
+                        }
+                    }
                 }
             }
         }
@@ -1074,6 +1200,19 @@ Item {
         id: expandedPlaylist
         attributeTitle: "ExpandedPlaylist"
         model: shotbrowserAttributes
+    }
+
+    XsAttributeValue {
+        id: openVersionRequest
+        attributeTitle: "OpenVersion"
+        model: shotbrowserAttributes
+    }
+
+    XsAttributeValue {
+        id: openedMedia
+        attributeTitle: "OpenedMedia"
+        model: shotbrowserAttributes
+        onValueChanged: panel.applyOpenedMedia(value)
     }
 
     Connections {
@@ -1333,6 +1472,106 @@ Item {
                         panel.togglePlaylist(name)
                 }
             }
+        }
+    }
+
+    XsPopupMenu {
+        id: versionMenu
+        visible: false
+        menu_model_name: "mikros_version_menu_" + versionMenu
+        property var versionRow: null
+        property var playlistEntries: []
+        property bool playlistMenuReady: false
+        property var panelContext: helpers.contextPanel(versionMenu)
+
+        function samePlaylists(left, right) {
+            if (left.length !== right.length)
+                return false
+            for (let i = 0; i < left.length; i++) {
+                if (left[i].uuid !== right[i].uuid || left[i].name !== right[i].name)
+                    return false
+            }
+            return true
+        }
+
+        // Read the session before the menu opens, so the entry is already
+        // at its position when the popup is shown.
+        function refreshPlaylists() {
+            const root = theSessionData.playlistsRootIdx
+            if (!root || !root.valid)
+                return
+            const next = panel.sessionPlaylists()
+            if (!samePlaylists(playlistEntries, next))
+                playlistEntries = next
+            playlistMenuReady = true
+        }
+
+        function showFor(row, item, x, y) {
+            versionRow = row
+            refreshPlaylists()
+            showMenu(item, x, y)
+        }
+
+        Component.onCompleted: refreshPlaylists()
+
+        Connections {
+            target: theSessionData
+            function onRowsInserted() { versionMenu.refreshPlaylists() }
+            function onRowsRemoved() { versionMenu.refreshPlaylists() }
+            function onModelReset() { versionMenu.refreshPlaylists() }
+            function onDataChanged() { versionMenu.refreshPlaylists() }
+        }
+    }
+
+    Loader {
+        active: versionMenu.playlistMenuReady && versionMenu.playlistEntries.length === 0
+        sourceComponent: Component {
+            Item {
+                XsMenuModelItem {
+                    text: "Add version to playlist"
+                    menuItemType: "button"
+                    menuPath: ""
+                    menuItemPosition: 1
+                    menuModelName: versionMenu.menu_model_name
+                    enabled: false
+                    panelContext: versionMenu.panelContext
+                }
+            }
+        }
+    }
+
+    Repeater {
+        model: versionMenu.playlistEntries
+        Item {
+                XsMenuModelItem {
+                    text: modelData.name
+                    menuItemType: "button"
+                    menuPath: "Add version to playlist"
+                    menuItemPosition: index
+                    menuModelName: versionMenu.menu_model_name
+                    panelContext: versionMenu.panelContext
+                    onActivated: panel.openVersion(
+                        versionMenu.versionRow, modelData.uuid, false)
+                    Component.onCompleted: {
+                        // Keep the submenu on the same row as the disabled entry.
+                        if (index === 0)
+                            setMenuPathPosition("Add version to playlist", 1)
+                    }
+                }
+        }
+    }
+
+    XsMenuModelItem {
+        text: "Add version to new playlist"
+        menuItemType: "button"
+        menuPath: ""
+        menuItemPosition: 2
+        menuModelName: versionMenu.menu_model_name
+        panelContext: versionMenu.panelContext
+        onActivated: {
+            const created = theSessionData.createPlaylist(
+                theSessionData.getNextName("Playlist {}"))
+            panel.openVersion(versionMenu.versionRow, panel.playlistUuidOf(created), false)
         }
     }
 }

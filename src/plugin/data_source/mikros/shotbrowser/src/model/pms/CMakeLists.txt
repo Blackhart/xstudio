@@ -110,7 +110,9 @@ if(BUILD_TESTING)
         tests/shotgrid/test_mapping.cpp
         tests/shotgrid/test_translate.cpp
         tests/test_thumb_store.cpp
+        tests/test_media_plan.cpp
         ../thumb_store.cpp
+        ../media_plan.cpp
     )
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fake/test_fake_backend.cpp"
        AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fake/backend.cpp")

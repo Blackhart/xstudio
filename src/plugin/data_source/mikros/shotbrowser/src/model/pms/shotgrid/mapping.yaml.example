@@ -57,6 +57,9 @@ entities:
       has_notes:        { shotgrid: notes }
       synced_to_client: { shotgrid: sg_synced_to_client }
       sites:            { shotgrid: sg_published_file.PublishedFile.sg_sites }
+      frames:           { shotgrid: sg_path_to_frames, provider: fileSeq }
+      movie:            { shotgrid: sg_path_to_movie, provider: file }
+      uploaded_movie:   { shotgrid: sg_uploaded_movie_mp4, provider: url }
     links:
       project:  { shotgrid: entity, target: project }
       shot:     { shotgrid: entity, target: shot }

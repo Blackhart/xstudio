@@ -57,4 +57,7 @@ entities:
       sites:            { type: string, filter: false, set: false }
       has_notes:        { type: int,    filter: false, set: false }
       synced_to_client: { type: int,    filter: false, set: false }
+      frames:           { type: string, filter: false, set: false, providers: [fileSeq] }
+      movie:            { type: string, filter: false, set: false, providers: [file] }
+      uploaded_movie:   { type: string, filter: false, set: false, providers: [url] }
     scope: [shot, sequence, asset, playlist]

@@ -314,6 +314,18 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
         }
         return;
     }
+    if (field.domain == "uploaded_movie") {
+        std::string url;
+        if (value.is_string()) {
+            url = value.get<std::string>();
+        } else if (value.is_object() && value.contains("url") && value["url"].is_string()) {
+            url = value["url"].get<std::string>(); ///< ShotGrid wraps a signed URL in an object.
+        }
+        if (!url.empty()) {
+            out.fields["uploaded_movie"] = url;
+        }
+        return;
+    }
     if (field.domain == "sites" && value.is_array()) {
         const std::string names = joinNames(value);
         if (!names.empty()) {

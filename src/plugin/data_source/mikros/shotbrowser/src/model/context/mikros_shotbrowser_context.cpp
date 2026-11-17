@@ -9,11 +9,17 @@
 #include "model/context/catalog_load_actor.hpp"
 #include "model/constants.hpp"
 #include "model/log.hpp"
+#include "model/media_open.hpp"
 #include "model/thumb_fetch.hpp"
 #include "model/thumb_store.hpp"
 
 #include "xstudio/atoms.hpp"
+#include "xstudio/media/media_actor.hpp"
+#include "xstudio/utility/frame_list.hpp"
 #include "xstudio/utility/helpers.hpp"
+#include "xstudio/utility/uuid.hpp"
+
+#include <caf/actor_registry.hpp>
 
 #include <type_traits>
 #include <utility>
@@ -145,7 +151,13 @@ utility::JsonStore rowsToJson<poco::Version>(const std::vector<poco::Version> &r
              {"artistic_status", row.artistic_status},
              {"sites", row.sites},
              {"has_notes", row.has_notes},
-             {"synced_to_client", row.synced_to_client}});
+             {"synced_to_client", row.synced_to_client},
+             {"frames", row.frames},
+             {"frames_provider", row.frames_provider},
+             {"movie", row.movie},
+             {"movie_provider", row.movie_provider},
+             {"uploaded_movie", row.uploaded_movie},
+             {"uploaded_movie_provider", row.uploaded_movie_provider}});
     }
     return utility::JsonStore(out);
 }
@@ -178,6 +190,12 @@ std::vector<poco::Version> rowsFromJson<poco::Version>(const utility::JsonStore 
         row.sites = entry.value("sites", std::string());
         row.has_notes = entry.value("has_notes", false);
         row.synced_to_client = entry.value("synced_to_client", false);
+        row.frames = entry.value("frames", std::string());
+        row.frames_provider = entry.value("frames_provider", std::string());
+        row.movie = entry.value("movie", std::string());
+        row.movie_provider = entry.value("movie_provider", std::string());
+        row.uploaded_movie = entry.value("uploaded_movie", std::string());
+        row.uploaded_movie_provider = entry.value("uploaded_movie_provider", std::string());
         rows.push_back(std::move(row));
     }
     return rows;
@@ -522,7 +540,13 @@ nlohmann::json versionFacts(
         {"artisticStatus", row.artistic_status},
         {"sites", row.sites},
         {"hasNotes", row.has_notes},
-        {"syncedToClient", row.synced_to_client}};
+        {"syncedToClient", row.synced_to_client},
+        {"frames", row.frames},
+        {"framesProvider", row.frames_provider},
+        {"movie", row.movie},
+        {"movieProvider", row.movie_provider},
+        {"uploadedMovie", row.uploaded_movie},
+        {"uploadedMovieProvider", row.uploaded_movie_provider}};
 }
 
 /**
@@ -905,6 +929,27 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
 
 } // namespace xstudio::mikros_shotbrowser
 
+namespace {
+
+/**
+ * @brief Reads the open result mailed as catalog JSON.
+ * @param payload Fields written by `resolveOpen`.
+ * @return Paths the panel can add. Empty strings when a field is missing.
+ */
+xstudio::mikros_shotbrowser::OpenReady openReady(const utility::JsonStore &payload) {
+    xstudio::mikros_shotbrowser::OpenReady ready;
+    ready.version_id = payload.value("versionId", std::int64_t{0});
+    ready.token = payload.value("token", std::uint64_t{0});
+    ready.select = payload.value("select", false);
+    ready.name = payload.value("name", std::string());
+    ready.playlist_uuid = payload.value("playlistUuid", std::string());
+    ready.frames_spec = payload.value("framesSpec", std::string());
+    ready.movie_path = payload.value("moviePath", std::string());
+    return ready;
+}
+
+} // namespace
+
 MikrosShotBrowserContext::MikrosShotBrowserContext(
     caf::actor_config &cfg, const utility::JsonStore &init_settings)
     : plugin::StandardPlugin(cfg, "MikrosShotBrowserPlugin", init_settings) {
@@ -968,6 +1013,12 @@ void MikrosShotBrowserContext::addPanelAttributes() {
 
     expanded_playlist_ = add_string_attribute("ExpandedPlaylist", "ExpandedPlaylist", "");
     expanded_playlist_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
+    open_version_ = add_string_attribute("OpenVersion", "OpenVersion", "");
+    open_version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
+    opened_media_ = add_string_attribute("OpenedMedia", "OpenedMedia", "");
+    opened_media_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 std::optional<poco::Project> MikrosShotBrowserContext::findProjectByLabel(
@@ -1437,6 +1488,8 @@ void MikrosShotBrowserContext::attribute_changed(
         onShotChosen();
     } else if (attr_uuid == asset_->uuid()) {
         onAssetChosen();
+    } else if (open_version_ && attr_uuid == open_version_->uuid()) {
+        startOpen(open_version_->value());
     }
     plugin::StandardPlugin::attribute_changed(attr_uuid, role);
 }
@@ -1669,6 +1722,10 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
             const std::int64_t assetId,
             const bool append,
             const utility::JsonStore &payload) {
+            if (catalog == "open_media") {
+                placeOpenedMedia(openReady(payload)); ///< Paths checked off the scheduler.
+                return;
+            }
             if (catalog == "version_thumbs") {
                 rememberThumbs(projectId, payload); ///< Keep the file even if the filter moved on.
                 if (projectStillSelected(projectId)) {
@@ -1716,4 +1773,136 @@ caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {
                     payload);
             }
         }};
+}
+
+void MikrosShotBrowserContext::startOpen(const std::string &text) {
+    if (text.empty()) {
+        return;
+    }
+    nlohmann::json body;
+    try {
+        body = nlohmann::json::parse(text);
+    } catch (const std::exception &) {
+        log::error("open request is not json");
+        return;
+    }
+    if (!body.is_object()) {
+        return;
+    }
+    OpenRequest request;
+    request.version_id = body.value("versionId", std::int64_t{0});
+    request.project_id = selected_project_ ? selected_project_->id : std::int64_t{0};
+    request.token = body.value("token", std::uint64_t{0});
+    request.select = body.value("select", false);
+    request.name = body.value("name", std::string());
+    request.playlist_uuid = body.value("playlistUuid", std::string());
+    request.frames = body.value("frames", std::string());
+    request.frame_range = body.value("frameRange", std::string());
+    request.movie = body.value("movie", std::string());
+    request.uploaded_movie = body.value("uploadedMovie", std::string());
+    if (request.playlist_uuid.empty()) {
+        log::info("open versionId=" + std::to_string(request.version_id) + " playlist=none");
+        return;
+    }
+    resolveOpen(caf::actor_cast<caf::weak_actor_ptr>(this), std::move(request));
+}
+
+void MikrosShotBrowserContext::placeOpenedMedia(const OpenReady &ready) {
+    if (ready.playlist_uuid.empty() || (ready.frames_spec.empty() && ready.movie_path.empty())) {
+        return;
+    }
+    const utility::Uuid playlistId{ready.playlist_uuid};
+    auto global = system().registry().template get<caf::actor>(global_registry);
+    if (!global) {
+        log::error("open versionId=" + std::to_string(ready.version_id) + " session missing");
+        return;
+    }
+    mail(session::session_atom_v)
+        .request(global, caf::infinite)
+        .then(
+            [=](caf::actor session) {
+                mail(session::get_playlist_atom_v, playlistId)
+                    .request(session, caf::infinite)
+                    .then(
+                        [=](caf::actor playlist) {
+                            mail(session::media_rate_atom_v)
+                                .request(playlist, caf::infinite)
+                                .then(
+                                    [=](const utility::FrameRate &rate) {
+                                        addOpenedSources(ready, playlist, rate);
+                                    },
+                                    [=](const caf::error &err) {
+                                        log::error(
+                                            "open versionId=" + std::to_string(ready.version_id) +
+                                            " rate " + caf::to_string(err));
+                                    });
+                        },
+                        [=](const caf::error &err) {
+                            log::error(
+                                "open versionId=" + std::to_string(ready.version_id) +
+                                " playlist " + caf::to_string(err));
+                        });
+            },
+            [=](const caf::error &err) {
+                log::error(
+                    "open versionId=" + std::to_string(ready.version_id) + " session " +
+                    caf::to_string(err));
+            });
+}
+
+void MikrosShotBrowserContext::addOpenedSources(
+    const OpenReady &ready, caf::actor playlist, const utility::FrameRate &rate) {
+    utility::UuidActorVector sources;
+    utility::Uuid movieSource;
+    utility::Uuid framesSource;
+    if (!ready.movie_path.empty()) {
+        const utility::Uuid uuid = utility::Uuid::generate();
+        auto source = spawn<media::MediaSourceActor>(
+            "Movie", utility::posix_path_to_uri(ready.movie_path), rate, uuid);
+        sources.emplace_back(uuid, source); ///< Movie first, so it is the active source.
+        movieSource = uuid;
+    }
+    if (!ready.frames_spec.empty()) {
+        try {
+            utility::FrameList frames;
+            const bool scan = ready.frames_spec.find('=') == std::string::npos;
+            const caf::uri uri = utility::parse_cli_posix_path(ready.frames_spec, frames, scan);
+            if (!frames.empty()) {
+                const utility::Uuid uuid = utility::Uuid::generate();
+                auto source =
+                    spawn<media::MediaSourceActor>("Frames", uri, frames, rate, uuid);
+                sources.emplace_back(uuid, source);
+                framesSource = uuid;
+            }
+        } catch (const std::exception &caught) {
+            log::failure(caught); ///< The sequence parsed during the check and failed again.
+        }
+    }
+    if (sources.empty()) {
+        return;
+    }
+    const utility::Uuid mediaId = utility::Uuid::generate();
+    const std::string name = ready.name.empty() ? "Version" : ready.name;
+    auto media = spawn<media::MediaActor>(name, mediaId, sources);
+    const utility::Uuid active = movieSource.is_null() ? framesSource : movieSource;
+    anon_mail(media::current_media_source_atom_v, active).send(media);
+    mail(playlist::add_media_atom_v, utility::UuidActor(mediaId, media), utility::Uuid())
+        .request(playlist, caf::infinite)
+        .then(
+            [=](const utility::UuidActor &added) {
+                if (!ready.select || !opened_media_) {
+                    return;
+                }
+                const nlohmann::json done = {
+                    {"token", ready.token},
+                    {"select", true},
+                    {"playlistUuid", ready.playlist_uuid},
+                    {"mediaUuid", utility::to_string(added.uuid())}};
+                opened_media_->set_value(done.dump());
+            },
+            [=](const caf::error &err) {
+                log::error(
+                    "open versionId=" + std::to_string(ready.version_id) + " add " +
+                    caf::to_string(err));
+            });
 }
