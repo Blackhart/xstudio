@@ -30,6 +30,9 @@ Cached pages live for 5 minutes and up to 64 MiB. Override either limit with
 the number of cached queries: the byte budget evicts the least recently used
 page.
 
+A catalog page holds 50 rows. Override it with `MIKROS_PMS_PAGE_SIZE`. ShotGrid
+accepts at most 500 rows in one page, and a larger value is rejected.
+
 `pms` backends: `FakeBackend` (local), `ShotGridBackend` (synchronous REST), always
 behind `CachingBackend`.
 

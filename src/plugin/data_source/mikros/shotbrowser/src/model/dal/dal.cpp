@@ -6,17 +6,14 @@
 
 #include "model/dal/dal.hpp"
 
+#include "model/constants.hpp"
 #include "model/log.hpp"
 
 #include "pms/fake/backend.hpp"
 #include "pms/pms.hpp"
 #include "pms/shotgrid/backend.hpp"
 
-#include "xstudio/utility/helpers.hpp"
-
-#include <cerrno>
 #include <chrono>
-#include <cstdlib>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -31,10 +28,7 @@ namespace trace = ::xstudio::mikros_shotbrowser::log;
  * @brief True when the process asked for the ShotGrid backend.
  * @return True when `MIKROS_PMS_BACKEND` is `shotgrid`.
  */
-bool useShotGrid() {
-    const char *mode = std::getenv("MIKROS_PMS_BACKEND");
-    return mode && std::string(mode) == "shotgrid";
-}
+bool useShotGrid() { return constants::backend().value == "shotgrid"; }
 
 /**
  * @brief Path to schema.yaml at runtime.
@@ -44,26 +38,7 @@ bool useShotGrid() {
  *
  * @return Absolute or override path of the domain schema.
  */
-std::string readSchemaPath() {
-    if (const char *overridePath = std::getenv("PMS_SCHEMA_PATH");
-        overridePath && *overridePath) {
-        return overridePath;
-    }
-    return utility::xstudio_root("/mikros_shotbrowser/schema.yaml");
-}
-
-/**
- * @brief Shows enough of a script key to recognise it, never the whole secret.
- * @param key `SHOTGRID_CLIENT_SECRET`.
- * @return `abcd...wxyz length=N`, or only the length when the key is short.
- */
-std::string formatKeyHint(const std::string &key) {
-    const std::string length = "length=" + std::to_string(key.size());
-    if (key.size() <= 8) {
-        return length;
-    }
-    return key.substr(0, 4) + "..." + key.substr(key.size() - 4) + " " + length;
-}
+std::string readSchemaPath() { return constants::schemaPath().value; }
 
 /**
  * @brief Escapes a name so it can sit inside a quoted log field.
@@ -98,16 +73,16 @@ struct ShotGridEnv {
  * @throw pms::Error When one of them is missing or empty.
  */
 ShotGridEnv readShotGridEnv() {
-    const char *url = std::getenv("SHOTGRID_URL");
-    const char *script = std::getenv("SHOTGRID_CLIENT_ID");
-    const char *key = std::getenv("SHOTGRID_CLIENT_SECRET");
-    const char *mapping = std::getenv("SHOTGRID_MAPPING");
-    if (!url || !script || !key || !mapping || !*url || !*script || !*key || !*mapping) {
+    const constants::TextSetting url = constants::shotGridUrl();
+    const constants::TextSetting script = constants::shotGridClientId();
+    const constants::TextSetting key = constants::shotGridClientSecret();
+    const constants::TextSetting mapping = constants::shotGridMapping();
+    if (!url.set || !script.set || !key.set || !mapping.set) {
         throw pms::Error(
             "shotgrid DAL: set SHOTGRID_URL, SHOTGRID_CLIENT_ID, "
             "SHOTGRID_CLIENT_SECRET, SHOTGRID_MAPPING");
     }
-    return ShotGridEnv{url, script, key, mapping};
+    return ShotGridEnv{url.value, script.value, key.value, mapping.value};
 }
 
 /**
@@ -117,7 +92,7 @@ ShotGridEnv readShotGridEnv() {
 void logShotGridSite(const ShotGridEnv &env) {
     trace::info(
         "shotgrid site url=\"" + escapeQuoted(env.url) + "\" script=\"" +
-        escapeQuoted(env.scriptName) + "\" key=" + formatKeyHint(env.scriptKey) +
+        escapeQuoted(env.scriptName) + "\" key=" + constants::keyHint(env.scriptKey) +
         " mapping=\"" + escapeQuoted(env.mappingPath) + "\"");
 }
 
@@ -174,27 +149,6 @@ std::string formatPage(const char *source, const std::string &entity, const pms:
 }
 
 /**
- * @brief Reads a positive integer from the environment.
- * @param name Variable name. Unset or empty keeps `fallback`.
- * @param fallback Value used when `name` is unset.
- * @return The parsed value, or `fallback`.
- * @throw pms::Error When the variable is set but not an integer greater than zero.
- */
-std::uint64_t readPositiveEnv(const char *name, std::uint64_t fallback) {
-    const char *text = std::getenv(name);
-    if (!text || !*text) {
-        return fallback;
-    }
-    char *end = nullptr;
-    errno = 0;
-    const unsigned long long value = std::strtoull(text, &end, 10);
-    if (end == text || *end != '\0' || errno == ERANGE || value == 0) {
-        throw pms::Error(std::string(name) + " must be an integer greater than zero");
-    }
-    return value;
-}
-
-/**
  * @brief Cache trace hooks, lifetime, and byte budget.
  *
  * Defaults are five minutes and 64 MiB. `MIKROS_PMS_CACHE_TTL_SECONDS` and
@@ -205,10 +159,8 @@ std::uint64_t readPositiveEnv(const char *name, std::uint64_t fallback) {
  */
 pms::CacheOptions buildCacheOptions(const std::string &backendName) {
     pms::CacheOptions options;
-    options.ttl = std::chrono::seconds(
-        readPositiveEnv("MIKROS_PMS_CACHE_TTL_SECONDS", options.ttl.count()));
-    options.max_bytes = static_cast<std::size_t>(
-        readPositiveEnv("MIKROS_PMS_CACHE_BYTES", options.max_bytes));
+    options.ttl = std::chrono::seconds(constants::cacheTtlSeconds().value);
+    options.max_bytes = static_cast<std::size_t>(constants::cacheMaxBytes().value);
     options.backend_name = backendName;
     trace::info(
         "cache ttl_seconds=" + std::to_string(options.ttl.count()) +
@@ -404,10 +356,7 @@ RowPage<Row> fetchPage(
 } // namespace
 
 std::size_t readPageLimit() {
-    if (useShotGrid()) {
-        return 500;
-    }
-    return 5;
+    return static_cast<std::size_t>(constants::pageSize().value);
 }
 
 RowPage<poco::Project> findProjects(std::size_t limit, std::optional<std::string> cursor) {

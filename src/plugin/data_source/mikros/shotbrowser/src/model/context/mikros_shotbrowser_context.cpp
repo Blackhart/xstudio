@@ -6,6 +6,7 @@
 
 #include "model/context/mikros_shotbrowser_context.hpp"
 
+#include "model/constants.hpp"
 #include "model/log.hpp"
 #include "model/thumb_fetch.hpp"
 #include "model/thumb_store.hpp"
@@ -624,6 +625,66 @@ void publishPlaylistNames(const TreeMail &mail) {
 }
 
 /**
+ * @brief Writes `set` or `default` after a resolved setting.
+ * @param set True when the environment variable is non-empty.
+ * @return The origin word.
+ */
+const char *settingOrigin(bool set) { return set ? "set" : "default"; }
+
+/**
+ * @brief Formats one text setting for the launch log.
+ * @param name Environment variable name.
+ * @param setting Resolved value.
+ * @return `name=value (set)`, `name=value (default)`, or `name=unset`.
+ */
+std::string textSettingField(const char *name, const constants::TextSetting &setting) {
+    if (!setting.set && setting.value.empty()) {
+        return std::string(name) + "=unset";
+    }
+    return std::string(name) + "=" + setting.value + " (" + settingOrigin(setting.set) + ")";
+}
+
+/**
+ * @brief Formats one numeric setting for the launch log.
+ * @param name Environment variable name.
+ * @param setting Resolved value.
+ * @return `name=value (set)` or `name=value (default)`.
+ */
+std::string numberSettingField(const char *name, const constants::NumberSetting &setting) {
+    return std::string(name) + "=" + std::to_string(setting.value) + " (" +
+           settingOrigin(setting.set) + ")";
+}
+
+/**
+ * @brief Formats the ShotGrid script key without printing the secret.
+ * @return `SHOTGRID_CLIENT_SECRET=unset`, or the redacted key marked `set`.
+ */
+std::string secretSettingField() {
+    const constants::TextSetting secret = constants::shotGridClientSecret();
+    if (!secret.set) {
+        return std::string(constants::kShotGridClientSecret) + "=unset";
+    }
+    return std::string(constants::kShotGridClientSecret) + "=" + constants::keyHint(secret.value) +
+           " (set)";
+}
+
+/**
+ * @brief Logs every Shot Browser setting and whether it came from the environment.
+ */
+void logSettings() {
+    trace::info(
+        std::string("env ") + textSettingField(constants::kBackend, constants::backend()) + " " +
+        numberSettingField(constants::kCacheTtlSeconds, constants::cacheTtlSeconds()) + " " +
+        numberSettingField(constants::kCacheBytes, constants::cacheMaxBytes()) + " " +
+        numberSettingField(constants::kPageSize, constants::pageSize()) + " " +
+        textSettingField(constants::kSchemaPath, constants::schemaPath()) + " " +
+        textSettingField(constants::kShotGridUrl, constants::shotGridUrl()) + " " +
+        textSettingField(constants::kShotGridClientId, constants::shotGridClientId()) + " " +
+        textSettingField(constants::kShotGridMapping, constants::shotGridMapping()) + " " +
+        secretSettingField());
+}
+
+/**
  * @brief Logs every path the Shot Browser writes.
  */
 void logWriteLocations() {
@@ -648,6 +709,7 @@ MikrosShotBrowserContext::MikrosShotBrowserContext(
     : plugin::StandardPlugin(cfg, "MikrosShotBrowserPlugin", init_settings) {
 
     addPanelAttributes(); ///< Combos and trees the panel binds to.
+    logSettings();       ///< Each environment variable, and whether it is set or default.
     logWriteLocations(); ///< Preferences file and thumbnail directory, resolved now.
     make_behavior();
     connect_to_ui();

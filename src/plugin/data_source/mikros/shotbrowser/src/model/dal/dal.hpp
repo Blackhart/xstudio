@@ -22,10 +22,10 @@ namespace xstudio::mikros_shotbrowser::dal {
 /**
  * @brief Page size for catalog reads.
  *
- * The fake backend stays at 5 so paging stays visible. ShotGrid uses 500, the
- * maximum its REST search accepts.
+ * The default is 50 for every backend. `MIKROS_PMS_PAGE_SIZE` replaces it.
+ * A value above 500 is rejected: that is the largest page ShotGrid accepts.
  *
- * @return Rows requested per page for the active backend.
+ * @return Rows requested per page.
  */
 std::size_t readPageLimit();
 

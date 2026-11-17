@@ -10,6 +10,7 @@ set(CMAKE_AUTORCC ON)
 
 set(SOURCES
 	mikros_shotbrowser_plugin.cpp
+	model/constants.cpp
 	model/dal/dal.cpp
 	model/log.cpp
 	model/thumb_store.cpp
