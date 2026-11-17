@@ -16,7 +16,7 @@ namespace pms {
  * @brief Stops a function parameter from taking part in template deduction.
  *
  * Comparison operators deduce the value type from the field proxy, then let
- * the argument convert to it. `status == "ip"` therefore builds a string leaf.
+ * the argument convert to it. `name == "paw01"` therefore builds a string leaf.
  *
  * @tparam T Value type of the field.
  */
@@ -34,7 +34,7 @@ template <typename T> struct NonDeduced {
  * @tparam T C++ type of the field value.
  */
 template <typename Entity, typename T> struct Field {
-    const char *key = nullptr; ///< YAML field name, such as `"start_date"`.
+    const char *key = nullptr; ///< YAML field name, such as `"name"`.
 
     /**
      * @brief Binds the proxy to a YAML key.

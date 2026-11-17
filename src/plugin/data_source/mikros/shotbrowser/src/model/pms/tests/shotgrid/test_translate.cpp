@@ -26,15 +26,15 @@ TEST_CASE("filters for an unfiltered project find") {
     CHECK(filters.is_null());
 }
 
-TEST_CASE("filters for project where status") {
+TEST_CASE("filters for project where code") {
     const ShotGridMapping mapping = filledMapping();
-    Ir ir = Project().Where(status == "ip").ir();
+    Ir ir = Project().Where(code == "PAW01").ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
     REQUIRE(filters.is_array());
-    CHECK(filters[0] == "sg_status_list");
+    CHECK(filters[0] == "code");
     CHECK(filters[1] == "is");
-    CHECK(filters[2] == "ip");
+    CHECK(filters[2] == "PAW01");
 }
 
 TEST_CASE("filters for sequence in project by id") {
@@ -141,15 +141,11 @@ TEST_CASE("record maps attributes to domain fields") {
         {"type", "Project"},
         {"id", 12},
         {"attributes",
-         {{"name", "paw01"},
-          {"code", "PAW01"},
-          {"sg_status_list", "ip"},
-          {"start_date", "2026-01-02"}}}};
+         {{"name", "paw01"}, {"code", "PAW01"}}}};
     const Record record = shotgridRecordFromJson(row, *project);
     CHECK(std::get<std::int64_t>(record.at("id")) == 12);
     CHECK(std::get<std::string>(record.at("name")) == "paw01");
-    CHECK(std::get<std::string>(record.at("status")) == "ip");
-    CHECK(std::get<Date>(record.at("start_date")) == Date{2026, 1, 2});
+    CHECK(std::get<std::string>(record.at("code")) == "PAW01");
 }
 
 TEST_CASE("version image copies the url and the mapping provider") {

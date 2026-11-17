@@ -55,7 +55,7 @@ struct Record {
 
     /**
      * @brief Returns the value stored at `key`.
-     * @param key Domain field name, such as `"name"` or `"start_date"`.
+     * @param key Domain field name, such as `"name"` or `"code"`.
      * @return The stored scalar.
      * @throw std::out_of_range When `key` is absent.
      */

@@ -28,15 +28,11 @@ TEST_CASE("schema loads the project entity") {
     CHECK(name->filter);
     CHECK(name->canSet);
 
-    const FieldSpec *start = project->field("start_date");
-    REQUIRE(start != nullptr);
-    CHECK(start->type == "date");
-    CHECK(start->filter);
-    CHECK(start->canSet);
-
-    CHECK(project->field("delivery_date") != nullptr);
-    CHECK(project->field("code") != nullptr);
-    CHECK(project->field("status") != nullptr);
+    const FieldSpec *code = project->field("code");
+    REQUIRE(code != nullptr);
+    CHECK(code->type == "string");
+    CHECK(code->filter);
+    CHECK(code->canSet);
     CHECK(schema.entity("episode") == nullptr);
 }
 
@@ -128,9 +124,6 @@ TEST_CASE("generated proxies use the schema keys") {
     CHECK(std::string(project::id.key) == "id");
     CHECK(std::string(project::name.key) == "name");
     CHECK(std::string(project::code.key) == "code");
-    CHECK(std::string(project::startDate.key) == "start_date");
-    CHECK(std::string(project::deliveryDate.key) == "delivery_date");
-    CHECK(std::string(project::status.key) == "status");
     CHECK(Project().ir().entity == "project");
 
     CHECK(std::string(sequence::id.key) == "id");

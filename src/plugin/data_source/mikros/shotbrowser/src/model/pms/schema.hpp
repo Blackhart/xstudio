@@ -39,7 +39,7 @@ struct EntitySpec {
 
     /**
      * @brief Finds a field by its YAML key.
-     * @param key Field name, such as `"start_date"`.
+     * @param key Field name, such as `"name"`.
      * @return The field, or null when the entity does not declare it.
      */
     const FieldSpec *field(const std::string &key) const;

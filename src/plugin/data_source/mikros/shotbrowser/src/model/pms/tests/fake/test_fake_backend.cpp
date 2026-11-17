@@ -32,22 +32,17 @@ TEST_CASE("the fake backend lists twenty projects") {
     CHECK(std::get<std::int64_t>(rows.front().at("id")) == 1);
     CHECK(std::get<std::string>(rows.front().at("name")) == "paw01");
     CHECK(std::get<std::string>(rows.front().at("code")) == "PAW01");
-    CHECK(std::get<std::string>(rows.front().at("status")) == "ip");
-    CHECK(std::get<Date>(rows.front().at("start_date")) == Date{2026, 1, 1});
     CHECK(std::get<std::int64_t>(rows.back().at("id")) == 20);
     CHECK(std::get<std::string>(rows.back().at("name")) == "paw20");
-    CHECK(std::get<std::string>(rows.back().at("status")) == "hld");
+    CHECK(std::get<std::string>(rows.back().at("code")) == "PAW20");
 }
 
 TEST_CASE("the fake backend applies a where clause") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records inProgress = Project().Where(status == "ip").find(session).rows;
-    CHECK(inProgress.size() == 5);
-    for (const Record &row : inProgress) {
-        CHECK(std::get<std::string>(row.at("status")) == "ip");
-    }
+    const Records others = Project().Where(name != "paw01").find(session).rows;
+    CHECK(others.size() == FakeBackend::projectCount - 1);
 
     const Records one = Project().Where(name == "paw07").find(session).rows;
     REQUIRE(one.size() == 1);

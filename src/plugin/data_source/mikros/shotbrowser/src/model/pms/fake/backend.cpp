@@ -22,7 +22,6 @@ namespace pms {
 namespace {
 
 Records makeProjects() {
-    const char *statuses[] = {"ip", "wtg", "fin", "hld"};
     Records rows;
     rows.reserve(FakeBackend::projectCount);
     for (int index = 1; index <= static_cast<int>(FakeBackend::projectCount); ++index) {
@@ -31,9 +30,6 @@ Records makeProjects() {
         row.fields["id"] = std::int64_t{index};
         row.fields["name"] = "paw" + number;
         row.fields["code"] = "PAW" + number;
-        row.fields["status"] = std::string(statuses[(index - 1) % 4]);
-        row.fields["start_date"] = Date{2026, 1, index};
-        row.fields["delivery_date"] = Date{2026, 6, index};
         rows.push_back(std::move(row));
     }
     return rows;

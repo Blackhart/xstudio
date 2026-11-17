@@ -15,7 +15,7 @@ Record projectRow(std::int64_t id, const std::string &name) {
     Record row;
     row.fields["id"] = id;
     row.fields["name"] = name;
-    row.fields["status"] = std::string("ip");
+    row.fields["code"] = std::string("PAW");
     return row;
 }
 
@@ -26,14 +26,14 @@ TEST_CASE("find sends the ir and returns the backend records") {
     backend.next = {projectRow(12, "paw3"), projectRow(13, "paw4")};
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records rows = Project().Where(status == "ip").find(session).rows;
+    const Records rows = Project().Where(code == "PAW").find(session).rows;
 
     REQUIRE(backend.calls.size() == 1);
     const char *expected = R"(op: find
 entity: project
 in:
 where:
-  field status eq "ip"
+  field code eq "PAW"
 )";
     CHECK(dump(backend.calls[0]) == expected);
     REQUIRE(rows.size() == 2);
@@ -65,7 +65,7 @@ TEST_CASE("find of nothing is an empty vector") {
 TEST_CASE("find rejects a record without identity") {
     RecordingBackend backend;
     Record row;
-    row.fields["status"] = std::string("ip");
+    row.fields["name"] = std::string("paw");
     backend.next = {row};
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
     CHECK_THROWS_WITH_AS(Project().find(session), "record missing \"id\"", Error);

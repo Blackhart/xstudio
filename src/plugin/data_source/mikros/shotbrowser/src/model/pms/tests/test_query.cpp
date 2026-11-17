@@ -9,8 +9,8 @@ using namespace pms::project;
 
 TEST_CASE("where builds a stable tree") {
     const Ir ir = Project()
-                      .Where((status == "ip" || status == "wtg") && name != "archive" &&
-                             !(code == "OLD"))
+                      .Where((code == "PAW01" || code == "PAW02") && name != "archive" &&
+                             !(name == "OLD"))
                       .ir();
 
     const char *expected = R"(op:
@@ -20,19 +20,19 @@ where:
   and
     and
       or
-        field status eq "ip"
-        field status eq "wtg"
+        field code eq "PAW01"
+        field code eq "PAW02"
       field name ne "archive"
     not
-      field code eq "OLD"
+      field name eq "OLD"
 )";
     CHECK(dump(ir) == expected);
     CHECK_FALSE(ir.op.has_value());
 }
 
 TEST_CASE("two where clauses combine with and") {
-    const std::string split = dump(Project().Where(status == "ip").Where(name != "archive").ir());
-    const std::string once = dump(Project().Where(status == "ip" && name != "archive").ir());
+    const std::string split = dump(Project().Where(code == "PAW01").Where(name != "archive").ir());
+    const std::string once = dump(Project().Where(code == "PAW01" && name != "archive").ir());
     CHECK(split == once);
 
     const char *nested = R"(op:
@@ -41,33 +41,27 @@ in:
 where:
   and
     and
-      field status eq "ip"
+      field code eq "PAW01"
       field name ne "archive"
-    field code eq "NEW"
+    field name eq "NEW"
 )";
-    CHECK(dump(Project().Where(status == "ip").Where(name != "archive").Where(code == "NEW").ir()) ==
+    CHECK(dump(Project().Where(code == "PAW01").Where(name != "archive").Where(name == "NEW").ir()) ==
           nested);
 }
 
-TEST_CASE("dates are parsed into the leaf") {
-    const char *expected = R"(op:
-entity: project
-in:
-where:
-  field start_date eq 2024-02-29
-)";
-    CHECK(dump(Project().Where(startDate == std::string("2024-02-29")).ir()) == expected);
-    CHECK_THROWS_AS(startDate == std::string("2026-02-29"), Error);
-    CHECK_THROWS_AS(deliveryDate == std::string("2026-13-01"), Error);
-    CHECK_THROWS_AS(startDate != std::string("not-a-date"), Error);
+TEST_CASE("an iso date parses into a calendar day") {
+    CHECK(parseDate("2024-02-29") == Date{2024, 2, 29});
+    CHECK_THROWS_AS(parseDate("2026-02-29"), Error);
+    CHECK_THROWS_AS(parseDate("2026-13-01"), Error);
+    CHECK_THROWS_AS(parseDate("not-a-date"), Error);
 }
 
 TEST_CASE("a hand built tree dumps the same way") {
-    auto status = std::make_shared<ExprNode>();
-    status->op = ExprOp::Eq;
-    status->kind = ExprKind::Field;
-    status->key = "status";
-    status->value = std::string("ip");
+    auto code = std::make_shared<ExprNode>();
+    code->op = ExprOp::Eq;
+    code->kind = ExprKind::Field;
+    code->key = "code";
+    code->value = std::string("PAW01");
 
     auto name = std::make_shared<ExprNode>();
     name->op = ExprOp::Ne;
@@ -78,7 +72,7 @@ TEST_CASE("a hand built tree dumps the same way") {
     auto both = std::make_shared<ExprNode>();
     both->op = ExprOp::And;
     both->kind = ExprKind::Group;
-    both->args = {status, name};
+    both->args = {code, name};
 
     Ir ir;
     ir.entity = "project";
@@ -89,7 +83,7 @@ entity: project
 in:
 where:
   and
-    field status eq "ip"
+    field code eq "PAW01"
     field name ne "archive"
 )";
     CHECK(dump(ir) == expected);

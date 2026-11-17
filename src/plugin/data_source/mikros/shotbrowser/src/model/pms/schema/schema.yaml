@@ -8,12 +8,9 @@ entities:
   project:
     creatable: false
     fields:
-      id:            { type: int,    filter: true, set: false }
-      name:          { type: string, filter: true, set: true }
-      code:          { type: string, filter: true, set: true }
-      start_date:    { type: date,   filter: true, set: true }
-      delivery_date: { type: date,   filter: true, set: true }
-      status:        { type: string, filter: true, set: true }
+      id:   { type: int,    filter: true, set: false }
+      name: { type: string, filter: true, set: true }
+      code: { type: string, filter: true, set: true }
     scope: []
 
   sequence:

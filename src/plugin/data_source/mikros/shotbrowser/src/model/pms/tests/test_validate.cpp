@@ -42,7 +42,7 @@ TEST_CASE("validate rejects a broken tree") {
 
     Ir bare;
     bare.entity = "project";
-    bare.where = fieldIr("status", ExprOp::Eq, std::string("ip")).where;
+    bare.where = fieldIr("name", ExprOp::Eq, std::string("paw")).where;
     CHECK_THROWS_WITH_AS(validate(bare, loaded), "missing operation", Error);
 
     Ir unknownEntity;
@@ -62,7 +62,7 @@ TEST_CASE("validate rejects a broken tree") {
     auto group = std::make_shared<ExprNode>();
     group->op = ExprOp::Not;
     group->kind = ExprKind::Group;
-    group->args = {fieldIr("status", ExprOp::Eq, std::string("ip")).where,
+    group->args = {fieldIr("code", ExprOp::Eq, std::string("PAW01")).where,
                    fieldIr("name", ExprOp::Eq, std::string("paw")).where};
     Ir badNot;
     badNot.op = Op::Find;

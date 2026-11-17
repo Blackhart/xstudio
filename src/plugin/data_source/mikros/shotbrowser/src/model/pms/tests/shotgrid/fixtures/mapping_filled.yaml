@@ -3,12 +3,9 @@ entities:
   project:
     shotgrid: Project
     fields:
-      id:            { shotgrid: id }
-      name:          { shotgrid: name }
-      code:          { shotgrid: code }
-      start_date:    { shotgrid: start_date }
-      delivery_date: { shotgrid: sg_delivery_date }
-      status:        { shotgrid: sg_status_list }
+      id:   { shotgrid: id }
+      name: { shotgrid: name }
+      code: { shotgrid: code }
     links: {}
 
   sequence:
