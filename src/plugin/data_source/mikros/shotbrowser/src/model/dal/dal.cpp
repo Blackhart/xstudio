@@ -14,6 +14,8 @@
 
 #include "xstudio/utility/helpers.hpp"
 
+#include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <optional>
 #include <sstream>
@@ -171,23 +173,46 @@ std::string formatPage(const char *source, const std::string &entity, const pms:
     return out.str();
 }
 
-constexpr std::size_t kCacheEntries = 4096;          ///< Distinct pages kept for one project.
-constexpr std::size_t kCacheBytes = 64 * 1024 * 1024; ///< Counted size of those pages.
+/**
+ * @brief Reads a positive integer from the environment.
+ * @param name Variable name. Unset or empty keeps `fallback`.
+ * @param fallback Value used when `name` is unset.
+ * @return The parsed value, or `fallback`.
+ * @throw pms::Error When the variable is set but not an integer greater than zero.
+ */
+std::uint64_t readPositiveEnv(const char *name, std::uint64_t fallback) {
+    const char *text = std::getenv(name);
+    if (!text || !*text) {
+        return fallback;
+    }
+    char *end = nullptr;
+    errno = 0;
+    const unsigned long long value = std::strtoull(text, &end, 10);
+    if (end == text || *end != '\0' || errno == ERANGE || value == 0) {
+        throw pms::Error(std::string(name) + " must be an integer greater than zero");
+    }
+    return value;
+}
 
 /**
- * @brief Cache trace hooks and the production page budget.
+ * @brief Cache trace hooks, lifetime, and byte budget.
  *
- * Shots are one query per sequence. A project of a few hundred sequences, plus
- * its version pages, needs more than the library default of 128 entries and 4 MiB.
+ * Defaults are five minutes and 64 MiB. `MIKROS_PMS_CACHE_TTL_SECONDS` and
+ * `MIKROS_PMS_CACHE_BYTES` replace them. Eviction follows the byte budget only.
  *
  * @param backendName `shotgrid` or `fake`.
  * @return Options passed to `CachingBackend`.
  */
 pms::CacheOptions buildCacheOptions(const std::string &backendName) {
     pms::CacheOptions options;
-    options.max_entries = kCacheEntries;
-    options.max_bytes = kCacheBytes;
+    options.ttl = std::chrono::seconds(
+        readPositiveEnv("MIKROS_PMS_CACHE_TTL_SECONDS", options.ttl.count()));
+    options.max_bytes = static_cast<std::size_t>(
+        readPositiveEnv("MIKROS_PMS_CACHE_BYTES", options.max_bytes));
     options.backend_name = backendName;
+    trace::info(
+        "cache ttl_seconds=" + std::to_string(options.ttl.count()) +
+        " max_bytes=" + std::to_string(options.max_bytes));
     options.trace_ir = [](const pms::Ir &ir) {
         trace::info("request intermediate representation\n" + trimNewline(pms::dump(ir)));
     };

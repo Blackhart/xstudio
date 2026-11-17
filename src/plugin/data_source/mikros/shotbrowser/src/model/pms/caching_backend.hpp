@@ -26,9 +26,8 @@ namespace pms {
  * so unbounded catalogs never fill the cache.
  */
 struct CacheOptions {
-    std::chrono::seconds ttl{60};      ///< Lifetime of each cached page.
-    std::size_t max_entries{128};      ///< Hard cap on distinct queries.
-    std::size_t max_bytes{4 * 1024 * 1024}; ///< Approximate byte budget for pages.
+    std::chrono::seconds ttl{300};             ///< Lifetime of each cached page. Five minutes.
+    std::size_t max_bytes{64 * 1024 * 1024};   ///< Approximate byte budget for pages.
     /// Name of the wrapped backend, forwarded on a cache miss (`fake`, `shotgrid`).
     std::string backend_name{"backend"};
     /// Incoming IR, called before the cache lookup. Empty disables the trace.
@@ -46,8 +45,8 @@ struct CacheOptions {
  * @brief Caches limited find results keyed by dump(ir).
  *
  * Thread-safe. Misses call the inner backend. Entries expire after `ttl`, and
- * the least-recently-used entry is dropped when max_entries or max_bytes is
- * exceeded. Call clear() on project change or explicit refresh.
+ * the least-recently-used entry is dropped when `max_bytes` is exceeded. Call
+ * clear() on project change or explicit refresh.
  */
 class CachingBackend : public Backend {
   public:

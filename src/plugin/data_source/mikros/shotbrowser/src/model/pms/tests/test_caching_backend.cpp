@@ -128,14 +128,14 @@ TEST_CASE("caching backend does not cache unlimited find") {
 TEST_CASE("caching backend evicts the least recently used entry") {
     RecordingBackend backend;
     CacheOptions options;
-    options.max_entries = 1;
-    options.max_bytes = 1024 * 1024;
+    options.max_bytes = 80 * 1024; ///< One heavy page fits. Two do not.
     CachingBackend cache(backend, options);
     Session session(Schema::load(PMS_SCHEMA_PATH), cache);
 
-    backend.next = {projectRow(1, "paw01")};
+    const std::string heavy(64 * 1024, 'a');
+    backend.next = {projectRow(1, heavy)};
     CHECK(Project().Limit(1).find(session).rows.size() == 1);
-    backend.next = {projectRow(2, "paw02")};
+    backend.next = {projectRow(2, heavy)};
     CHECK(Project().Limit(2).find(session).rows.size() == 1);
     CHECK(cache.size() == 1);
 

@@ -25,6 +25,11 @@ shotbrowser/
 
 Flow: `pms` → DAL → context → view.
 
+Cached pages live for 5 minutes and up to 64 MiB. Override either limit with
+`MIKROS_PMS_CACHE_TTL_SECONDS` or `MIKROS_PMS_CACHE_BYTES`. There is no cap on
+the number of cached queries: the byte budget evicts the least recently used
+page.
+
 `pms` backends: `FakeBackend` (local), `ShotGridBackend` (synchronous REST), always
 behind `CachingBackend`.
 

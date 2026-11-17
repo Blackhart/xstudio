@@ -14,9 +14,6 @@ namespace pms {
 
 CachingBackend::CachingBackend(Backend &inner, CacheOptions options, Clock clock)
     : inner_(&inner), options_(std::move(options)), clock_(std::move(clock)) {
-    if (options_.max_entries == 0) {
-        throw Error("caching backend: max_entries must be greater than zero");
-    }
     if (options_.max_bytes == 0) {
         throw Error("caching backend: max_bytes must be greater than zero");
     }
@@ -73,8 +70,7 @@ std::size_t CachingBackend::approxBytes(const Page &page) {
 }
 
 void CachingBackend::evictIfNeeded() {
-    while ((!map_.empty()) &&
-           (map_.size() > options_.max_entries || total_bytes_ > options_.max_bytes)) {
+    while (!map_.empty() && total_bytes_ > options_.max_bytes) {
         const std::string &victim = order_.back();
         const auto found = map_.find(victim);
         if (found != map_.end()) {
