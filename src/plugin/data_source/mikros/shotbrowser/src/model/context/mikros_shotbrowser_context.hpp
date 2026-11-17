@@ -123,7 +123,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     /** @brief Streams asset pages for one project. */
     void startAssetLoad(std::uint64_t requestId, std::int64_t projectId);
 
-    /** @brief Empties the version combo. */
+    /** @brief Empties the version combo and marks the list as still loading. */
     void resetVersionCatalog();
     /** @brief Clears then streams version pages for the current selection. */
     void refreshVersions();
@@ -255,6 +255,7 @@ class MikrosShotBrowserContext : public plugin::StandardPlugin {
     module::JsonAttribute *shot_tree_ = nullptr;         ///< Sequences with their shot names.
     module::StringChoiceAttribute *asset_ = nullptr;     ///< Asset combo.
     module::StringChoiceAttribute *version_ = nullptr;   ///< Version combo.
+    module::BooleanAttribute *versions_loaded_ = nullptr; ///< True once the current version request has delivered a page.
     module::JsonAttribute *playlist_tree_ = nullptr;     ///< Playlists with their version names.
 };
 

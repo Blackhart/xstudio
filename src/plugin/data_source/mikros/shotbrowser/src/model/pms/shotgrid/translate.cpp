@@ -9,7 +9,6 @@
 #include "pms/error.hpp"
 
 #include <iomanip>
-#include <queue>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -48,53 +47,74 @@ struct LinkHop {
     std::string target;
 };
 
-std::vector<LinkHop> linkPathTo(
+/**
+ * @brief Collects every ownership path from `from` to `parent`.
+ *
+ * A direct link and a longer link are both kept, so a version in a sequence
+ * includes versions whose entity is that sequence and versions whose entity is
+ * a shot of that sequence. Playlist membership is not an ownership bridge: the
+ * playlist link is used only when the parent is the playlist itself.
+ *
+ * @param mapping Domain ↔ ShotGrid map.
+ * @param from Entity being queried, such as `"version"`.
+ * @param parent Scope parent, such as `"project"`.
+ * @return Paths in mapping order. Each path is one or more hops.
+ * @throw Error When `from` is unknown, a link target is incomplete, or no path exists.
+ */
+std::vector<std::vector<LinkHop>> linkPathsTo(
     const ShotGridMapping &mapping, const std::string &from, const std::string &parent) {
-    const ShotGridSchema *start = mapping.findSchema(from);
-    if (!start) {
+    if (!mapping.findSchema(from)) {
         throw Error("shotgrid: unknown entity \"" + from + "\"");
     }
-    if (const ShotGridSchemaLink *direct = start->findLink(parent)) {
-        const ShotGridSchema *target = mapping.findSchema(direct->shotgridTargetName);
-        if (!target || target->shotgridName.empty()) {
-            throw Error("shotgrid: incomplete target for link \"" + parent + "\"");
-        }
-        return {LinkHop{direct->shotgrid, target->shotgridName, direct->shotgridTargetName}};
-    }
 
-    struct Node {
-        std::string domain;
-        std::vector<LinkHop> path;
+    std::vector<std::vector<LinkHop>> found;
+    std::vector<LinkHop> path;
+    std::unordered_set<std::string> onPath;
+
+    struct Walk {
+        const ShotGridMapping &mapping;
+        const std::string &parent;
+        std::vector<std::vector<LinkHop>> &found;
+        std::vector<LinkHop> &path;
+        std::unordered_set<std::string> &onPath;
+
+        void visit(const std::string &domain) {
+            if (!onPath.insert(domain).second) {
+                return; ///< A cycle in the mapping is not another ownership path.
+            }
+            const ShotGridSchema *schema = mapping.findSchema(domain);
+            if (!schema) {
+                onPath.erase(domain);
+                return;
+            }
+            for (const ShotGridSchemaLink &link : schema->links) {
+                const bool reachesParent = link.shotgridTargetName == parent;
+                if (!reachesParent && link.shotgridTargetName == "playlist") {
+                    continue; ///< Playlist membership does not place a version in a project.
+                }
+                const ShotGridSchema *target = mapping.findSchema(link.shotgridTargetName);
+                if (link.shotgrid.empty() || !target || target->shotgridName.empty()) {
+                    throw Error("shotgrid: incomplete target for link \"" + link.domain + "\"");
+                }
+                path.push_back(
+                    LinkHop{link.shotgrid, target->shotgridName, link.shotgridTargetName});
+                if (reachesParent) {
+                    found.push_back(path);
+                } else {
+                    visit(link.shotgridTargetName);
+                }
+                path.pop_back();
+            }
+            onPath.erase(domain);
+        }
     };
-    std::queue<Node> queue;
-    std::unordered_set<std::string> seen;
-    queue.push(Node{from, {}});
-    seen.insert(from);
-    while (!queue.empty()) {
-        Node node = std::move(queue.front());
-        queue.pop();
-        const ShotGridSchema *schema = mapping.findSchema(node.domain);
-        if (!schema) {
-            continue;
-        }
-        for (const ShotGridSchemaLink &link : schema->links) {
-            if (seen.count(link.shotgridTargetName) != 0) {
-                continue;
-            }
-            const ShotGridSchema *target = mapping.findSchema(link.shotgridTargetName);
-            if (!target || target->shotgridName.empty() || link.shotgrid.empty()) {
-                continue;
-            }
-            std::vector<LinkHop> next = node.path;
-            next.push_back(LinkHop{link.shotgrid, target->shotgridName, link.shotgridTargetName});
-            if (link.shotgridTargetName == parent) {
-                return next;
-            }
-            seen.insert(link.shotgridTargetName);
-            queue.push(Node{link.shotgridTargetName, std::move(next)});
-        }
+
+    Walk walk{mapping, parent, found, path, onPath};
+    walk.visit(from);
+    if (found.empty()) {
+        throw Error("shotgrid: no link path from \"" + from + "\" to parent \"" + parent + "\"");
     }
-    throw Error("shotgrid: no link path from \"" + from + "\" to parent \"" + parent + "\"");
+    return found;
 }
 
 std::string pathField(const std::vector<LinkHop> &hops, const std::string &leaf = {}) {
@@ -112,13 +132,20 @@ std::string pathField(const std::vector<LinkHop> &hops, const std::string &leaf 
     return out.str();
 }
 
-nlohmann::json scopeCondition(
-    const ExprNode &node, const ShotGridMapping &mapping, const std::string &entity) {
-    const char *op = comparisonOp(node.op);
-    if (!op || !node.value) {
-        throw Error("shotgrid: invalid scope leaf on \"" + node.key + "\"");
-    }
-    const std::vector<LinkHop> hops = linkPathTo(mapping, entity, node.key);
+/**
+ * @brief One ShotGrid condition for a single ownership path.
+ * @param node Scope leaf. `value` is an id or a parent name.
+ * @param mapping Domain ↔ ShotGrid map, used to resolve a parent name field.
+ * @param hops One path from `linkPathsTo`.
+ * @param op ShotGrid comparison, `"is"` or `"is_not"`.
+ * @return A basic condition array.
+ * @throw Error When the value is neither an id nor a name, or the parent has no name field.
+ */
+nlohmann::json pathCondition(
+    const ExprNode &node,
+    const ShotGridMapping &mapping,
+    const std::vector<LinkHop> &hops,
+    const char *op) {
     if (const auto *id = std::get_if<std::int64_t>(&*node.value)) {
         nlohmann::json condition = nlohmann::json::array();
         condition.push_back(pathField(hops));
@@ -139,6 +166,26 @@ nlohmann::json scopeCondition(
         return condition;
     }
     throw Error("shotgrid: scope \"" + node.key + "\" expects id or name");
+}
+
+nlohmann::json scopeCondition(
+    const ExprNode &node, const ShotGridMapping &mapping, const std::string &entity) {
+    const char *op = comparisonOp(node.op);
+    if (!op || !node.value) {
+        throw Error("shotgrid: invalid scope leaf on \"" + node.key + "\"");
+    }
+    const std::vector<std::vector<LinkHop>> paths = linkPathsTo(mapping, entity, node.key);
+    nlohmann::json conditions = nlohmann::json::array();
+    for (const std::vector<LinkHop> &hops : paths) {
+        conditions.push_back(pathCondition(node, mapping, hops, op));
+    }
+    if (conditions.size() == 1) {
+        return conditions[0]; ///< One path stays a basic condition.
+    }
+    nlohmann::json combined;
+    combined["logical_operator"] = "or"; ///< Every ownership path belongs to the same parent.
+    combined["conditions"] = std::move(conditions);
+    return combined;
 }
 
 nlohmann::json fieldCondition(const ExprNode &node, const ShotGridSchema &schema) {

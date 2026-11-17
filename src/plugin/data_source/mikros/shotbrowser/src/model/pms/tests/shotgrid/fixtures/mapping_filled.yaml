@@ -49,6 +49,7 @@ entities:
       id:   { shotgrid: id }
       name: { shotgrid: code }
     links:
+      project:  { shotgrid: entity, target: project }
       shot:     { shotgrid: entity, target: shot }
       sequence: { shotgrid: entity, target: sequence }
       asset:    { shotgrid: entity, target: asset }

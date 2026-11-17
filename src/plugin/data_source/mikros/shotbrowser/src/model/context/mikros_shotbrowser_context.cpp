@@ -566,6 +566,9 @@ void MikrosShotBrowserContext::addPanelAttributes() {
     version_ = add_string_choice_attribute("Version", "Version", "", {}, {});
     version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 
+    versions_loaded_ = add_boolean_attribute("VersionsLoaded", "VersionsLoaded", false);
+    versions_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+
     playlist_tree_ = add_json_attribute("PlaylistTree", "PlaylistTree", nlohmann::json::array());
     playlist_tree_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 
@@ -811,6 +814,7 @@ void MikrosShotBrowserContext::startAssetLoad(std::uint64_t requestId, std::int6
 void MikrosShotBrowserContext::resetVersionCatalog() {
     ++version_request_id_; ///< Drop pages from the previous version load.
     versions_.clear();
+    versions_loaded_->set_value(false); ///< An empty combo is a load in progress, not a result.
     version_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
     version_->set_value("");
 }
@@ -1240,6 +1244,7 @@ void MikrosShotBrowserContext::applyVersionPage(
         return;
     }
     applyCatalogPage(versions_, version_, rowsFromJson<poco::Version>(payload), append);
+    versions_loaded_->set_value(true); ///< Zero rows is a finished load.
 }
 
 caf::message_handler MikrosShotBrowserContext::message_handler_extensions() {

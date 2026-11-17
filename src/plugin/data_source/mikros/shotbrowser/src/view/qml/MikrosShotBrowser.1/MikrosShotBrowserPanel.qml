@@ -96,6 +96,14 @@ Item {
         return "No results"
     }
 
+    function versionListPlaceholder() {
+        if (!project.value)
+            return "No project selected"
+        if (!versionsLoaded.value)
+            return "Loading…"
+        return "No results"
+    }
+
     function shotTreeNodes() {
         let value = shotTree.value
         if (!value)
@@ -1006,6 +1014,12 @@ Item {
     Catalog { id: asset; title: "Asset"; source: shotbrowserAttributes }
     Catalog { id: version; title: "Version"; source: shotbrowserAttributes }
 
+    XsAttributeValue {
+        id: versionsLoaded
+        attributeTitle: "VersionsLoaded"
+        model: shotbrowserAttributes
+    }
+
     XsSplitView {
         id: mainSplit
         anchors.fill: parent
@@ -1215,9 +1229,9 @@ Item {
                 names: panel.resultView === "versions" ? version.names : panel.playlistTreeRows()
                 footerCount: panel.resultView === "playlist" ? panel.playlistTreeNodes().length : -1
                 selected: version.value
-                placeholder: listPlaceholder(panel.resultView === "versions"
-                        ? version.names.length
-                        : panel.playlistTreeNodes().length)
+                placeholder: panel.resultView === "versions"
+                        ? panel.versionListPlaceholder()
+                        : listPlaceholder(panel.playlistTreeNodes().length)
                 onNodeToggled: function(name) {
                     if (panel.resultView === "playlist")
                         panel.togglePlaylist(name)

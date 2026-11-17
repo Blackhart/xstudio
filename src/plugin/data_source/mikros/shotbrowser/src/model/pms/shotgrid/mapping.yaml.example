@@ -1,0 +1,55 @@
+# Example ShotGrid mapping. Copy it and pass the copy through SHOTGRID_MAPPING.
+# This file is not loaded at runtime.
+entities:
+  project:
+    shotgrid: Project
+    fields:
+      id:     { shotgrid: id }
+      name:   { shotgrid: name }
+      code:   { shotgrid: code }
+      status: { shotgrid: sg_status }
+    links: {}
+
+  sequence:
+    shotgrid: Sequence
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      project: { shotgrid: project, target: project }
+
+  shot:
+    shotgrid: Shot
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      sequence: { shotgrid: sg_sequence, target: sequence }
+
+  asset:
+    shotgrid: Asset
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      project: { shotgrid: project, target: project }
+
+  playlist:
+    shotgrid: Playlist
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      project: { shotgrid: project, target: project }
+
+  version:
+    shotgrid: Version
+    fields:
+      id:   { shotgrid: id }
+      name: { shotgrid: code }
+    links:
+      project:  { shotgrid: entity, target: project }
+      shot:     { shotgrid: entity, target: shot }
+      sequence: { shotgrid: entity, target: sequence }
+      asset:    { shotgrid: entity, target: asset }
+      playlist: { shotgrid: playlists, target: playlist }

@@ -22,7 +22,8 @@ namespace pms {
  * Hash style, as documented at
  * https://developers.shotgridsoftware.com/rest-api/#searching : a basic
  * condition array, or a complex filter with `logical_operator` and
- * `conditions`. A find with no criterion returns null. The HTTP body still
+ * `conditions`. Several ownership paths to one parent become an `or`. A find
+ * with no criterion returns null. The HTTP body still
  * sends `filters: []`, because the site rejects a body that omits the key.
  *
  * @param ir Validated find query (op may be set).

@@ -51,5 +51,6 @@ entities:
       name: { type: string, filter: true, set: true }
     # Direct parents for In(). Ownership (shot|sequence|asset) is strong;
     # playlist is a weak many-to-many link: a version may sit in several playlists.
-    # Ancestors (sequence via shot, project via sequence|asset|playlist) inherit.
+    # Ancestors inherit along ownership only: sequence via shot, project via
+    # sequence or asset. A playlist does not place a version in a project.
     scope: [shot, sequence, asset, playlist]

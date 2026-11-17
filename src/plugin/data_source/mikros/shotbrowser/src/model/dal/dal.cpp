@@ -342,41 +342,6 @@ RowPage<Row> fetchPage(
     }
 }
 
-/**
- * @brief Chooses the version parent, then an optional playlist.
- *
- * Strong parent, at most one: shot, else sequence, else asset, else project.
- * A playlist is a second `In` and combines with AND.
- *
- * @param projectId Domain project `id`.
- * @param sequenceId Optional sequence `id`.
- * @param shotId Optional shot `id`.
- * @param assetId Optional asset `id`.
- * @param playlistId Optional playlist `id`.
- * @return Version query ready for `fetchPage`.
- */
-auto scopeVersionQuery(
-    std::int64_t projectId,
-    const std::optional<std::int64_t> &sequenceId,
-    const std::optional<std::int64_t> &shotId,
-    const std::optional<std::int64_t> &assetId,
-    const std::optional<std::int64_t> &playlistId) {
-    auto query = pms::Version();
-    if (shotId) {
-        query = query.In(pms::scope::shot == *shotId);
-    } else if (sequenceId) {
-        query = query.In(pms::scope::sequence == *sequenceId);
-    } else if (assetId) {
-        query = query.In(pms::scope::asset == *assetId);
-    } else {
-        query = query.In(pms::scope::project == projectId);
-    }
-    if (playlistId) {
-        query = query.In(pms::scope::playlist == *playlistId);
-    }
-    return query;
-}
-
 } // namespace
 
 std::size_t readPageLimit() {
@@ -422,7 +387,19 @@ RowPage<poco::Version> findVersions(
     std::optional<std::int64_t> shotId,
     std::optional<std::int64_t> assetId,
     std::optional<std::int64_t> playlistId) {
-    auto query = scopeVersionQuery(projectId, sequenceId, shotId, assetId, playlistId);
+    auto query = pms::Version();
+    if (shotId) {
+        query = query.In(pms::scope::shot == *shotId); ///< Narrowest strong parent.
+    } else if (sequenceId) {
+        query = query.In(pms::scope::sequence == *sequenceId); ///< Sequence when no shot is set.
+    } else if (assetId) {
+        query = query.In(pms::scope::asset == *assetId); ///< Asset excludes the sequence branch.
+    } else {
+        query = query.In(pms::scope::project == projectId); ///< Whole project.
+    }
+    if (playlistId) {
+        query = query.In(pms::scope::playlist == *playlistId); ///< Weak parent, combined with AND.
+    }
     return fetchPage<poco::Version>(std::move(query), limit, cursor);
 }
 
