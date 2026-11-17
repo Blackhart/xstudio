@@ -16,10 +16,20 @@ namespace xstudio::mikros_shotbrowser::poco {
  * `id` is the unique identity. `name` is the human label and may collide.
  */
 struct Version {
-    std::int64_t id = 0;      ///< Domain version id.
-    std::string name;         ///< Domain version name.
-    std::string image;        ///< Remote URL or local path. Empty when the version has no picture.
+    std::int64_t id = 0;        ///< Domain version id.
+    std::string name;           ///< Domain version name.
+    std::string image;          ///< Remote URL or local path. Empty when the version has no picture.
     std::string image_provider; ///< `http`, `file`, or empty. Comes from the studio mapping.
+    std::string author;         ///< Person who created the version. Empty shows N/A.
+    std::string created_at;     ///< Creation time as ShotGrid sent it. Empty shows N/A.
+    std::string frame_range;   ///< Frame range text. Empty shows N/A.
+    std::string description;   ///< Version description. Empty shows N/A.
+    std::string step;           ///< Pipeline step name. Empty shows N/A.
+    std::string status;         ///< Step status. Empty shows N/A.
+    std::string artistic_status; ///< Artistic status. Empty shows N/A.
+    std::string sites;          ///< ShotGrid site names, joined by commas.
+    bool has_notes = false;     ///< True when the version has at least one note.
+    bool synced_to_client = false; ///< True when the version was sent to the client.
 };
 
 } // namespace xstudio::mikros_shotbrowser::poco

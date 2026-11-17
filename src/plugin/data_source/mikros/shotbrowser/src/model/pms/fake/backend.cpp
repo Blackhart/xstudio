@@ -208,11 +208,37 @@ std::map<std::int64_t, std::vector<std::int64_t>> linkVersionsToPlaylists(
 }
 
 /**
+ * @brief Fills the card fields of one sample version.
+ * @param row Version row that will show notes, the client flag, and two sites.
+ */
+void fillSampleCard(Record &row) {
+    row.fields["author"] = std::string("Ada");
+    row.fields["created_at"] = std::string("2024-03-01");
+    row.fields["frame_range"] = std::string("1001-1100");
+    row.fields["description"] = std::string("Comp review");
+    row.fields["step"] = std::string("Comp");
+    row.fields["status"] = std::string("ip");
+    row.fields["artistic_status"] = std::string("apr");
+    row.fields["sites"] = std::string("Paris,Montreal");
+    row.fields["has_notes"] = std::int64_t{1};
+    row.fields["synced_to_client"] = std::int64_t{1};
+}
+
+/**
+ * @brief Marks one version present in Bangalore only.
+ * @param row Version row whose other card fields stay empty.
+ */
+void fillBangaloreCard(Record &row) {
+    row.fields["sites"] = std::string("Bangalore");
+}
+
+/**
  * @brief Builds sequence-linked, shot-linked, and asset-linked versions.
  *
  * Sequence versions omit `shot` and `asset`. Shot versions set `shot`,
  * `sequence`, and `project`. Asset versions set `asset` and `project`.
  * Playlist membership is stored separately (weak many-to-many).
+ * The first version of each parent carries a full card. The second is in Bangalore.
  */
 Records makeVersions(
     const Records &sequences, const Records &shots, const Records &assets) {
@@ -233,6 +259,11 @@ Records makeVersions(
             row.fields["name"] = sequenceName + "_v" + versionNumber;
             row.fields["sequence"] = sequence.fields.at("id");
             row.fields["project"] = sequence.fields.at("project");
+            if (index == 1) {
+                fillSampleCard(row);
+            } else if (index == 2) {
+                fillBangaloreCard(row);
+            }
             rows.push_back(std::move(row));
         }
     }
@@ -248,6 +279,11 @@ Records makeVersions(
             row.fields["shot"] = shot.fields.at("id");
             row.fields["sequence"] = shot.fields.at("sequence");
             row.fields["project"] = shot.fields.at("project");
+            if (index == 1) {
+                fillSampleCard(row);
+            } else if (index == 2) {
+                fillBangaloreCard(row);
+            }
             rows.push_back(std::move(row));
         }
     }
@@ -262,6 +298,11 @@ Records makeVersions(
             row.fields["name"] = assetName + "_v" + versionNumber;
             row.fields["asset"] = asset.fields.at("id");
             row.fields["project"] = asset.fields.at("project");
+            if (index == 1) {
+                fillSampleCard(row);
+            } else if (index == 2) {
+                fillBangaloreCard(row);
+            }
             rows.push_back(std::move(row));
         }
     }
@@ -440,6 +481,40 @@ Record publicNamed(const Record &row) {
     Record out;
     out.fields["id"] = row.fields.at("id");
     out.fields["name"] = row.fields.at("name");
+    return out;
+}
+
+/**
+ * @brief Copies one field when the catalog row has it.
+ * @param out Public row being built.
+ * @param row Catalog row.
+ * @param key Domain field name.
+ */
+void copyPresent(Record &out, const Record &row, const std::string &key) {
+    const auto found = row.fields.find(key);
+    if (found == row.fields.end()) {
+        return;
+    }
+    out.fields[key] = found->second; ///< The card reads this. A missing key stays N/A.
+}
+
+/**
+ * @brief Returns a version without its private parent links.
+ * @param row Catalog version, including the card fields when this sample has them.
+ * @return Id, name, and any card field already filled.
+ */
+Record publicVersion(const Record &row) {
+    Record out = publicNamed(row);
+    copyPresent(out, row, "author");
+    copyPresent(out, row, "created_at");
+    copyPresent(out, row, "frame_range");
+    copyPresent(out, row, "description");
+    copyPresent(out, row, "step");
+    copyPresent(out, row, "status");
+    copyPresent(out, row, "artistic_status");
+    copyPresent(out, row, "sites");
+    copyPresent(out, row, "has_notes");
+    copyPresent(out, row, "synced_to_client");
     return out;
 }
 
@@ -623,7 +698,7 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(version, *ir.where)) {
                 continue;
             }
-            rows.push_back(publicNamed(version));
+            rows.push_back(publicVersion(version));
         }
     } else {
         throw Error("fake backend: entity \"" + ir.entity + "\" is not available");

@@ -135,7 +135,17 @@ utility::JsonStore rowsToJson<poco::Version>(const std::vector<poco::Version> &r
             {{"id", row.id},
              {"name", row.name},
              {"image", row.image},
-             {"image_provider", row.image_provider}});
+             {"image_provider", row.image_provider},
+             {"author", row.author},
+             {"created_at", row.created_at},
+             {"frame_range", row.frame_range},
+             {"description", row.description},
+             {"step", row.step},
+             {"status", row.status},
+             {"artistic_status", row.artistic_status},
+             {"sites", row.sites},
+             {"has_notes", row.has_notes},
+             {"synced_to_client", row.synced_to_client}});
     }
     return utility::JsonStore(out);
 }
@@ -158,6 +168,16 @@ std::vector<poco::Version> rowsFromJson<poco::Version>(const utility::JsonStore 
         row.name = entry.at("name").get<std::string>();
         row.image = entry.value("image", std::string());
         row.image_provider = entry.value("image_provider", std::string());
+        row.author = entry.value("author", std::string());
+        row.created_at = entry.value("created_at", std::string());
+        row.frame_range = entry.value("frame_range", std::string());
+        row.description = entry.value("description", std::string());
+        row.step = entry.value("step", std::string());
+        row.status = entry.value("status", std::string());
+        row.artistic_status = entry.value("artistic_status", std::string());
+        row.sites = entry.value("sites", std::string());
+        row.has_notes = entry.value("has_notes", false);
+        row.synced_to_client = entry.value("synced_to_client", false);
         rows.push_back(std::move(row));
     }
     return rows;
@@ -481,6 +501,31 @@ void writeShots(nlohmann::json &node, const std::vector<poco::Shot> &shots) {
 }
 
 /**
+ * @brief Builds the JSON one version card reads.
+ * @param row Version whose display fields are copied.
+ * @param label Unique name shown in the title.
+ * @param image Thumbnail path already resolved, or empty until the thumb arrives.
+ * @return Object with the card keys. Empty strings stay empty so the card shows N/A.
+ */
+nlohmann::json versionFacts(
+    const poco::Version &row, const std::string &label, const std::string &image) {
+    return {
+        {"name", label},
+        {"id", row.id},
+        {"image", image},
+        {"author", row.author},
+        {"createdAt", row.created_at},
+        {"frameRange", row.frame_range},
+        {"description", row.description},
+        {"step", row.step},
+        {"status", row.status},
+        {"artisticStatus", row.artistic_status},
+        {"sites", row.sites},
+        {"hasNotes", row.has_notes},
+        {"syncedToClient", row.synced_to_client}};
+}
+
+/**
  * @brief Writes version labels into one playlist node.
  * @param node Playlist object already stored in the tree.
  * @param versions Versions received for that playlist so far.
@@ -489,8 +534,7 @@ void writeVersions(nlohmann::json &node, const std::vector<poco::Version> &versi
     const std::vector<std::string> labels = buildUniqueLabels(versions);
     nlohmann::json entries = nlohmann::json::array();
     for (std::size_t index = 0; index < versions.size(); ++index) {
-        entries.push_back(
-            {{"name", labels[index]}, {"id", versions[index].id}, {"image", std::string()}});
+        entries.push_back(versionFacts(versions[index], labels[index], std::string()));
     }
     node["versions"] = std::move(entries);
 }
@@ -1571,9 +1615,10 @@ void MikrosShotBrowserContext::publishVersionCards() {
     if (selected_project_) {
         const std::vector<std::string> labels = buildUniqueLabels(versions_);
         for (std::size_t index = 0; index < versions_.size(); ++index) {
-            cards.push_back(
-                {{"name", labels[index]},
-                 {"image", thumbFor(selected_project_->id, versions_[index].id)}});
+            cards.push_back(versionFacts(
+                versions_[index],
+                labels[index],
+                thumbFor(selected_project_->id, versions_[index].id)));
         }
     }
     version_cards_->set_value(std::move(cards));

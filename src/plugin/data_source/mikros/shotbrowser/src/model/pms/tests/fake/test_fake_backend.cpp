@@ -107,6 +107,12 @@ TEST_CASE("the fake backend lists versions in a sequence including shot versions
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw01_sq010_v002");
     CHECK(std::get<std::string>(rows[2].at("name")) == "paw01_sq010_sh010_v001");
     CHECK(rows[0].fields.count("sequence") == 0);
+    CHECK(std::get<std::string>(rows[0].at("author")) == "Ada");
+    CHECK(std::get<std::int64_t>(rows[0].at("has_notes")) == 1);
+    CHECK(std::get<std::int64_t>(rows[0].at("synced_to_client")) == 1);
+    CHECK(std::get<std::string>(rows[0].at("sites")) == "Paris,Montreal");
+    CHECK(std::get<std::string>(rows[1].at("sites")) == "Bangalore");
+    CHECK(rows[1].fields.count("author") == 0);
 }
 
 TEST_CASE("the fake backend lists versions in a shot") {

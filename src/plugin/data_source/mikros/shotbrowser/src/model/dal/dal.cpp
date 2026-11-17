@@ -285,6 +285,20 @@ std::string optionalString(const pms::Record &record, const std::string &key) {
 }
 
 /**
+ * @brief Reads one optional flag stored as an integer.
+ * @param record Domain row.
+ * @param key Field name, such as `"has_notes"`.
+ * @return True when the field is a non-zero integer.
+ */
+bool optionalFlag(const pms::Record &record, const std::string &key) {
+    const auto found = record.fields.find(key);
+    if (found == record.fields.end() || !std::holds_alternative<std::int64_t>(found->second)) {
+        return false;
+    }
+    return std::get<std::int64_t>(found->second) != 0;
+}
+
+/**
  * @brief Maps version records, including the image source and its provider.
  * @param records Domain rows.
  * @return Version rows in the same order. Image fields stay empty when absent.
@@ -299,6 +313,16 @@ std::vector<poco::Version> mapRecordsToRows<poco::Version>(const pms::Records &r
         row.name = std::get<std::string>(record.at("name"));
         row.image = optionalString(record, "image");
         row.image_provider = optionalString(record, "image_provider");
+        row.author = optionalString(record, "author");
+        row.created_at = optionalString(record, "created_at");
+        row.frame_range = optionalString(record, "frame_range");
+        row.description = optionalString(record, "description");
+        row.step = optionalString(record, "step");
+        row.status = optionalString(record, "status");
+        row.artistic_status = optionalString(record, "artistic_status");
+        row.sites = optionalString(record, "sites");
+        row.has_notes = optionalFlag(record, "has_notes");
+        row.synced_to_client = optionalFlag(record, "synced_to_client");
         rows.push_back(std::move(row));
     }
     return rows;

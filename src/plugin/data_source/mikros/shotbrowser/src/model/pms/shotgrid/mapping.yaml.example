@@ -47,6 +47,16 @@ entities:
       id:    { shotgrid: id }
       name:  { shotgrid: code }
       image: { shotgrid: image, provider: http }
+      author:           { shotgrid: created_by }
+      created_at:       { shotgrid: created_at }
+      frame_range:      { shotgrid: frame_range }
+      description:      { shotgrid: description }
+      step:             { shotgrid: sg_task.Task.step }
+      status:           { shotgrid: sg_status_list }
+      artistic_status:  { shotgrid: sg_status_artistique }
+      has_notes:        { shotgrid: notes }
+      synced_to_client: { shotgrid: sg_synced_to_client }
+      sites:            { shotgrid: sg_published_file.PublishedFile.sg_sites }
     links:
       project:  { shotgrid: entity, target: project }
       shot:     { shotgrid: entity, target: shot }

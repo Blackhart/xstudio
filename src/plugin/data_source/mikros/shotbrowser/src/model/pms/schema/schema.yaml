@@ -47,4 +47,14 @@ entities:
       id:    { type: int,    filter: true, set: false }
       name:  { type: string, filter: true, set: true }
       image: { type: string, filter: false, set: false, providers: [http, file] }
+      author:           { type: string, filter: false, set: false }
+      created_at:       { type: string, filter: false, set: false }
+      frame_range:      { type: string, filter: false, set: false }
+      description:      { type: string, filter: false, set: false }
+      step:             { type: string, filter: false, set: false }
+      status:           { type: string, filter: false, set: false }
+      artistic_status:  { type: string, filter: false, set: false }
+      sites:            { type: string, filter: false, set: false }
+      has_notes:        { type: int,    filter: false, set: false }
+      synced_to_client: { type: int,    filter: false, set: false }
     scope: [shot, sequence, asset, playlist]

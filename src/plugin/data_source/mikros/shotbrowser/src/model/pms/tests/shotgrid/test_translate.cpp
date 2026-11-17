@@ -161,3 +161,36 @@ TEST_CASE("version image copies the url and the mapping provider") {
     CHECK(std::get<std::string>(record.at("image")) == "https://example.test/a.jpg");
     CHECK(std::get<std::string>(record.at("image_provider")) == "http");
 }
+
+TEST_CASE("version card fields copy entities, notes, the client flag, and sites") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const nlohmann::json row = {
+        {"type", "Version"},
+        {"id", 4},
+        {"attributes",
+         {{"code", "v001"},
+          {"created_by", {{"type", "HumanUser"}, {"id", 7}, {"name", "Ada"}}},
+          {"created_at", "2024-03-01T12:00:00Z"},
+          {"frame_range", "1001-1100"},
+          {"description", "Comp review"},
+          {"sg_task.Task.step", {{"type", "Step"}, {"id", 3}, {"name", "Comp"}}},
+          {"sg_status_list", "ip"},
+          {"sg_status_artistique", "apr"},
+          {"notes", nlohmann::json::array({{{"id", 9}, {"name", "note"}}})},
+          {"sg_synced_to_client", true},
+          {"sg_published_file.PublishedFile.sg_sites",
+           nlohmann::json::array({"Paris", "Montreal"})}}}};
+    const Record record = shotgridRecordFromJson(row, *version);
+    CHECK(std::get<std::string>(record.at("author")) == "Ada");
+    CHECK(std::get<std::string>(record.at("created_at")) == "2024-03-01T12:00:00Z");
+    CHECK(std::get<std::string>(record.at("frame_range")) == "1001-1100");
+    CHECK(std::get<std::string>(record.at("description")) == "Comp review");
+    CHECK(std::get<std::string>(record.at("step")) == "Comp");
+    CHECK(std::get<std::string>(record.at("status")) == "ip");
+    CHECK(std::get<std::string>(record.at("artistic_status")) == "apr");
+    CHECK(std::get<std::int64_t>(record.at("has_notes")) == 1);
+    CHECK(std::get<std::int64_t>(record.at("synced_to_client")) == 1);
+    CHECK(std::get<std::string>(record.at("sites")) == "Paris,Montreal");
+}

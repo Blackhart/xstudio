@@ -104,6 +104,18 @@ Item {
         return "No results"
     }
 
+    function cardValue(entry, key) {
+        if (!entry || entry[key] === undefined || entry[key] === null)
+            return ""
+        return String(entry[key])
+    }
+
+    function cardFlag(entry, key) {
+        if (!entry || entry[key] === undefined || entry[key] === null)
+            return false
+        return entry[key] === true || entry[key] === 1 || entry[key] === "1"
+    }
+
     function versionCards() {
         let value = versionCardsAttr.value
         if (!value)
@@ -234,6 +246,16 @@ Item {
                 rows.push({
                     name: versionName,
                     image: versionImage,
+                    author: cardValue(entry, "author"),
+                    createdAt: cardValue(entry, "createdAt"),
+                    frameRange: cardValue(entry, "frameRange"),
+                    description: cardValue(entry, "description"),
+                    step: cardValue(entry, "step"),
+                    status: cardValue(entry, "status"),
+                    artisticStatus: cardValue(entry, "artisticStatus"),
+                    sites: cardValue(entry, "sites"),
+                    hasNotes: cardFlag(entry, "hasNotes"),
+                    syncedToClient: cardFlag(entry, "syncedToClient"),
                     depth: 1,
                     parent: false,
                     open: false,
@@ -487,6 +509,33 @@ Item {
                             return ""
                         return String(modelData.image)
                     }
+                    readonly property string author: panel.cardValue(modelData, "author")
+                    readonly property string createdAt: panel.cardValue(modelData, "createdAt")
+                    readonly property string frameRange: panel.cardValue(modelData, "frameRange")
+                    readonly property string description: panel.cardValue(modelData, "description")
+                    readonly property string stepName: panel.cardValue(modelData, "step")
+                    readonly property string stepStatus: panel.cardValue(modelData, "status")
+                    readonly property string artisticStatus: panel.cardValue(modelData, "artisticStatus")
+                    readonly property string sites: panel.cardValue(modelData, "sites")
+                    readonly property bool hasNotes: panel.cardFlag(modelData, "hasNotes")
+                    readonly property bool syncedToClient: panel.cardFlag(modelData, "syncedToClient")
+
+                    function shown(value) {
+                        return value === "" ? "N/A" : value
+                    }
+
+                    function siteOn(code) {
+                        const cities = {prs: "Paris", mtl: "Montreal", bgl: "Bangalore"}
+                        const city = cities[code]
+                        if (!city || sites === "")
+                            return false
+                        const names = sites.split(",")
+                        for (let i = 0; i < names.length; i++) {
+                            if (names[i].trim() === city)
+                                return true
+                        }
+                        return false
+                    }
                     readonly property int depth: {
                         if (!column.tree || modelData === undefined || modelData === null
                                 || modelData.depth === undefined)
@@ -726,20 +775,10 @@ Item {
                                 font.pixelSize: XsStyleSheet.fontSize * 1.1
                                 font.bold: true
                                 leftPadding: XsStyleSheet.panelPadding
+                                rightPadding: XsStyleSheet.panelPadding
                                 horizontalAlignment: Text.AlignLeft
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
-                            }
-
-                            XsText {
-                                anchors.fill: parent
-                                text: "N/A"
-                                font.pixelSize: XsStyleSheet.fontSize * 1.1
-                                font.bold: true
-                                rightPadding: XsStyleSheet.panelPadding
-                                horizontalAlignment: Text.AlignRight
-                                verticalAlignment: Text.AlignVCenter
-                                color: XsStyleSheet.hintColor
                             }
                         }
 
@@ -762,19 +801,24 @@ Item {
                                     spacing: 1
 
                                     Repeater {
-                                        model: ["N", "D", "C"]
+                                        model: [
+                                            {letter: "N", on: row.hasNotes},
+                                            {letter: "C", on: row.syncedToClient}
+                                        ]
 
                                         XsPrimaryButton {
-                                            required property string modelData
+                                            required property var modelData
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
-                                            text: modelData
+                                            text: modelData.letter
                                             font.pixelSize: XsStyleSheet.fontSize * 1.2
-                                            textDiv.color: XsStyleSheet.hintColor
-                                            enabled: false
-                                            bgDiv.opacity: 0.5
+                                            textDiv.color: modelData.on
+                                                          ? XsStyleSheet.accentColor
+                                                          : XsStyleSheet.hintColor
+                                            enabled: true
+                                            bgDiv.opacity: modelData.on ? 1 : 0.5
                                             isUnClickable: true
-                                            isActiveViaIndicator: false
+                                            isActiveViaIndicator: modelData.on
                                         }
                                     }
                                 }
@@ -808,9 +852,11 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: XsStyleSheet.widgetStdHeight
                                     Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                                    text: "N/A"
+                                    text: row.shown(row.author)
                                     leftPadding: XsStyleSheet.panelPadding
-                                    color: XsStyleSheet.hintColor
+                                    color: row.author === ""
+                                           ? XsStyleSheet.hintColor
+                                           : XsStyleSheet.secondaryTextColor
                                     elide: Text.ElideRight
                                     verticalAlignment: Text.AlignVCenter
                                 }
@@ -824,9 +870,11 @@ Item {
                                     XsText {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        text: "N/A"
+                                        text: row.shown(row.createdAt)
                                         leftPadding: XsStyleSheet.panelPadding
-                                        color: XsStyleSheet.hintColor
+                                        color: row.createdAt === ""
+                                               ? XsStyleSheet.hintColor
+                                               : XsStyleSheet.secondaryTextColor
                                         elide: Text.ElideRight
                                         verticalAlignment: Text.AlignVCenter
                                     }
@@ -834,9 +882,11 @@ Item {
                                     XsText {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        text: "N/A"
+                                        text: row.shown(row.frameRange)
                                         leftPadding: XsStyleSheet.panelPadding
-                                        color: XsStyleSheet.hintColor
+                                        color: row.frameRange === ""
+                                               ? XsStyleSheet.hintColor
+                                               : XsStyleSheet.secondaryTextColor
                                         elide: Text.ElideRight
                                         verticalAlignment: Text.AlignVCenter
                                     }
@@ -850,8 +900,12 @@ Item {
                                     XsText {
                                         anchors.fill: parent
                                         anchors.margins: XsStyleSheet.panelPadding
-                                        text: "N/A"
-                                        color: XsStyleSheet.hintColor
+                                        text: row.shown(row.description)
+                                        color: row.description === ""
+                                               ? XsStyleSheet.hintColor
+                                               : XsStyleSheet.secondaryTextColor
+                                        wrapMode: Text.WordWrap
+                                        elide: Text.ElideRight
                                         verticalAlignment: Text.AlignTop
                                     }
                                 }
@@ -873,8 +927,10 @@ Item {
                                     XsText {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        text: "N/A"
-                                        color: XsStyleSheet.hintColor
+                                        text: row.shown(row.stepName)
+                                        color: row.stepName === ""
+                                               ? XsStyleSheet.hintColor
+                                               : XsStyleSheet.secondaryTextColor
                                         elide: Text.ElideRight
                                         verticalAlignment: Text.AlignVCenter
                                     }
@@ -882,8 +938,10 @@ Item {
                                     XsText {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        text: "N/A"
-                                        color: XsStyleSheet.hintColor
+                                        text: row.shown(row.stepStatus)
+                                        color: row.stepStatus === ""
+                                               ? XsStyleSheet.hintColor
+                                               : XsStyleSheet.secondaryTextColor
                                         elide: Text.ElideRight
                                         verticalAlignment: Text.AlignVCenter
                                     }
@@ -893,8 +951,10 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: XsStyleSheet.widgetStdHeight
                                     Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                                    text: "N/A"
-                                    color: XsStyleSheet.hintColor
+                                    text: row.shown(row.artisticStatus)
+                                    color: row.artisticStatus === ""
+                                           ? XsStyleSheet.hintColor
+                                           : XsStyleSheet.secondaryTextColor
                                     elide: Text.ElideRight
                                     verticalAlignment: Text.AlignVCenter
                                 }
@@ -912,13 +972,17 @@ Item {
                                             required property string modelData
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
-                                            color: Qt.lighter(XsStyleSheet.panelBgColor, 1.5)
-                                            opacity: 0.5
+                                            color: row.siteOn(modelData)
+                                                   ? XsStyleSheet.accentColor
+                                                   : Qt.lighter(XsStyleSheet.panelBgColor, 1.5)
+                                            opacity: row.siteOn(modelData) ? 1 : 0.5
 
                                             XsText {
                                                 anchors.fill: parent
                                                 text: modelData
-                                                color: XsStyleSheet.hintColor
+                                                color: row.siteOn(modelData)
+                                                       ? "white"
+                                                       : XsStyleSheet.hintColor
                                                 font.pixelSize: XsStyleSheet.fontSize / 1.4
                                                 horizontalAlignment: Text.AlignHCenter
                                                 verticalAlignment: Text.AlignVCenter

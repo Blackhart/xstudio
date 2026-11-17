@@ -118,6 +118,20 @@ TEST_CASE("schema loads the version entity") {
     REQUIRE(image->providers.size() == 2);
     CHECK(image->providers[0] == "http");
     CHECK(image->providers[1] == "file");
+
+    const FieldSpec *author = version->field("author");
+    REQUIRE(author != nullptr);
+    CHECK(author->type == "string");
+    CHECK_FALSE(author->filter);
+
+    const FieldSpec *notes = version->field("has_notes");
+    REQUIRE(notes != nullptr);
+    CHECK(notes->type == "int");
+    CHECK_FALSE(notes->filter);
+
+    const FieldSpec *synced = version->field("synced_to_client");
+    REQUIRE(synced != nullptr);
+    CHECK(synced->type == "int");
 }
 
 TEST_CASE("generated proxies use the schema keys") {
