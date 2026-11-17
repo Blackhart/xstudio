@@ -529,7 +529,7 @@ Item {
                     height: playlistCard
                             ? XsStyleSheet.widgetStdHeight * 2
                             : versionCard
-                              ? (width * 9 / 16 + XsStyleSheet.widgetStdHeight + 4)
+                              ? (XsStyleSheet.widgetStdHeight + 1) * 4
                               : XsStyleSheet.widgetStdHeight
                     color: playlistCard
                            ? XsStyleSheet.widgetBgNormalColor
@@ -716,31 +716,222 @@ Item {
 
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            color: "black"
+                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                            Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                            color: XsStyleSheet.widgetBgNormalColor
 
-                            Image {
+                            XsText {
                                 anchors.fill: parent
-                                anchors.margins: 2
-                                source: row.imageSource !== ""
-                                        ? row.imageSource
-                                        : "qrc:/mikros_shotbrowser_icons/no_preview.jpg"
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: true
+                                text: row.label
+                                font.pixelSize: XsStyleSheet.fontSize * 1.1
+                                font.bold: true
+                                leftPadding: XsStyleSheet.panelPadding
+                                horizontalAlignment: Text.AlignLeft
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+
+                            XsText {
+                                anchors.fill: parent
+                                text: "N/A"
+                                font.pixelSize: XsStyleSheet.fontSize * 1.1
+                                font.bold: true
+                                rightPadding: XsStyleSheet.panelPadding
+                                horizontalAlignment: Text.AlignRight
+                                verticalAlignment: Text.AlignVCenter
+                                color: XsStyleSheet.hintColor
                             }
                         }
 
-                        XsText {
+                        RowLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight
-                            Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                            leftPadding: XsStyleSheet.panelPadding
-                            text: row.label
-                            font.pixelSize: XsStyleSheet.fontSize * 1.1
-                            font.bold: true
-                            horizontalAlignment: Text.AlignLeft
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideMiddle
+                            Layout.fillHeight: true
+                            spacing: 1
+
+                            RowLayout {
+                                Layout.preferredWidth: 154
+                                Layout.minimumWidth: 154
+                                Layout.maximumWidth: 154
+                                Layout.fillHeight: true
+                                spacing: 1
+
+                                ColumnLayout {
+                                    Layout.preferredWidth: 20
+                                    Layout.maximumWidth: 20
+                                    Layout.fillHeight: true
+                                    spacing: 1
+
+                                    Repeater {
+                                        model: ["N", "D", "C"]
+
+                                        XsPrimaryButton {
+                                            required property string modelData
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            text: modelData
+                                            font.pixelSize: XsStyleSheet.fontSize * 1.2
+                                            textDiv.color: XsStyleSheet.hintColor
+                                            enabled: false
+                                            bgDiv.opacity: 0.5
+                                            isUnClickable: true
+                                            isActiveViaIndicator: false
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    color: "black"
+
+                                    Image {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width
+                                        height: Math.min(width * 9 / 16, parent.height)
+                                        source: row.imageSource !== ""
+                                                ? row.imageSource
+                                                : "qrc:/mikros_shotbrowser_icons/no_preview.jpg"
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                    }
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                Layout.minimumWidth: 115
+                                spacing: 1
+
+                                XsText {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                                    text: "N/A"
+                                    leftPadding: XsStyleSheet.panelPadding
+                                    color: XsStyleSheet.hintColor
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                                    spacing: 1
+
+                                    XsText {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        text: "N/A"
+                                        leftPadding: XsStyleSheet.panelPadding
+                                        color: XsStyleSheet.hintColor
+                                        elide: Text.ElideRight
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+
+                                    XsText {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        text: "N/A"
+                                        leftPadding: XsStyleSheet.panelPadding
+                                        color: XsStyleSheet.hintColor
+                                        elide: Text.ElideRight
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    color: XsStyleSheet.widgetBgNormalColor
+
+                                    XsText {
+                                        anchors.fill: parent
+                                        anchors.margins: XsStyleSheet.panelPadding
+                                        text: "N/A"
+                                        color: XsStyleSheet.hintColor
+                                        verticalAlignment: Text.AlignTop
+                                    }
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.preferredWidth: 157
+                                Layout.minimumWidth: 157
+                                Layout.maximumWidth: 157
+                                Layout.fillHeight: true
+                                spacing: 1
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                                    spacing: 1
+
+                                    XsText {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        text: "N/A"
+                                        color: XsStyleSheet.hintColor
+                                        elide: Text.ElideRight
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+
+                                    XsText {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        text: "N/A"
+                                        color: XsStyleSheet.hintColor
+                                        elide: Text.ElideRight
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+
+                                XsText {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight
+                                    text: "N/A"
+                                    color: XsStyleSheet.hintColor
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight - 1
+                                    Layout.maximumHeight: XsStyleSheet.widgetStdHeight - 1
+                                    spacing: 1
+
+                                    Repeater {
+                                        model: ["prs", "mtl", "bgl"]
+
+                                        Rectangle {
+                                            required property string modelData
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            color: Qt.lighter(XsStyleSheet.panelBgColor, 1.5)
+                                            opacity: 0.5
+
+                                            XsText {
+                                                anchors.fill: parent
+                                                text: modelData
+                                                color: XsStyleSheet.hintColor
+                                                font.pixelSize: XsStyleSheet.fontSize / 1.4
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                }
+                            }
                         }
                     }
 
