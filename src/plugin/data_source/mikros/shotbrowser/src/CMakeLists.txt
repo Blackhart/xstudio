@@ -13,15 +13,18 @@ set(SOURCES
 	model/constants.cpp
 	model/dal/dal.cpp
 	model/log.cpp
-	model/media_plan.cpp
-	model/media_files.cpp
-	model/media_fetch.cpp
-	model/media_open.cpp
-	model/thumb_store.cpp
-	model/thumb_fetch.cpp
-	model/context/catalog_load_actor.cpp
-	model/context/mikros_shotbrowser_context.cpp
-	view/qml/MikrosShotBrowser.1/resources/mikros_shotbrowser.qrc
+	viewModel/mikros_shotbrowser_context.cpp
+	viewModel/context_shared.cpp
+	viewModel/project_selector.cpp
+	viewModel/shot_tree.cpp
+	viewModel/asset_tab.cpp
+	viewModel/version_list.cpp
+	viewModel/version_card.cpp
+	viewModel/playlist_tree.cpp
+	viewModel/playlist_card.cpp
+	viewModel/thumbnails.cpp
+	viewModel/open_media.cpp
+	view/resources/mikros_shotbrowser.qrc
 )
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
@@ -69,7 +72,17 @@ qt_add_qml_module(${PROJECT_NAME}
 	NO_PLUGIN
 	RESOURCE_PREFIX /
 	QML_FILES
-		view/qml/MikrosShotBrowser.1/MikrosShotBrowserPanel.qml
+		view/MikrosShotBrowserPanel.qml
+		view/CatalogValue.qml
+		view/NameColumn.qml
+		view/ProjectSelector.qml
+		view/ShotTree.qml
+		view/AssetTab.qml
+		view/VersionList.qml
+		view/VersionCard.qml
+		view/PlaylistTree.qml
+		view/PlaylistCard.qml
+		view/OpenMediaMenu.qml
 )
 
 default_plugin_options(${PROJECT_NAME})

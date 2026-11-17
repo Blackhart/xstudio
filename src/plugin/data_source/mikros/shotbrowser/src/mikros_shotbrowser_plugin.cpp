@@ -4,7 +4,7 @@
  * @brief xSTUDIO registration entry for the Mikros Shot Browser data source.
  */
 
-#include "model/context/mikros_shotbrowser_context.hpp"
+#include "viewModel/mikros_shotbrowser_context.hpp"
 
 using namespace xstudio;
 using namespace xstudio::mikros_shotbrowser;
