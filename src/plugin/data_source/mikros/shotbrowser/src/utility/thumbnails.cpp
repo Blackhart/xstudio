@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * @file viewModel/thumbnails.cpp
+ * @file utility/thumbnails.cpp
  * @brief Disk cache and JPEG download. Cards read the stored URL and do not download.
  */
 
-#include "viewModel/thumbnails.hpp"
+#include "utility/thumbnails.hpp"
+#include "utility/catalog.hpp"
 #include <QBuffer>
 #include <QEventLoop>
 #include <QImage>
@@ -323,17 +324,30 @@ void scheduleThumbPage(
 
 namespace xstudio::mikros_shotbrowser {
 
-std::string
-thumbFor(const PanelState &state, std::int64_t projectId, std::int64_t versionId) {
-    const auto found = state.thumb_paths_.find({projectId, versionId});
-    if (found == state.thumb_paths_.end()) {
+namespace {
+
+/**
+ * @brief File URLs already resolved for one process.
+ *
+ * The files live in one thumbnail directory. The key is the project and the version.
+ * @return The map pages read and the thumbnail mail writes.
+ */
+std::map<std::pair<std::int64_t, std::int64_t>, std::string> &storedThumbPaths() {
+    static std::map<std::pair<std::int64_t, std::int64_t>, std::string> paths;
+    return paths; ///< Shared by the version cards and the playlist rows.
+}
+
+} // namespace
+
+std::string thumbFor(std::int64_t projectId, std::int64_t versionId) {
+    const auto found = storedThumbPaths().find({projectId, versionId});
+    if (found == storedThumbPaths().end()) {
         return {};
     }
     return found->second;
 }
 
-void rememberThumbs(PanelState &state, 
-    std::int64_t projectId, const utility::JsonStore &payload) {
+void rememberThumbs(std::int64_t projectId, const utility::JsonStore &payload) {
     if (!payload.is_array()) {
         return;
     }
@@ -345,7 +359,7 @@ void rememberThumbs(PanelState &state,
         if (image.empty()) {
             continue;
         }
-        state.thumb_paths_[{projectId, entry["versionId"].get<std::int64_t>()}] = image;
+        storedThumbPaths()[{projectId, entry["versionId"].get<std::int64_t>()}] = image;
     }
 }
 

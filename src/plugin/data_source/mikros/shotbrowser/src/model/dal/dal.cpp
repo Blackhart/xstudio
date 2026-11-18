@@ -7,6 +7,7 @@
 #include "model/dal/dal.hpp"
 
 #include "model/constants.hpp"
+#include "model/context/shotbrowser_state.hpp"
 #include "model/log.hpp"
 
 #include "pms/fake/backend.hpp"
@@ -23,6 +24,15 @@ namespace xstudio::mikros_shotbrowser::dal {
 namespace {
 
 namespace trace = ::xstudio::mikros_shotbrowser::log;
+
+/**
+ * @brief Context created by `initialize`.
+ * @return The one shot browser context.
+ */
+::xstudio::mikros_shotbrowser::ShotbrowserState &shotbrowserContext() {
+    static ::xstudio::mikros_shotbrowser::ShotbrowserState state;
+    return state;
+}
 
 /**
  * @brief True when the process asked for the ShotGrid backend.
@@ -384,6 +394,58 @@ RowPage<Row> fetchPage(
 }
 
 } // namespace
+
+void initialize() {
+    shotbrowserContext(); ///< Create the context at plugin launch.
+}
+
+std::int64_t selectedProject() {
+    return shotbrowserContext().selectedProject();
+}
+
+void setSelectedProject(std::int64_t projectId) {
+    shotbrowserContext().setSelectedProject(projectId);
+}
+
+std::int64_t selectedSequence() {
+    return shotbrowserContext().selectedSequence();
+}
+
+void setSelectedSequence(std::int64_t sequenceId) {
+    shotbrowserContext().setSelectedSequence(sequenceId);
+}
+
+std::int64_t selectedShot() {
+    return shotbrowserContext().selectedShot();
+}
+
+void setSelectedShot(std::int64_t shotId) {
+    shotbrowserContext().setSelectedShot(shotId);
+}
+
+std::int64_t selectedAsset() {
+    return shotbrowserContext().selectedAsset();
+}
+
+void setSelectedAsset(std::int64_t assetId) {
+    shotbrowserContext().setSelectedAsset(assetId);
+}
+
+BrowserMode browserMode() {
+    return shotbrowserContext().browserMode();
+}
+
+void setBrowserMode(BrowserMode mode) {
+    shotbrowserContext().setBrowserMode(mode);
+}
+
+ResultView resultView() {
+    return shotbrowserContext().resultView();
+}
+
+void setResultView(ResultView view) {
+    shotbrowserContext().setResultView(view);
+}
 
 std::size_t readPageLimit() {
     return static_cast<std::size_t>(constants::pageSize().value);

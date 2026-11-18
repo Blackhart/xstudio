@@ -1,13 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * @file viewModel/thumbnails.hpp
+ * @file utility/thumbnails.hpp
  * @brief Disk cache and JPEG download. Cards read the stored URL and do not download.
  */
 #pragma once
 
-#include "viewModel/context_shared.hpp"
+#include "utility/home.hpp"
+#include "model/poco/version.hpp"
+
+#include "xstudio/utility/json_store.hpp"
+
+#include <caf/actor.hpp>
+
+#include <cstdint>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace xstudio::mikros_shotbrowser {
+
+namespace thumb {
+
+/**
+ * @brief Directory that holds every version thumbnail.
+ * @return `${HOME}/xStudio/mikros_shotbrowser/thumbs`, or empty when home is missing.
+ */
+std::filesystem::path thumbRoot();
+
+} // namespace thumb
 
 /**
  * @brief Stores one page of images without blocking the actor.
@@ -22,19 +42,17 @@ void scheduleThumbPage(
 
 /**
  * @brief Thumbnail URL already stored for one version.
- * @param state Panel catalogs and attributes.
  * @param projectId Project id.
  * @param versionId Version id.
  * @return `file://` URL, or empty when the image is not ready.
  */
-std::string thumbFor(const PanelState &state, std::int64_t projectId, std::int64_t versionId);
+std::string thumbFor(std::int64_t projectId, std::int64_t versionId);
 
 /**
  * @brief Remembers thumbnail file URLs for one project.
- * @param state Panel catalogs and attributes.
  * @param projectId Project the images belong to.
  * @param payload JSON list of version id and `file://` URL.
  */
-void rememberThumbs(PanelState &state, std::int64_t projectId, const utility::JsonStore &payload);
+void rememberThumbs(std::int64_t projectId, const xstudio::utility::JsonStore &payload);
 
 } // namespace xstudio::mikros_shotbrowser

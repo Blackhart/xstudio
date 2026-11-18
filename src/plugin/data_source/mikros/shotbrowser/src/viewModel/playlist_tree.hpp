@@ -1,87 +1,158 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/playlist_tree.hpp
- * @brief Which playlists to load, when a branch unfolds, and the reload after a filter change.
+ * @brief Playlist tree: names, and the versions of the playlist the user unfolded.
  */
 #pragma once
 
-#include "viewModel/context_shared.hpp"
+#include "utility/catalog.hpp"
+
+using namespace xstudio;
+
+#include <QObject>
+
+#include <caf/message_handler.hpp>
+
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <map>
+#include <memory>
+#include <vector>
 
 namespace xstudio::mikros_shotbrowser {
 
 /**
- * @brief Loads playlist names and mails the tree after each page.
- * @param mail Destination and request. `catalog` is `playlist_tree`.
+ * @brief View model of the playlist tree.
+ *
+ * Names use one request id. Versions of an unfolded playlist do not stop.
+ * `loadPlaylistListAsync` returns immediately.
  */
-void publishPlaylistNames(const TreeMail &mail);
+class PlaylistTree : public QObject {
+    Q_OBJECT
 
-/**
- * @brief Loads one playlist's versions and mails each page.
- * @param mail Destination. `catalog` is `playlist_versions`.
- * @param parents Sequence, shot, and asset filter shared with the version list.
- * @param playlistId Playlist the user unfolded.
- */
-void publishVersionsOfPlaylist(
-    const TreeMail &mail, const VersionParents &parents, std::int64_t playlistId);
+  public:
+    /**
+     * @brief Publishes the empty playlist tree.
+     * @param panel Panel actor. Attributes are created on it, and loads are spawned through it.
+     */
+    explicit PlaylistTree(plugin::StandardPlugin &panel);
 
-/** @brief Clears playlists and loads their names, without their versions. */
-void refreshPlaylistTree(PanelState &state);
+    /**
+     * @brief Loads the versions of the playlist the user unfolded.
+     *
+     * Other attributes are ignored.
+     * @param attr_uuid Attribute the panel changed.
+     * @param role Role that changed. Only Value is an unfold.
+     */
+    void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
-/**
- * @brief Loads the versions nested under one playlist.
- * @param state Panel catalogs and attributes.
- * @param requestId Generation of the playlist tree. A newer tree drops these pages.
- * @param projectId Project that owns the playlist.
- * @param playlistId Playlist the user unfolded.
- */
-void startPlaylistVersionLoad(
-    PanelState &state, std::uint64_t requestId, std::int64_t projectId, std::int64_t playlistId);
+    /**
+     * @brief Stops the previous name fetch, clears the tree, then loads on the Playlist tab.
+     *
+     * The request id always moves. The catalog starts only when a project is selected
+     * and `view` is Playlist. Returns before the pages arrive.
+     * @param view Right tab. Versions leaves the tree empty.
+     */
+    void loadPlaylistListAsync(ResultView view);
 
-/**
- * @brief True when that playlist's versions were already loaded to the last page.
- * @param state Panel catalogs and attributes.
- * @param playlistId Playlist in the current tree.
- */
-bool playlistVersionsReady(const PanelState &state, std::int64_t playlistId);
+    /**
+     * @brief Reloads the versions of the playlist that is already unfolded.
+     *
+     * Versions does nothing. An empty unfold name does nothing.
+     * @param view Right tab.
+     */
+    void reloadExpanded(ResultView view);
 
-/**
- * @brief Loads playlist names for one project.
- * @param state Panel catalogs and attributes.
- * @param requestId Generation of the playlist tree. A page with an older id is ignored.
- * @param projectId Project whose playlists are loaded.
- */
-void startPlaylistLoad(PanelState &state, std::uint64_t requestId, std::int64_t projectId);
+    /**
+     * @brief Copies stored thumbnail URLs onto the version rows.
+     */
+    void stampPlaylistThumbs();
 
-/** @brief Loads the versions of the playlist the user unfolded. */
-void onPlaylistExpanded(PanelState &state);
+    /**
+     * @brief Handles a playlist page and declines every other catalog.
+     * @return The playlist-page handler.
+     */
+    caf::message_handler message_handler_extensions();
 
-/** @brief Reloads the unfolded playlist after the version filter changes. */
-void reloadExpandedPlaylist(PanelState &state);
+  private:
+    /**
+     * @brief Publishes the playlist tree and the unfolded name.
+     * @param panel Panel actor that owns the attributes.
+     */
+    void initQmlAttributes(plugin::StandardPlugin &panel);
 
-/**
- * @brief Writes one page of versions into the matching playlist node.
- * @param state Panel catalogs and attributes.
- * @param requestId Generation of the tree. An older page is ignored.
- * @param payload JSON patch with the playlist id and its versions.
- */
-void applyPlaylistVersions(
-    PanelState &state, std::uint64_t requestId, const utility::JsonStore &payload);
+    /**
+     * @brief Loads the versions nested under one playlist. Does not move the request id.
+     * @param playlistId Playlist the user unfolded.
+     */
+    void loadVersionsForPlaylistAsync(std::int64_t playlistId);
 
-/**
- * @brief Replaces the playlist tree when the version filter is still the same.
- * @param state Panel catalogs and attributes.
- * @param requestId Generation of the tree. An older tree is ignored.
- * @param payload JSON tree from the worker.
- */
-void applyPlaylistTree(
-    PanelState &state,
-    std::uint64_t requestId,
-    bool hasSequence,
-    std::int64_t sequenceId,
-    bool hasShot,
-    std::int64_t shotId,
-    bool hasAsset,
-    std::int64_t assetId,
-    const utility::JsonStore &payload);
+    /**
+     * @brief True when that playlist's versions were already loaded to the last page.
+     * @param playlistId Playlist in the current tree.
+     * @return True when `versionsLoaded` is set on that node.
+     */
+    bool versionsReady(std::int64_t playlistId) const;
+
+    /**
+     * @brief Loads versions for the name written in `ExpandedPlaylist`.
+     */
+    void expandPlaylist();
+
+    /**
+     * @brief Clears the unfolded playlist without notifying the panel.
+     */
+    void clearExpanded();
+
+    /**
+     * @brief Replaces or extends the playlist nodes from one page, then sorts them.
+     * @param append False for the first page, which replaces the playlist list.
+     * @param payload `{id, name}` rows from the worker.
+     */
+    void updatePlaylistList(bool append, const utility::JsonStore &payload);
+
+    /**
+     * @brief Adds one page of versions into that playlist, then sorts those versions.
+     * @param playlistId Playlist the page belongs to.
+     * @param append False for the first page, which replaces that playlist's versions.
+     * @param payload Version rows from the worker.
+     */
+    void updateVersionsForPlaylist(
+        std::int64_t playlistId, bool append, const utility::JsonStore &payload);
+
+    /**
+     * @brief Sorts playlist nodes by name.
+     * @param tree Playlist array the QML shows.
+     */
+    void sortPlaylistsByName(nlohmann::json &tree) const;
+
+    /**
+     * @brief Sorts the version rows of one playlist by name.
+     * @param node Playlist object already stored in the tree.
+     */
+    void sortVersionsByName(nlohmann::json &node) const;
+
+    /**
+     * @brief Writes the tree to the attribute the QML reads.
+     * @param tree Playlist array, names and version rows.
+     */
+    void sendPlaylistTreeToQml(const nlohmann::json &tree);
+
+    /**
+     * @brief Tree currently displayed.
+     * @return The JSON array, or an empty array when the attribute is missing.
+     */
+    nlohmann::json treeValue() const;
+
+    plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
+    RequestGeneration playlist_request_id_ =
+        std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale playlist-name fetches and pages.
+    std::function<void(std::uint64_t, bool, const utility::JsonStore &)> name_page_; ///< Applies one name page.
+    std::function<void(std::int64_t, bool, const utility::JsonStore &)> version_page_; ///< Applies one version page. It does not stop.
+    std::map<std::int64_t, std::vector<poco::Version>> versions_by_playlist_; ///< Versions accumulated per playlist.
+    module::JsonAttribute *tree_ = nullptr; ///< Playlists with their version rows.
+    module::StringAttribute *expanded_ = nullptr; ///< Playlist the user unfolded.
+};
 
 } // namespace xstudio::mikros_shotbrowser

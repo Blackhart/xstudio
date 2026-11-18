@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include "model/context/shotbrowser_state.hpp"
 #include "model/poco/asset.hpp"
 #include "model/poco/playlist.hpp"
 #include "model/poco/project.hpp"
@@ -18,6 +19,88 @@
 #include <vector>
 
 namespace xstudio::mikros_shotbrowser::dal {
+
+using ::xstudio::mikros_shotbrowser::BrowserMode;
+using ::xstudio::mikros_shotbrowser::ResultView;
+
+/**
+ * @brief Creates the shot browser context.
+ *
+ * The plugin calls this once, at launch. The context then lives for the process.
+ */
+void initialize();
+
+/**
+ * @brief Id of the project the panel is showing.
+ * @return The project id, or `-1` when none is selected.
+ */
+std::int64_t selectedProject();
+
+/**
+ * @brief Remembers the project the user picked.
+ * @param projectId Project id, or `-1` when the combo is on None.
+ */
+void setSelectedProject(std::int64_t projectId);
+
+/**
+ * @brief Id of the sequence the panel is showing.
+ * @return The sequence id, or `-1` when none is selected.
+ */
+std::int64_t selectedSequence();
+
+/**
+ * @brief Remembers the sequence the user picked.
+ * @param sequenceId Sequence id, or `-1` when none is selected.
+ */
+void setSelectedSequence(std::int64_t sequenceId);
+
+/**
+ * @brief Id of the shot the panel is showing.
+ * @return The shot id, or `-1` when none is selected.
+ */
+std::int64_t selectedShot();
+
+/**
+ * @brief Remembers the shot the user picked.
+ * @param shotId Shot id, or `-1` when none is selected.
+ */
+void setSelectedShot(std::int64_t shotId);
+
+/**
+ * @brief Id of the asset the panel is showing.
+ * @return The asset id, or `-1` when none is selected.
+ */
+std::int64_t selectedAsset();
+
+/**
+ * @brief Remembers the asset the user picked.
+ * @param assetId Asset id, or `-1` when none is selected.
+ */
+void setSelectedAsset(std::int64_t assetId);
+
+/**
+ * @brief Left tab the panel is showing.
+ * @return `Shot` or `Asset`. The default is `Shot`.
+ */
+BrowserMode browserMode();
+
+/**
+ * @brief Remembers the left tab the user picked.
+ * @param mode `Shot` or `Asset`.
+ */
+void setBrowserMode(BrowserMode mode);
+
+/**
+ * @brief Right tab the panel is showing.
+ * @return `Versions` or `Playlist`. The default is `Versions`.
+ */
+ResultView resultView();
+
+/**
+ * @brief Remembers the right tab the user picked.
+ * @param view `Versions` or `Playlist`.
+ */
+void setResultView(ResultView view);
 
 /**
  * @brief Page size for catalog reads.

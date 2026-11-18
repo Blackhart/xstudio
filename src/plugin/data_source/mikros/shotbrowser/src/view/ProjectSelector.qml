@@ -4,39 +4,57 @@ import QtQuick
 import xStudio 1.0
 import xstudio.qml.models 1.0
 
-// The project combo, including the wait state before the catalog arrives.
+// The project combo shows the name and writes the id. None writes -1.
 Item {
     id: selector
 
     readonly property string noneLabel: "None"
 
-    function withNone(options) {
-        return [noneLabel].concat(options && options.length ? options : [])
+    function parseRows(value) {
+        if (!value)
+            return []
+        if (typeof value === "string") {
+            try {
+                value = JSON.parse(value)
+            } catch (error) {
+                return []
+            }
+        }
+        return value.length ? value : []
     }
 
-    function indexForSelection(options, selected) {
-        if (!selected)
+    function namesOf(rows) {
+        if (!rows || !rows.length)
+            return []
+        let names = []
+        for (let index = 0; index < rows.length; ++index)
+            names.push(rows[index].name)
+        return names
+    }
+
+    function withNone(names) {
+        return [noneLabel].concat(names && names.length ? names : [])
+    }
+
+    function indexForId(rows, selectedId) {
+        const id = Number(selectedId)
+        if (!rows || !rows.length || !isFinite(id) || id < 0)
             return 0
-        const index = options ? options.indexOf(selected) : -1
-        return index >= 0 ? index + 1 : 0
+        for (let index = 0; index < rows.length; ++index) {
+            if (Number(rows[index].id) === id)
+                return index + 1
+        }
+        return 0
     }
 
-    function valueFromIndex(options, index) {
-        if (index <= 0 || !options || index > options.length)
-            return ""
-        return options[index - 1]
-    }
-
-    function syncCombo(options, selected) {
-        const next = indexForSelection(options, selected)
+    function syncCombo() {
+        const next = indexForId(rows, selected.value)
         if (projectCombo.currentIndex !== next)
             projectCombo.currentIndex = next
     }
 
     function deferSync() {
-        Qt.callLater(function() {
-            syncCombo(project.names, project.value)
-        })
+        Qt.callLater(syncCombo)
     }
 
     XsModuleData {
@@ -44,15 +62,23 @@ Item {
         modelDataName: "mikros_shotbrowser_attributes"
     }
 
-    CatalogValue {
-        id: project
-        title: "Project"
-        source: attributes
+    XsAttributeValue {
+        id: projects
+        attributeTitle: "Projects"
+        model: attributes
     }
+
+    XsAttributeValue {
+        id: selected
+        attributeTitle: "SelectedProject"
+        model: attributes
+    }
+
+    readonly property var rows: parseRows(projects.value)
 
     XsText {
         anchors.fill: parent
-        visible: project.names.length === 0
+        visible: selector.rows.length === 0
         text: "Loading…"
         color: XsStyleSheet.hintColor
         font.pixelSize: XsStyleSheet.fontSize * 1.2
@@ -63,17 +89,18 @@ Item {
     XsComboBox {
         id: projectCombo
         anchors.fill: parent
-        visible: project.names.length > 0
+        visible: selector.rows.length > 0
         font.weight: Font.Black
         placeholderText: "Set Project..."
-        model: selector.withNone(project.names)
+        model: selector.withNone(selector.namesOf(selector.rows))
         Component.onCompleted: selector.deferSync()
         onModelChanged: selector.deferSync()
         onActivated: function(index) {
-            project.value = selector.valueFromIndex(project.names, index)
+            const id = index <= 0 || index > selector.rows.length ? -1 : selector.rows[index - 1].id
+            selected.value = String(id)
         }
         Connections {
-            target: project
+            target: selected
             function onValueChanged() {
                 selector.deferSync()
             }

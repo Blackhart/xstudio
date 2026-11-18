@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * @file viewModel/context_shared.cpp
- * @brief Detached catalog actor, page mail, and the home directory the caches share.
+ * @file utility/catalog.cpp
+ * @brief Detached catalog actor and the page mail each screen receives.
  */
 
-#include "viewModel/context_shared.hpp"
-#include "viewModel/playlist_tree.hpp"
-#include "viewModel/shot_tree.hpp"
+#include "utility/catalog.hpp"
 
 #include <caf/actor_system.hpp>
 #include <caf/allowed_unsafe_message_type.hpp>
 #include <caf/event_based_actor.hpp>
-
-#include <cstdlib>
-#include <filesystem>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
 
@@ -30,32 +25,18 @@ CAF_END_TYPE_ID_BLOCK(mikros_shotbrowser_catalog)
 
 namespace xstudio::mikros_shotbrowser {
 
-namespace thumb {
-
-std::filesystem::path homeDirectory() {
-    const char *home = std::getenv("HOME");
-#ifdef _WIN32
-    if (!home || home[0] == '\0') {
-        home = std::getenv("USERPROFILE");
+VersionParents readVersionParents() {
+    VersionParents parents;
+    if (dal::selectedSequence() != -1) {
+        parents.sequenceId = dal::selectedSequence(); ///< The shot tree stored this id.
     }
-#endif
-    if (!home || home[0] == '\0') {
-        return {};
+    if (dal::selectedShot() != -1) {
+        parents.shotId = dal::selectedShot();
     }
-    return std::filesystem::path(home);
-}
-
-} // namespace thumb
-
-VersionParents readVersionParents(
-    const std::optional<poco::Sequence> &sequence,
-    const std::optional<poco::Shot> &shot,
-    const std::optional<poco::Asset> &asset) {
-    return VersionParents{
-        sequence ? std::optional<std::int64_t>{sequence->id} : std::nullopt,
-        shot ? std::optional<std::int64_t>{shot->id} : std::nullopt,
-        asset ? std::optional<std::int64_t>{asset->id} : std::nullopt,
-    };
+    if (dal::selectedAsset() != -1) {
+        parents.assetId = dal::selectedAsset(); ///< The asset combo stored this id.
+    }
+    return parents;
 }
 
 /**
@@ -96,21 +77,12 @@ void sendCatalog(
             scope.shot_id,
             scope.has_asset,
             scope.asset_id,
+            scope.has_playlist,
+            scope.playlist_id,
             append,
             std::move(payload))
             .send(caf::actor_cast<caf::actor>(handle));
     }
-}
-
-void sendTree(const TreeMail &mail, const nlohmann::json &tree) {
-    sendCatalog(
-        mail.weak,
-        mail.requestId,
-        mail.catalog,
-        mail.projectId,
-        mail.scope,
-        false,
-        utility::JsonStore(tree));
 }
 
 void launchCatalogLoad(caf::actor_system &system, CatalogLoadRequest request) {
@@ -148,23 +120,6 @@ VersionParents versionParentsOf(const CatalogLoadRequest &request) {
     return VersionParents{request.sequence, request.shot, request.asset};
 }
 
-/**
- * @brief Address of one tree mail built from a load request.
- * @param request Panel, request id, and project.
- * @param catalog `shot_tree`, `sequence_shots`, `playlist_tree`, or `playlist_versions`.
- * @param scope Parents that must still match when the page is applied.
- * @return Mail the publish functions send.
- */
-TreeMail treeMail(const CatalogLoadRequest &request, const std::string &catalog, PageScope scope) {
-    TreeMail mail;
-    mail.weak = request.panel;
-    mail.requestId = request.request_id;
-    mail.catalog = catalog;
-    mail.projectId = request.project_id;
-    mail.scope = std::move(scope);
-    return mail;
-}
-
 void executeCatalogLoad(const CatalogLoadRequest &request) {
     switch (request.kind) {
     case CatalogKind::Project:
@@ -175,14 +130,37 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             0,
             [](const std::optional<std::string> &cursor) {
                 return dal::findProjects(dal::readPageLimit(), cursor);
-            });
+            },
+            {},
+            request.generation);
         return;
     case CatalogKind::ShotTree:
-        publishSequences(treeMail(request, "shot_tree", {})); ///< Shots wait for an unfold.
+        publishPages<poco::Sequence>(
+            request.panel,
+            request.request_id,
+            "shot_tree",
+            request.project_id,
+            [projectId = request.project_id](const std::optional<std::string> &cursor) {
+                return dal::findSequences(projectId, dal::readPageLimit(), cursor);
+            },
+            {},
+            request.generation); ///< Stops before the next findSequences when the id moves.
         return;
-    case CatalogKind::SequenceShots:
-        publishShotsOfSequence(treeMail(request, "sequence_shots", {}), request.sequence_id);
+    case CatalogKind::SequenceShots: {
+        PageScope scope;
+        scope.has_sequence = true;
+        scope.sequence_id = request.sequence_id; ///< The panel writes these shots into that node.
+        publishPages<poco::Shot>(
+            request.panel,
+            request.request_id,
+            "sequence_shots",
+            request.project_id,
+            [sequenceId = request.sequence_id](const std::optional<std::string> &cursor) {
+                return dal::findShots(sequenceId, dal::readPageLimit(), cursor);
+            },
+            scope);
         return;
+    }
     case CatalogKind::Asset:
         publishPages<poco::Asset>(
             request.panel,
@@ -191,7 +169,9 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             request.project_id,
             [projectId = request.project_id](const std::optional<std::string> &cursor) {
                 return dal::findAssets(projectId, dal::readPageLimit(), cursor);
-            });
+            },
+            {},
+            request.generation); ///< Stops before the next findAssets when the id moves.
         return;
     case CatalogKind::Version: {
         const VersionParents parents = versionParentsOf(request);
@@ -209,18 +189,44 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
                     parents.shotId,
                     parents.assetId);
             },
-            pageScope(parents));
+            pageScope(parents),
+            request.generation); ///< Stops before the next findVersions when the id moves.
         return;
     }
     case CatalogKind::PlaylistTree:
-        publishPlaylistNames(treeMail(request, "playlist_tree", {})); ///< Versions wait for an unfold.
+        publishPages<poco::Playlist>(
+            request.panel,
+            request.request_id,
+            "playlist_tree",
+            request.project_id,
+            [projectId = request.project_id](const std::optional<std::string> &cursor) {
+                return dal::findPlaylists(projectId, dal::readPageLimit(), cursor);
+            },
+            {},
+            request.generation); ///< Stops before the next findPlaylists when the id moves.
         return;
     case CatalogKind::PlaylistVersions: {
         const VersionParents parents = versionParentsOf(request);
-        publishVersionsOfPlaylist(
-            treeMail(request, "playlist_versions", pageScope(parents)),
-            parents,
-            request.playlist_id);
+        PageScope scope = pageScope(parents);
+        scope.has_playlist = true;
+        scope.playlist_id = request.playlist_id; ///< The panel writes these versions into that node.
+        publishPages<poco::Version>(
+            request.panel,
+            request.request_id,
+            "playlist_versions",
+            request.project_id,
+            [projectId = request.project_id, parents, playlistId = request.playlist_id](
+                const std::optional<std::string> &cursor) {
+                return dal::findVersions(
+                    projectId,
+                    dal::readPageLimit(),
+                    cursor,
+                    parents.sequenceId,
+                    parents.shotId,
+                    parents.assetId,
+                    playlistId);
+            },
+            scope);
         return;
     }
     }

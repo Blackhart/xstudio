@@ -21,11 +21,29 @@
 namespace pms {
 namespace {
 
+/**
+ * @brief Zero-padded label of one project.
+ *
+ * The label runs opposite to the id (`20` for id 1) so the combo sort is visible.
+ * Child rows use the same label, so a project named `paw14` owns `paw14_…` rows.
+ * @param projectId Project id, from 1.
+ * @return Two digits, for example `14`.
+ */
+std::string projectLabel(int projectId) {
+    const int nameIndex = static_cast<int>(FakeBackend::projectCount) + 1 - projectId;
+    return (nameIndex < 10 ? "0" : "") + std::to_string(nameIndex);
+}
+
+/**
+ * @brief Builds the twenty projects.
+ *
+ * Ids stay in ascending order so keyset pages keep working.
+ */
 Records makeProjects() {
     Records rows;
     rows.reserve(FakeBackend::projectCount);
     for (int index = 1; index <= static_cast<int>(FakeBackend::projectCount); ++index) {
-        const std::string number = (index < 10 ? "0" : "") + std::to_string(index);
+        const std::string number = projectLabel(index); ///< Same label the children will use.
         Record row;
         row.fields["id"] = std::int64_t{index};
         row.fields["name"] = "paw" + number;
@@ -46,8 +64,7 @@ Records makeSequences() {
     std::int64_t sequenceId = 1;
     for (int projectId = 1; projectId <= static_cast<int>(FakeBackend::projectCount);
          ++projectId) {
-        const std::string projectNumber =
-            (projectId < 10 ? "0" : "") + std::to_string(projectId);
+        const std::string projectNumber = projectLabel(projectId);
         for (std::size_t index = 1; index <= FakeBackend::sequencesPerProject; ++index) {
             const int shotNumber = static_cast<int>(index) * 10;
             const std::string sequenceNumber =
@@ -99,8 +116,7 @@ Records makeAssets() {
     std::int64_t assetId = 1;
     for (int projectId = 1; projectId <= static_cast<int>(FakeBackend::projectCount);
          ++projectId) {
-        const std::string projectNumber =
-            (projectId < 10 ? "0" : "") + std::to_string(projectId);
+        const std::string projectNumber = projectLabel(projectId);
         for (std::size_t index = 1; index <= FakeBackend::assetsPerProject; ++index) {
             const std::string assetNumber =
                 (index < 10 ? "0" : "") + std::to_string(index);
@@ -125,8 +141,7 @@ Records makePlaylists() {
     std::int64_t playlistId = 1;
     for (int projectId = 1; projectId <= static_cast<int>(FakeBackend::projectCount);
          ++projectId) {
-        const std::string projectNumber =
-            (projectId < 10 ? "0" : "") + std::to_string(projectId);
+        const std::string projectNumber = projectLabel(projectId);
         for (std::size_t index = 1; index <= FakeBackend::playlistsPerProject; ++index) {
             const std::string playlistNumber =
                 (index < 10 ? "0" : "") + std::to_string(index);

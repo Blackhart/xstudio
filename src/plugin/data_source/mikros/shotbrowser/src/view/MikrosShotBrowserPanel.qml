@@ -248,7 +248,7 @@ Item {
                         query: panel.treeQuery
                     }
 
-                    AssetTab {
+                    AssetList {
                         anchors.fill: parent
                         visible: panel.browserMode === "asset"
                         query: panel.treeQuery

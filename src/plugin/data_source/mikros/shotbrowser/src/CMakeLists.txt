@@ -9,21 +9,19 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 set(SOURCES
-	mikros_shotbrowser_plugin.cpp
 	model/constants.cpp
 	model/dal/dal.cpp
 	model/log.cpp
-	viewModel/mikros_shotbrowser_context.cpp
-	viewModel/context_shared.cpp
+	mikros_shotbrowser.cpp
+	utility/home.cpp
+	utility/catalog.cpp
+	utility/thumbnails.cpp
 	viewModel/project_selector.cpp
+	viewModel/shot_browser.cpp
 	viewModel/shot_tree.cpp
-	viewModel/asset_tab.cpp
+	viewModel/asset_list.cpp
 	viewModel/version_list.cpp
-	viewModel/version_card.cpp
 	viewModel/playlist_tree.cpp
-	viewModel/playlist_card.cpp
-	viewModel/thumbnails.cpp
-	viewModel/open_media.cpp
 	view/resources/mikros_shotbrowser.qrc
 )
 
@@ -77,7 +75,7 @@ qt_add_qml_module(${PROJECT_NAME}
 		view/NameColumn.qml
 		view/ProjectSelector.qml
 		view/ShotTree.qml
-		view/AssetTab.qml
+		view/AssetList.qml
 		view/VersionList.qml
 		view/VersionCard.qml
 		view/PlaylistTree.qml
