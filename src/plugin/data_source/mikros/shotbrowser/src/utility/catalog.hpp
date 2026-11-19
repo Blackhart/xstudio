@@ -11,6 +11,7 @@
 #include "model/poco/asset.hpp"
 #include "model/poco/project.hpp"
 #include "model/poco/sequence.hpp"
+#include "model/poco/sequence_shots.hpp"
 #include "model/poco/shot.hpp"
 #include "model/poco/version.hpp"
 
@@ -37,8 +38,7 @@ namespace trace = log;
  */
 enum class CatalogKind {
     Project,          ///< Project combo.
-    ShotTree,         ///< Sequence names, without their shots.
-    SequenceShots,    ///< Shots of one unfolded sequence.
+    ShotTree,         ///< Sequences of one project, each with its shots.
     Asset,            ///< Asset combo.
     Version,          ///< Version list for the current parents.
     PlaylistTree,     ///< Playlist names, without their versions.
@@ -62,9 +62,8 @@ struct CatalogLoadRequest {
     CatalogKind kind = CatalogKind::Project; ///< List this actor loads.
     caf::weak_actor_ptr panel;               ///< Panel that receives the pages.
     std::uint64_t request_id = 0;            ///< Id the panel checks before applying a page.
-    RequestGeneration generation;            ///< Stops the next fetch when this id moves. Empty for shots and playlist versions.
+    RequestGeneration generation;            ///< Stops the next fetch when this id moves. Empty for playlist versions.
     std::int64_t project_id = 0;             ///< Project, or 0 for the project catalog.
-    std::int64_t sequence_id = 0;            ///< Sequence whose shots to load.
     std::int64_t playlist_id = 0;            ///< Playlist whose versions to load.
     std::optional<std::int64_t> sequence;    ///< Version filter: selected sequence.
     std::optional<std::int64_t> shot;        ///< Version filter: selected shot.
@@ -358,6 +357,56 @@ std::vector<poco::Version> rowsFromJson<poco::Version>(const xstudio::utility::J
         row.movie = entry.value("movie", std::string());
         row.uploaded_movie = entry.value("uploaded_movie", std::string());
         rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+/**
+ * @brief Writes one page of sequences, including the shots attached to each.
+ * @param rows Sequences to send to the panel.
+ * @return JSON the panel message can carry.
+ */
+template <>
+inline xstudio::utility::JsonStore rowsToJson<poco::SequenceShots>(
+    const std::vector<poco::SequenceShots> &rows) {
+    nlohmann::json out = nlohmann::json::array();
+    for (const poco::SequenceShots &node : rows) {
+        nlohmann::json shots = nlohmann::json::array();
+        for (const poco::Shot &shot : node.shots) {
+            shots.push_back({{"id", shot.id}, {"name", shot.name}});
+        }
+        out.push_back(
+            {{"id", node.sequence.id}, {"name", node.sequence.name}, {"shots", std::move(shots)}});
+    }
+    return xstudio::utility::JsonStore(out);
+}
+
+/**
+ * @brief Reads one page of sequences and the shots stored on each.
+ * @param json Payload from `rowsToJson`.
+ * @return Nodes, or empty when `json` is not an array.
+ */
+template <>
+inline std::vector<poco::SequenceShots> rowsFromJson<poco::SequenceShots>(
+    const xstudio::utility::JsonStore &json) {
+    std::vector<poco::SequenceShots> rows;
+    if (!json.is_array()) {
+        return rows;
+    }
+    rows.reserve(json.size());
+    for (const auto &entry : json) {
+        poco::SequenceShots node;
+        node.sequence.id = entry.at("id").get<std::int64_t>();
+        node.sequence.name = entry.at("name").get<std::string>();
+        if (entry.contains("shots") && entry.at("shots").is_array()) {
+            for (const auto &shot : entry.at("shots")) {
+                node.shots.push_back(poco::Shot{
+                    shot.at("id").get<std::int64_t>(),
+                    shot.at("name").get<std::string>(),
+                });
+            }
+        }
+        rows.push_back(std::move(node));
     }
     return rows;
 }

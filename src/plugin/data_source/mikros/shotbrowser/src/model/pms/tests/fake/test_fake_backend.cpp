@@ -62,6 +62,10 @@ TEST_CASE("the fake backend lists sequences in a project") {
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010");
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw20_sq020");
     CHECK(rows[0].fields.count("project") == 0);
+    const auto &shots = std::get<std::vector<Link>>(rows[0].at("shots"));
+    REQUIRE(shots.size() == FakeBackend::shotsPerSequence);
+    CHECK(shots[0].name == "paw20_sq010_sh010");
+    CHECK(shots[1].name == "paw20_sq010_sh020");
 }
 
 TEST_CASE("the fake backend lists shots in a sequence") {

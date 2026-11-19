@@ -43,6 +43,9 @@ std::string dumpValue(const Value &value) {
     if (const auto *number = std::get_if<std::int64_t>(&value)) {
         return std::to_string(*number);
     }
+    if (std::holds_alternative<std::vector<Link>>(value)) {
+        throw Error("dump: links are not a filter value");
+    }
     const Date &date = std::get<Date>(value);
     std::ostringstream out;
     out << std::setfill('0') << std::setw(4) << date.year << '-' << std::setw(2) << date.month

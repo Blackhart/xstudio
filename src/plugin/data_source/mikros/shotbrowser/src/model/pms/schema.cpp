@@ -20,22 +20,19 @@ namespace {
  * @brief Reads the operators declared for a YAML value type.
  * @param types `types` map from the schema file.
  * @param typeName Type name stored on a field, such as `"date"`.
- * @return Operator names, in file order.
- * @throw Error When the type is missing or declares no operators.
+ * @return Operator names, in file order. Empty when the type is not filtered.
+ * @throw Error When the type is missing.
  */
 std::vector<std::string> loadOps(const YAML::Node &types, const std::string &typeName) {
     const YAML::Node type = types[typeName];
-    if (!type || !type["ops"]) {
+    if (!type || !type["ops"] || !type["ops"].IsSequence()) {
         throw Error("schema: unknown type \"" + typeName + "\"");
     }
     std::vector<std::string> ops;
     for (YAML::const_iterator op = type["ops"].begin(); op != type["ops"].end(); ++op) {
         ops.push_back(op->as<std::string>());
     }
-    if (ops.empty()) {
-        throw Error("schema: type \"" + typeName + "\" has no operators");
-    }
-    return ops;
+    return ops; ///< `links` declares no operators. Where cannot use that field.
 }
 
 } // namespace

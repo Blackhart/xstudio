@@ -45,6 +45,11 @@ TEST_CASE("schema loads the sequence entity") {
     CHECK(sequence->scope[0] == "project");
     CHECK(sequence->field("id") != nullptr);
     CHECK(sequence->field("name") != nullptr);
+    const FieldSpec *shots = sequence->field("shots");
+    REQUIRE(shots != nullptr);
+    CHECK(shots->type == "links");
+    CHECK_FALSE(shots->filter);
+    CHECK(shots->ops.empty());
 }
 
 TEST_CASE("schema loads the shot entity") {

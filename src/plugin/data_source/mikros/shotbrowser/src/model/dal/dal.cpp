@@ -15,6 +15,7 @@
 #include "pms/shotgrid/backend.hpp"
 
 #include <chrono>
+#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -136,11 +137,43 @@ std::string trimNewline(std::string text) {
 }
 
 /**
+ * @brief Renders one record field value for the page log.
+ * @param value String, int, date, or list of links.
+ * @return Text that fits inside a `{ key: … }` line.
+ */
+std::string formatFieldValue(const pms::Value &value) {
+    if (const auto *text = std::get_if<std::string>(&value)) {
+        return "\"" + escapeQuoted(*text) + "\"";
+    }
+    if (const auto *number = std::get_if<std::int64_t>(&value)) {
+        return std::to_string(*number);
+    }
+    if (const auto *links = std::get_if<std::vector<pms::Link>>(&value)) {
+        std::ostringstream out;
+        out << "[ ";
+        for (std::size_t i = 0; i < links->size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            const pms::Link &link = (*links)[i];
+            out << "{ id: " << link.id << ", name: \"" << escapeQuoted(link.name) << "\" }";
+        }
+        out << " ]";
+        return out.str();
+    }
+    const pms::Date &date = std::get<pms::Date>(value);
+    std::ostringstream out;
+    out << std::setfill('0') << std::setw(4) << date.year << '-' << std::setw(2) << date.month
+        << '-' << std::setw(2) << date.day;
+    return out.str();
+}
+
+/**
  * @brief Renders the domain page the caller receives.
  * @param source `cache` or `backend`.
  * @param entity Queried entity name.
  * @param page Rows and continuation cursor.
- * @return One `[mikros] page` body, including the id/name lines.
+ * @return One `[mikros] page` body, with every field on each row.
  */
 std::string formatPage(const char *source, const std::string &entity, const pms::Page &page) {
     std::ostringstream out;
@@ -152,8 +185,16 @@ std::string formatPage(const char *source, const std::string &entity, const pms:
         out << '-';
     }
     for (const pms::Record &row : page.rows) {
-        out << "\n  { id: " << std::get<std::int64_t>(row.at("id")) << ", name: \""
-            << escapeQuoted(std::get<std::string>(row.at("name"))) << "\" }";
+        out << "\n  { ";
+        bool first = true;
+        for (const auto &[key, value] : row.fields) {
+            if (!first) {
+                out << ", ";
+            }
+            first = false;
+            out << key << ": " << formatFieldValue(value);
+        }
+        out << " }";
     }
     return out.str();
 }
@@ -393,6 +434,28 @@ RowPage<Row> fetchPage(
     }
 }
 
+/**
+ * @brief Copies the shot links stored on one sequence record.
+ * @param record Sequence row from find().
+ * @return Shots in record order. Empty when the field is absent.
+ */
+std::vector<poco::Shot> retrieveShotListFromSequence(const pms::Record &record) {
+    std::vector<poco::Shot> shots;
+    const auto found = record.fields.find("shots");
+    if (found == record.fields.end()) {
+        return shots;
+    }
+    const auto *links = std::get_if<std::vector<pms::Link>>(&found->second);
+    if (!links) {
+        return shots;
+    }
+    shots.reserve(links->size());
+    for (const pms::Link &link : *links) {
+        shots.push_back(poco::Shot{link.id, link.name});
+    }
+    return shots;
+}
+
 } // namespace
 
 void initialize() {
@@ -455,16 +518,26 @@ RowPage<poco::Project> findProjects(std::size_t limit, std::optional<std::string
     return fetchPage<poco::Project>(pms::Project(), limit, cursor);
 }
 
-RowPage<poco::Sequence> findSequences(
+RowPage<poco::SequenceShots> findSequenceShots(
     std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
-    return fetchPage<poco::Sequence>(
-        pms::Sequence().In(pms::scope::project == projectId), limit, cursor);
-}
-
-RowPage<poco::Shot> findShots(
-    std::int64_t sequenceId, std::size_t limit, std::optional<std::string> cursor) {
-    return fetchPage<poco::Shot>(
-        pms::Shot().In(pms::scope::sequence == sequenceId), limit, cursor);
+    try {
+        const pms::Page page = findLimitedPage(
+            pms::Sequence().In(pms::scope::project == projectId), limit, cursor);
+        RowPage<poco::SequenceShots> out;
+        out.next_cursor = page.next_cursor;
+        out.rows.reserve(page.rows.size());
+        for (const pms::Record &record : page.rows) {
+            poco::SequenceShots node;
+            node.sequence.id = std::get<std::int64_t>(record.at("id"));
+            node.sequence.name = std::get<std::string>(record.at("name"));
+            node.shots = retrieveShotListFromSequence(record); ///< Links already read with the sequence.
+            out.rows.push_back(std::move(node));
+        }
+        return out;
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return {};
+    }
 }
 
 RowPage<poco::Asset> findAssets(

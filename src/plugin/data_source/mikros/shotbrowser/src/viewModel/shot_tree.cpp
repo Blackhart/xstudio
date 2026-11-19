@@ -30,13 +30,7 @@ namespace {
 
 ShotTree *qml_shot_tree = nullptr; ///< Instance exposed to QML as ShotTreeBridge.
 
-using TreePage = std::function<void(
-    std::uint64_t,
-    const std::string &,
-    std::int64_t,
-    bool,
-    std::int64_t,
-    const utility::JsonStore &)>;
+using TreePage = std::function<void(std::uint64_t, bool, const utility::JsonStore &)>;
 
 /**
  * @brief Applies a shot-tree page and declines every other catalog.
@@ -80,16 +74,10 @@ class ShotTreePageHandler : public caf::detail::behavior_impl {
             return false;
         }
         const std::string catalog = caf::get<2>(view);
-        if (catalog != "shot_tree" && catalog != "sequence_shots") {
+        if (catalog != "shot_tree") {
             return false; ///< Another catalog: the shell handler continues.
         }
-        apply_(
-            caf::get<1>(view),
-            catalog,
-            caf::get<3>(view),
-            caf::get<12>(view),
-            caf::get<5>(view),
-            caf::get<13>(view));
+        apply_(caf::get<1>(view), caf::get<12>(view), caf::get<13>(view));
         visitor(caf::unit);
         return true;
     }
@@ -104,18 +92,19 @@ class ShotTreePageHandler : public caf::detail::behavior_impl {
  * @param right Second sequence.
  * @return True when `left` belongs before `right`.
  */
-bool sequenceNameAlphabeticOrderAlgorithm(const SequenceNode &left, const SequenceNode &right) {
+bool sequenceNameAlphabeticOrderAlgorithm(
+    const poco::SequenceShots &left, const poco::SequenceShots &right) {
     static const QCollator order = [] {
         QCollator collator;
         collator.setCaseSensitivity(Qt::CaseInsensitive); ///< `a` comes before `B`.
         return collator;
     }();
-    const int nameOrder =
-        order.compare(QString::fromStdString(left.name), QString::fromStdString(right.name));
+    const int nameOrder = order.compare(
+        QString::fromStdString(left.sequence.name), QString::fromStdString(right.sequence.name));
     if (nameOrder != 0) {
         return nameOrder < 0; ///< Different names: the earlier name comes first.
     }
-    return left.id < right.id;
+    return left.sequence.id < right.sequence.id;
 }
 
 /**
@@ -124,7 +113,7 @@ bool sequenceNameAlphabeticOrderAlgorithm(const SequenceNode &left, const Sequen
  * @param right Second shot.
  * @return True when `left` belongs before `right`.
  */
-bool shotNameAlphabeticOrderAlgorithm(const ShotNode &left, const ShotNode &right) {
+bool shotNameAlphabeticOrderAlgorithm(const poco::Shot &left, const poco::Shot &right) {
     static const QCollator order = [] {
         QCollator collator;
         collator.setCaseSensitivity(Qt::CaseInsensitive); ///< `a` comes before `B`.
@@ -198,33 +187,6 @@ void ShotTreeItemModel::resetFromSequences() {
     endResetModel();
 }
 
-void ShotTreeItemModel::replaceShots(
-    int sequenceIndex, std::vector<ShotNode> shots, bool shotsLoaded) {
-    if (!owner_ || sequenceIndex < 0 ||
-        sequenceIndex >= static_cast<int>(owner_->sequences_.size())) {
-        return;
-    }
-    SequenceNode &sequence = owner_->sequences_[sequenceIndex];
-    const QModelIndex parent = index(sequenceIndex, 0, QModelIndex());
-    const int previousShotCount = static_cast<int>(sequence.shots.size());
-    if (previousShotCount > 0) {
-        beginRemoveRows(parent, 0, previousShotCount - 1);
-        sequence.shots.clear();
-        endRemoveRows();
-    }
-    const int newCount = static_cast<int>(shots.size());
-    if (newCount > 0) {
-        beginInsertRows(parent, 0, newCount - 1);
-        sequence.shots = std::move(shots);
-        endInsertRows();
-    } else {
-        sequence.shots.clear();
-    }
-    sequence.shots_loaded = shotsLoaded;
-    sequence.shots_loading = false;
-    emit dataChanged(parent, parent, {ShotsLoadedRole});
-}
-
 QModelIndex
 ShotTreeItemModel::index(int row, int column, const QModelIndex &parent) const {
     if (!owner_ || column != 0 || row < 0) {
@@ -287,11 +249,11 @@ QVariant ShotTreeItemModel::data(const QModelIndex &index, int role) const {
         if (sequenceIndex < 0 || sequenceIndex >= static_cast<int>(owner_->sequences_.size())) {
             return {};
         }
-        const SequenceNode &sequence = owner_->sequences_[sequenceIndex];
+        const poco::SequenceShots &sequence = owner_->sequences_[sequenceIndex];
         if (shotIndex < 0 || shotIndex >= static_cast<int>(sequence.shots.size())) {
             return {};
         }
-        const ShotNode &shot = sequence.shots[shotIndex];
+        const poco::Shot &shot = sequence.shots[shotIndex];
         switch (role) {
         case Qt::DisplayRole:
         case NameRole:
@@ -300,8 +262,6 @@ QVariant ShotTreeItemModel::data(const QModelIndex &index, int role) const {
             return QVariant::fromValue(static_cast<qint64>(shot.id));
         case IsSequenceRole:
             return false;
-        case ShotsLoadedRole:
-            return true;
         default:
             return {};
         }
@@ -310,17 +270,15 @@ QVariant ShotTreeItemModel::data(const QModelIndex &index, int role) const {
     if (sequenceIndex < 0 || sequenceIndex >= static_cast<int>(owner_->sequences_.size())) {
         return {};
     }
-    const SequenceNode &sequence = owner_->sequences_[sequenceIndex];
+    const poco::SequenceShots &sequence = owner_->sequences_[sequenceIndex];
     switch (role) {
     case Qt::DisplayRole:
     case NameRole:
-        return QString::fromStdString(sequence.name);
+        return QString::fromStdString(sequence.sequence.name);
     case IdRole:
-        return QVariant::fromValue(static_cast<qint64>(sequence.id));
+        return QVariant::fromValue(static_cast<qint64>(sequence.sequence.id));
     case IsSequenceRole:
         return true;
-    case ShotsLoadedRole:
-        return sequence.shots_loaded;
     default:
         return {};
     }
@@ -331,8 +289,7 @@ QHash<int, QByteArray> ShotTreeItemModel::roleNames() const {
         {Qt::DisplayRole, "display"},
         {IdRole, "nodeId"},
         {NameRole, "name"},
-        {IsSequenceRole, "isSequence"},
-        {ShotsLoadedRole, "shotsLoaded"}};
+        {IsSequenceRole, "isSequence"}};
 }
 
 bool ShotTreeItemModel::hasChildren(const QModelIndex &parent) const {
@@ -349,30 +306,8 @@ bool ShotTreeItemModel::hasChildren(const QModelIndex &parent) const {
     if (sequenceIndex < 0 || sequenceIndex >= static_cast<int>(owner_->sequences_.size())) {
         return false;
     }
-    const SequenceNode &sequence = owner_->sequences_[sequenceIndex];
-    return !sequence.shots_loaded || !sequence.shots.empty();
-}
-
-bool ShotTreeItemModel::canFetchMore(const QModelIndex &parent) const {
-    if (!owner_ || !parent.isValid() || packedIsShot(parent.internalId())) {
-        return false;
-    }
-    const int sequenceIndex = packedSequenceIndex(parent.internalId());
-    if (sequenceIndex < 0 || sequenceIndex >= static_cast<int>(owner_->sequences_.size())) {
-        return false;
-    }
-    const SequenceNode &sequence = owner_->sequences_[sequenceIndex];
-    return !sequence.shots_loaded && !sequence.shots_loading;
-}
-
-void ShotTreeItemModel::fetchMore(const QModelIndex &parent) {
-    if (!canFetchMore(parent) || !owner_) {
-        return;
-    }
-    const int sequenceIndex = packedSequenceIndex(parent.internalId());
-    SequenceNode &sequence = owner_->sequences_[sequenceIndex];
-    sequence.shots_loading = true; ///< Stop TreeView from calling fetchMore again.
-    owner_->loadShotForSequenceAsync(sequence.id);
+    const poco::SequenceShots &sequence = owner_->sequences_[sequenceIndex];
+    return !sequence.shots.empty();
 }
 
 // ---------------------------------------------------------------------------
@@ -498,8 +433,8 @@ void ShotTree::attribute_changed(const utility::Uuid &attr_uuid, int role) {
         const std::int64_t shotId = readSelectedShotIdFromQml();
         std::int64_t sequenceId = -1;
         if (shotId != -1) {
-            const std::optional<SequenceNode> parent = findSequenceOwningShot(shotId);
-            sequenceId = parent ? parent->id : -1; ///< Parent follows the shot; missing means none.
+            const std::optional<poco::SequenceShots> parent = findSequenceOwningShot(shotId);
+            sequenceId = parent ? parent->sequence.id : -1; ///< Parent follows the shot; missing means none.
         }
         if (sequenceId == dal::selectedSequence() && shotId == dal::selectedShot()) {
             return; ///< The QML write repeats a pair already stored.
@@ -561,17 +496,17 @@ void ShotTree::sendSelectedSequenceIdAndSelectedShotIdToQml() {
 }
 
 std::string ShotTree::getSequenceNameById(std::int64_t sequenceId) const {
-    for (const SequenceNode &sequence : sequences_) {
-        if (sequence.id == sequenceId) {
-            return sequence.name;
+    for (const poco::SequenceShots &sequence : sequences_) {
+        if (sequence.sequence.id == sequenceId) {
+            return sequence.sequence.name;
         }
     }
     return {};
 }
 
 std::string ShotTree::getShotNameById(std::int64_t shotId) const {
-    for (const SequenceNode &sequence : sequences_) {
-        for (const ShotNode &shot : sequence.shots) {
+    for (const poco::SequenceShots &sequence : sequences_) {
+        for (const poco::Shot &shot : sequence.shots) {
             if (shot.id == shotId) {
                 return shot.name;
             }
@@ -580,9 +515,9 @@ std::string ShotTree::getShotNameById(std::int64_t shotId) const {
     return {};
 }
 
-std::optional<SequenceNode> ShotTree::findSequenceOwningShot(std::int64_t shotId) const {
-    for (const SequenceNode &sequence : sequences_) {
-        for (const ShotNode &shot : sequence.shots) {
+std::optional<poco::SequenceShots> ShotTree::findSequenceOwningShot(std::int64_t shotId) const {
+    for (const poco::SequenceShots &sequence : sequences_) {
+        for (const poco::Shot &shot : sequence.shots) {
             if (shot.id == shotId) {
                 return sequence;
             }
@@ -591,26 +526,17 @@ std::optional<SequenceNode> ShotTree::findSequenceOwningShot(std::int64_t shotId
     return std::nullopt;
 }
 
-std::optional<SequenceNode> ShotTree::findSequenceNodeById(std::int64_t sequenceId) const {
-    for (const SequenceNode &sequence : sequences_) {
-        if (sequence.id == sequenceId) {
+std::optional<poco::SequenceShots> ShotTree::findSequenceById(std::int64_t sequenceId) const {
+    for (const poco::SequenceShots &sequence : sequences_) {
+        if (sequence.sequence.id == sequenceId) {
             return sequence;
         }
     }
     return std::nullopt;
 }
 
-int ShotTree::getIndexOfSequenceNodeById(std::int64_t sequenceId) const {
-    for (int index = 0; index < static_cast<int>(sequences_.size()); ++index) {
-        if (sequences_[index].id == sequenceId) {
-            return index;
-        }
-    }
-    return -1;
-}
-
 // ---------------------------------------------------------------------------
-// Sequence list. A load clears the tree, then each page extends it.
+// Sequence list. Non-empty sequences_ is reused. A new project clears it first.
 // ---------------------------------------------------------------------------
 
 bool ShotTree::checkProjectSelected() const {
@@ -621,23 +547,27 @@ bool ShotTree::checkBrowserModeIsShot() const {
     return dal::browserMode() == dal::BrowserMode::Shot;
 }
 
-void ShotTree::loadSequenceListAsync() {
-    const std::uint64_t requestId = ++(*sequence_request_id_); ///< Stop the sequence fetch already running.
-    clearShotTree(); ///< The previous project's sequences and shots leave the screen.
-    if (!checkProjectSelected() || !checkBrowserModeIsShot()) {
-        return; ///< No project, or the asset tab is showing.
+void ShotTree::loadSequenceShotsAsync() {
+    if (!sequences_.empty() || !checkProjectSelected() || !checkBrowserModeIsShot()) {
+        return; ///< Tree already loaded, no project, or the asset tab is showing.
     }
+    const std::uint64_t requestId = ++(*sequence_request_id_); ///< Stop the sequence fetch already running.
     sequence_page_ = [this](std::uint64_t id, bool append, const utility::JsonStore &payload) {
         if (id != sequence_request_id_->load()) {
             trace::drop("shot_tree", id);
             return;
         }
-        updateSequenceList(append, payload);
+        updateSequenceShots(append, payload);
     };
     CatalogLoadRequest request =
         makeCatalogRequest(&panel_, CatalogKind::ShotTree, requestId, dal::selectedProject());
-    request.generation = sequence_request_id_; ///< The worker stops before the next findSequences.
+    request.generation = sequence_request_id_; ///< The worker stops before the next findSequenceShots.
     launchCatalogLoad(panel_.system(), std::move(request));
+}
+
+void ShotTree::clearSequenceShots() {
+    ++(*sequence_request_id_); ///< Drop pages that still belong to the previous project.
+    clearShotTree();
 }
 
 void ShotTree::clearShotTree() {
@@ -646,69 +576,30 @@ void ShotTree::clearShotTree() {
     setSelectedSequenceAndShot(-1, -1); ///< Drop the pair with the previous project's tree.
 }
 
-void ShotTree::loadShotForSequenceAsync(std::int64_t sequenceId) {
-    shot_page_ = [this](std::int64_t id, bool append, const utility::JsonStore &payload) {
-        updateShotListForSequence(id, append, payload); ///< A shot fetch is not stopped by a newer one.
-    };
-    CatalogLoadRequest request = makeCatalogRequest(
-        &panel_,
-        CatalogKind::SequenceShots,
-        sequence_request_id_->load(),
-        dal::selectedProject());
-    request.sequence_id = sequenceId;
-    launchCatalogLoad(panel_.system(), std::move(request));
-}
-
-void ShotTree::updateSequenceList(bool append, const utility::JsonStore &payload) {
-    const std::vector<poco::Sequence> rows = rowsFromJson<poco::Sequence>(payload);
-    const std::vector<SequenceNode> previous = sequences_;
+void ShotTree::updateSequenceShots(bool append, const utility::JsonStore &payload) {
+    const std::vector<poco::SequenceShots> rows = rowsFromJson<poco::SequenceShots>(payload);
     if (!append) {
         sequences_.clear();
     }
-    for (const poco::Sequence &row : rows) {
-        if (findSequenceNodeById(row.id)) {
+    for (const poco::SequenceShots &row : rows) {
+        if (findSequenceById(row.sequence.id)) {
             continue; ///< This page repeats a sequence already in the tree.
         }
-        SequenceNode node;
-        node.id = row.id;
-        node.name = row.name;
-        for (const SequenceNode &kept : previous) {
-            if (kept.id != row.id) {
-                continue;
-            }
-            node = kept; ///< Keep shots already unfolded on this sequence.
-            break;
-        }
-        sequences_.push_back(std::move(node));
+        sequences_.push_back(row);
     }
+    sortShotsByName();
     sortSequencesByName();
     item_model_.resetFromSequences(); ///< Sort reorders roots; a full reset is the simple path.
 }
 
-void ShotTree::updateShotListForSequence(
-    std::int64_t sequenceId, bool append, const utility::JsonStore &payload) {
-    const std::vector<poco::Shot> rows = rowsFromJson<poco::Shot>(payload);
-    const int sequenceIndex = getIndexOfSequenceNodeById(sequenceId);
-    if (sequenceIndex < 0) {
-        return;
+void ShotTree::sortShotsByName() {
+    for (poco::SequenceShots &sequence : sequences_) {
+        std::sort(sequence.shots.begin(), sequence.shots.end(), shotNameAlphabeticOrderAlgorithm);
     }
-    SequenceNode &sequence = sequences_[sequenceIndex];
-    std::vector<ShotNode> shots = append ? sequence.shots : std::vector<ShotNode>{};
-    for (const poco::Shot &row : rows) {
-        shots.push_back(ShotNode{row.id, row.name});
-    }
-    sortShotsByName(shots); ///< Only the shots of this sequence move.
-    const bool shotsLoaded =
-        sequence.shots_loaded || rows.size() < dal::readPageLimit(); ///< A short page is the last.
-    item_model_.replaceShots(sequenceIndex, std::move(shots), shotsLoaded);
 }
 
 void ShotTree::sortSequencesByName() {
     std::sort(sequences_.begin(), sequences_.end(), sequenceNameAlphabeticOrderAlgorithm);
-}
-
-void ShotTree::sortShotsByName(std::vector<ShotNode> &shots) const {
-    std::sort(shots.begin(), shots.end(), shotNameAlphabeticOrderAlgorithm);
 }
 
 // ---------------------------------------------------------------------------
@@ -716,25 +607,9 @@ void ShotTree::sortShotsByName(std::vector<ShotNode> &shots) const {
 // ---------------------------------------------------------------------------
 
 caf::message_handler ShotTree::message_handler_extensions() {
-    auto apply = [this](
-                     std::uint64_t requestId,
-                     const std::string &catalog,
-                     std::int64_t projectId,
-                     bool append,
-                     std::int64_t sequenceId,
-                     const utility::JsonStore &payload) {
-        if (dal::selectedProject() != projectId) {
-            trace::drop(catalog.c_str(), requestId); ///< The user picked another project.
-            return;
-        }
-        if (catalog == "shot_tree") {
-            if (sequence_page_) {
-                sequence_page_(requestId, append, payload);
-            }
-            return;
-        }
-        if (shot_page_) {
-            shot_page_(sequenceId, append, payload); ///< Shot pages are not dropped when the sequence id moves.
+    auto apply = [this](std::uint64_t requestId, bool append, const utility::JsonStore &payload) {
+        if (sequence_page_) {
+            sequence_page_(requestId, append, payload);
         }
     };
     caf::detail::behavior_impl::pointer handler =

@@ -27,29 +27,10 @@ namespace xstudio::mikros_shotbrowser {
 class ShotTree;
 
 /**
- * @brief One shot under a sequence.
- */
-struct ShotNode {
-    std::int64_t id = -1; ///< Shot id.
-    std::string name;     ///< Label shown in the tree.
-};
-
-/**
- * @brief One sequence and the shots already loaded under it.
- */
-struct SequenceNode {
-    std::int64_t id = -1;        ///< Sequence id.
-    std::string name;            ///< Label shown in the tree.
-    std::vector<ShotNode> shots; ///< Children. Empty until the sequence is unfolded.
-    bool shots_loaded = false;   ///< True after the last shot page.
-    bool shots_loading = false;  ///< True while a fetchMore load is in flight.
-};
-
-/**
  * @brief Item model indexed on ShotTree::sequences_.
  *
- * Sequences are root rows. Shots are children. Unloaded sequences report
- * hasChildren and canFetchMore so TreeView can expand and load.
+ * A root row is one sequence. Its children are the shots already stored on that
+ * sequence. Expanding a row does not load anything.
  */
 class ShotTreeItemModel : public QAbstractItemModel {
     Q_OBJECT
@@ -58,13 +39,12 @@ class ShotTreeItemModel : public QAbstractItemModel {
     enum Roles {
         IdRole = Qt::UserRole + 1,
         NameRole,
-        IsSequenceRole,
-        ShotsLoadedRole
+        IsSequenceRole
     };
 
     /**
      * @brief Binds the model to the tree that owns the sequence vector.
-     * @param owner View model that holds `sequences_` and starts shot loads.
+     * @param owner View model that holds `sequences_`.
      */
     explicit ShotTreeItemModel(ShotTree *owner);
 
@@ -72,17 +52,6 @@ class ShotTreeItemModel : public QAbstractItemModel {
      * @brief Rebuilds every root row from `sequences_`.
      */
     void resetFromSequences();
-
-    /**
-     * @brief Replaces the visible shots under one sequence.
-     *
-     * Removes the current children, writes `shots` into `sequences_`, then inserts.
-     * @param sequenceIndex Index in `sequences_`.
-     * @param shots Sorted shots that become the new children.
-     * @param shotsLoaded True when the last page has arrived.
-     */
-    void replaceShots(
-        int sequenceIndex, std::vector<ShotNode> shots, bool shotsLoaded);
 
     [[nodiscard]] QModelIndex
     index(int row, int column, const QModelIndex &parent = QModelIndex()) const override;
@@ -96,11 +65,9 @@ class ShotTreeItemModel : public QAbstractItemModel {
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
     [[nodiscard]] bool
     hasChildren(const QModelIndex &parent = QModelIndex()) const override;
-    [[nodiscard]] bool canFetchMore(const QModelIndex &parent) const override;
-    void fetchMore(const QModelIndex &parent) override;
 
   private:
-    ShotTree *owner_ = nullptr; ///< Owns `sequences_` and shot loads.
+    ShotTree *owner_ = nullptr; ///< Owns `sequences_`.
 };
 
 /**
@@ -189,12 +156,20 @@ class ShotTree : public QObject {
     void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
     /**
-     * @brief Stops the previous sequence fetch, clears the tree, then loads when the tab is Shot.
+     * @brief Loads every sequence page when `sequences_` is empty.
      *
-     * The request id always moves. The catalog starts only when a project is selected
-     * and the left tab is Shot. Returns before the pages arrive.
+     * Rows already on screen are kept. The request id moves only when a load
+     * starts. The catalog starts only when a project is selected and the left
+     * tab is Shot. Returns before the pages arrive.
      */
-    void loadSequenceListAsync();
+    void loadSequenceShotsAsync();
+
+    /**
+     * @brief Clears `sequences_` and stops a load that is still running.
+     *
+     * The panel calls this when the selected project changes.
+     */
+    void clearSequenceShots();
 
     /**
      * @brief Handles a shot-tree page and declines every other catalog.
@@ -273,17 +248,9 @@ class ShotTree : public QObject {
     bool checkBrowserModeIsShot() const;
 
     /**
-     * @brief Empties the tree and clears the selection.
+     * @brief Empties the rows the model shows and clears the selection.
      */
     void clearShotTree();
-
-    /**
-     * @brief Loads the shots of one unfolded sequence.
-     *
-     * The fetch runs to the last page. A later unfold does not stop it.
-     * @param sequenceId Sequence the user unfolded.
-     */
-    void loadShotForSequenceAsync(std::int64_t sequenceId);
 
     /**
      * @brief Writes the selected sequence and shot ids without notifying.
@@ -307,59 +274,41 @@ class ShotTree : public QObject {
     /**
      * @brief Sequence that contains a shot id.
      * @param shotId Shot the user selected.
-     * @return The parent sequence, or empty when the shot is not in the tree.
+     * @return The parent node, or empty when the shot is not in the tree.
      */
-    std::optional<SequenceNode> findSequenceOwningShot(std::int64_t shotId) const;
+    std::optional<poco::SequenceShots> findSequenceOwningShot(std::int64_t shotId) const;
 
     /**
      * @brief Sequence already stored in `sequences_`.
      * @param sequenceId Sequence id.
      * @return The node, or empty when it is new.
      */
-    std::optional<SequenceNode> findSequenceNodeById(std::int64_t sequenceId) const;
+    std::optional<poco::SequenceShots> findSequenceById(std::int64_t sequenceId) const;
 
     /**
-     * @brief Index of a sequence in `sequences_`.
-     * @param sequenceId Sequence id.
-     * @return The index, or `-1` when missing.
+     * @brief Replaces or extends the tree from one page, then sorts it.
+     * @param append False for the first page, which replaces the tree.
+     * @param payload Sequence rows, each with its shots.
      */
-    int getIndexOfSequenceNodeById(std::int64_t sequenceId) const;
+    void updateSequenceShots(bool append, const utility::JsonStore &payload);
 
     /**
-     * @brief Replaces or extends the sequence nodes from one page, then sorts them.
-     * @param append False for the first page, which replaces the sequence list.
-     * @param payload `{id, name}` rows from the worker.
+     * @brief Sorts the shots inside every sequence by name.
      */
-    void updateSequenceList(bool append, const utility::JsonStore &payload);
-
-    /**
-     * @brief Adds one page of shots into that sequence, then sorts those shots.
-     * @param sequenceId Sequence the page belongs to.
-     * @param append False for the first page, which replaces that sequence's shots.
-     * @param payload `{id, name}` rows from the worker.
-     */
-    void updateShotListForSequence(
-        std::int64_t sequenceId, bool append, const utility::JsonStore &payload);
+    void sortShotsByName();
 
     /**
      * @brief Sorts every sequence by name.
      */
     void sortSequencesByName();
 
-    /**
-     * @brief Sorts shots by name.
-     * @param shots Shot list to reorder.
-     */
-    void sortShotsByName(std::vector<ShotNode> &shots) const;
-
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
-    std::vector<SequenceNode> sequences_; ///< Source of truth for the tree.
+    std::vector<poco::SequenceShots> sequences_; ///< Rows the model shows. Non-empty skips the next load.
     ShotTreeItemModel item_model_;        ///< Indexes `sequences_` for the TreeView.
     ShotTreeFilterModel filter_model_;    ///< Recursive name filter over `item_model_`.
     RequestGeneration sequence_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Stops the next sequence fetch when it moves.
     std::function<void(std::uint64_t, bool, const utility::JsonStore &)> sequence_page_; ///< Applies one sequence page.
-    std::function<void(std::int64_t, bool, const utility::JsonStore &)> shot_page_; ///< Applies one shot page. It does not stop.
     module::StringAttribute *sequence_ = nullptr; ///< Selected sequence id, or `-1`.
     module::StringAttribute *shot_ = nullptr;     ///< Selected shot id, or `-1`.
 };

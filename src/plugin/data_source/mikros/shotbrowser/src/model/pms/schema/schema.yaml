@@ -3,6 +3,7 @@ types:
   string: { ops: [eq, ne] }
   int:    { ops: [eq, ne] }
   date:   { ops: [eq, ne] }
+  links:  { ops: [] }
 
 entities:
   project:
@@ -16,8 +17,9 @@ entities:
   sequence:
     creatable: false
     fields:
-      id:   { type: int,    filter: true, set: false }
-      name: { type: string, filter: true, set: true }
+      id:    { type: int,    filter: true,  set: false }
+      name:  { type: string, filter: true,  set: true }
+      shots: { type: links,  filter: false, set: false }
     scope: [project]
 
   shot:

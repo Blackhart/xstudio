@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file pms/value.hpp
- * @brief Scalar values and the flat record returned by find().
+ * @brief Values and the record returned by find().
  */
 #pragma once
 
@@ -37,12 +37,30 @@ struct Date {
 };
 
 /**
- * @brief Scalar stored in a filter leaf or in a record field.
+ * @brief One linked row carried on a parent, such as a shot on a sequence.
  *
- * `string` maps to `std::string`, `int` to `std::int64_t`, and `date` to Date.
- * This slice has no nested record: a project row is a flat map of scalars.
+ * `id` is the linked entity id. `name` is the label ShotGrid puts on the link.
  */
-using Value = std::variant<std::string, std::int64_t, Date>;
+struct Link {
+    std::int64_t id = 0; ///< Linked entity id.
+    std::string name;    ///< Linked entity label.
+
+    /**
+     * @brief Compares two links by id and name.
+     * @param other Link to compare with.
+     * @return True when both fields are equal.
+     */
+    bool operator==(const Link &other) const { return id == other.id && name == other.name; }
+};
+
+/**
+ * @brief Value stored in a filter leaf or in a record field.
+ *
+ * `string` maps to `std::string`, `int` to `std::int64_t`, `date` to Date, and
+ * `links` to a list of Link. A filter leaf stays a scalar. Only a record field
+ * such as `shots` stores the list.
+ */
+using Value = std::variant<std::string, std::int64_t, Date, std::vector<Link>>;
 
 /**
  * @brief One row returned by find(), keyed by the domain YAML names.
@@ -51,7 +69,7 @@ using Value = std::variant<std::string, std::int64_t, Date>;
  * a null in its place. `id` and `name` are required and checked after find().
  */
 struct Record {
-    std::map<std::string, Value> fields; ///< Domain keys and their scalar values.
+    std::map<std::string, Value> fields; ///< Domain keys and their values.
 
     /**
      * @brief Returns the value stored at `key`.

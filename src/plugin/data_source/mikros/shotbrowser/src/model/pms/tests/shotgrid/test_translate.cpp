@@ -216,3 +216,38 @@ TEST_CASE("uploaded movie keeps a signed url from a string or an object") {
     CHECK(std::get<std::string>(record.at("uploaded_movie")) == "https://example.test/signed.mp4");
     CHECK(std::get<std::string>(record.at("uploaded_movie_provider")) == "url");
 }
+
+TEST_CASE("sequence shots become a list of links") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *sequence = mapping.findSchema("sequence");
+    REQUIRE(sequence != nullptr);
+    const nlohmann::json row = {
+        {"type", "Sequence"},
+        {"id", 8},
+        {"attributes",
+         {{"code", "sq010"},
+          {"shots",
+           nlohmann::json::array(
+               {{{"id", 501}, {"name", "sq010_sh010"}, {"type", "Shot"}},
+                {{"id", 502}, {"name", "sq010_sh020"}, {"type", "Shot"}}})}}}};
+    const Record record = shotgridRecordFromJson(row, *sequence);
+    CHECK(std::get<std::string>(record.at("name")) == "sq010");
+    const auto &shots = std::get<std::vector<Link>>(record.at("shots"));
+    REQUIRE(shots.size() == 2);
+    CHECK(shots[0].id == 501);
+    CHECK(shots[0].name == "sq010_sh010");
+    CHECK(shots[1].id == 502);
+    CHECK(shots[1].name == "sq010_sh020");
+}
+
+TEST_CASE("an empty shot list leaves the field absent") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *sequence = mapping.findSchema("sequence");
+    REQUIRE(sequence != nullptr);
+    const nlohmann::json row = {
+        {"type", "Sequence"},
+        {"id", 8},
+        {"attributes", {{"code", "sq010"}, {"shots", nlohmann::json::array()}}}};
+    const Record record = shotgridRecordFromJson(row, *sequence);
+    CHECK(record.fields.count("shots") == 0);
+}

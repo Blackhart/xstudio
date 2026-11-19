@@ -628,7 +628,22 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(sequence, *ir.where)) {
                 continue;
             }
-            rows.push_back(publicNamed(sequence));
+            Record row = publicNamed(sequence);
+            const auto sequenceId = std::get<std::int64_t>(sequence.fields.at("id"));
+            std::vector<Link> shots;
+            for (const Record &shot : shots_) {
+                if (std::get<std::int64_t>(shot.fields.at("sequence")) != sequenceId) {
+                    continue;
+                }
+                Link link;
+                link.id = std::get<std::int64_t>(shot.fields.at("id"));
+                link.name = std::get<std::string>(shot.fields.at("name"));
+                shots.push_back(std::move(link));
+            }
+            if (!shots.empty()) {
+                row.fields["shots"] = std::move(shots); ///< Same shape as the ShotGrid link list.
+            }
+            rows.push_back(std::move(row));
         }
     } else if (ir.entity == "shot") {
         for (const Record &shot : shots_) {

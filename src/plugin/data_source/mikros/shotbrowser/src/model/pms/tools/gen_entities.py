@@ -118,6 +118,8 @@ def main():
             ]
         )
         for field, meta in spec["fields"].items():
+            if meta["type"] == "links":
+                continue  # A link list is read from the record. It is not a filter leaf.
             cpp_type = TYPE_CPP[meta["type"]]
             ident = camel(field)
             entities.append(f"    /// Field `{field}`, type `{meta['type']}`.")
@@ -140,7 +142,9 @@ def main():
                 f"namespace {key} {{",
             ]
         )
-        for field in spec["fields"]:
+        for field, meta in spec["fields"].items():
+            if meta["type"] == "links":
+                continue
             ident = camel(field)
             entities.append(f"    /// Proxy for `{field}`.")
             entities.append(f"    inline constexpr auto {ident} = {struct}::{ident};")

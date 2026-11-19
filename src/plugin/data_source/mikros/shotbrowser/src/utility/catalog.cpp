@@ -134,31 +134,29 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             {},
             request.generation);
         return;
-    case CatalogKind::ShotTree:
-        publishPages<poco::Sequence>(
-            request.panel,
-            request.request_id,
-            "shot_tree",
-            request.project_id,
-            [projectId = request.project_id](const std::optional<std::string> &cursor) {
-                return dal::findSequences(projectId, dal::readPageLimit(), cursor);
-            },
-            {},
-            request.generation); ///< Stops before the next findSequences when the id moves.
-        return;
-    case CatalogKind::SequenceShots: {
-        PageScope scope;
-        scope.has_sequence = true;
-        scope.sequence_id = request.sequence_id; ///< The panel writes these shots into that node.
-        publishPages<poco::Shot>(
-            request.panel,
-            request.request_id,
-            "sequence_shots",
-            request.project_id,
-            [sequenceId = request.sequence_id](const std::optional<std::string> &cursor) {
-                return dal::findShots(sequenceId, dal::readPageLimit(), cursor);
-            },
-            scope);
+    case CatalogKind::ShotTree: {
+        std::optional<std::string> cursor;
+        bool append = false;
+        for (;;) {
+            if (request.generation && request.generation->load() != request.request_id) {
+                break; ///< A newer load started. Do not call the DAL again.
+            }
+            const dal::RowPage<poco::SequenceShots> page =
+                dal::findSequenceShots(request.project_id, dal::readPageLimit(), cursor);
+            sendCatalog(
+                request.panel,
+                request.request_id,
+                "shot_tree",
+                request.project_id,
+                {},
+                append,
+                rowsToJson(page.rows));
+            if (!page.next_cursor) {
+                break;
+            }
+            cursor = page.next_cursor;
+            append = true;
+        }
         return;
     }
     case CatalogKind::Asset:

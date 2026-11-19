@@ -18,7 +18,7 @@ namespace pms {
  */
 struct FieldSpec {
     std::string key;  ///< YAML field name.
-    std::string type; ///< `string`, `int`, or `date`.
+    std::string type; ///< `string`, `int`, `date`, or `links`.
     bool filter = false; ///< True when Where may use the field.
     bool canSet = false; ///< True when a later slice may assign the field.
     bool requiredOnCreate = false; ///< True when a later create must send the field.

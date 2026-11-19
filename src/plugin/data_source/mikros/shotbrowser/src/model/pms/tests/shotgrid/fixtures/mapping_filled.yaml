@@ -11,8 +11,9 @@ entities:
   sequence:
     shotgrid: Sequence
     fields:
-      id:   { shotgrid: id }
-      name: { shotgrid: code }
+      id:    { shotgrid: id }
+      name:  { shotgrid: code }
+      shots: { shotgrid: shots }
     links:
       project: { shotgrid: project, target: project }
 

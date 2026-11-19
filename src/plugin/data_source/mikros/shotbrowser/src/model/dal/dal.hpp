@@ -9,8 +9,7 @@
 #include "model/poco/asset.hpp"
 #include "model/poco/playlist.hpp"
 #include "model/poco/project.hpp"
-#include "model/poco/sequence.hpp"
-#include "model/poco/shot.hpp"
+#include "model/poco/sequence_shots.hpp"
 #include "model/poco/version.hpp"
 
 #include <cstdint>
@@ -135,30 +134,17 @@ RowPage<poco::Project> findProjects(
     std::size_t limit, std::optional<std::string> cursor = std::nullopt);
 
 /**
- * @brief One page of sequences belonging to a project.
+ * @brief One page of sequences for a project, each with its shots.
+ *
+ * The shots travel on the sequence. Pass next_cursor to the next call.
  *
  * @param projectId Domain project `id`.
- * @param limit Maximum rows in the page. Must be greater than zero.
+ * @param limit Maximum sequences in the page. Must be greater than zero.
  * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
  * @return Page of sequences. Empty when none match or the lookup fails.
  */
-RowPage<poco::Sequence> findSequences(
+RowPage<poco::SequenceShots> findSequenceShots(
     std::int64_t projectId,
-    std::size_t limit,
-    std::optional<std::string> cursor = std::nullopt);
-
-/**
- * @brief One page of shots belonging to one sequence.
- *
- * Pass next_cursor to the next call.
- *
- * @param sequenceId Domain sequence `id`.
- * @param limit Maximum rows in the page. Must be greater than zero.
- * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
- * @return Page of shots. Empty when none match or the lookup fails.
- */
-RowPage<poco::Shot> findShots(
-    std::int64_t sequenceId,
     std::size_t limit,
     std::optional<std::string> cursor = std::nullopt);
 

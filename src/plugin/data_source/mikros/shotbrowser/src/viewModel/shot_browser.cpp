@@ -158,7 +158,8 @@ void ShotBrowser::initSignals() {
         &ProjectSelector::onProjectSelected,
         this,
         [this](std::int64_t) {
-            shot_tree_->loadSequenceListAsync();
+            shot_tree_->clearSequenceShots(); ///< The previous project's tree must not be reused.
+            shot_tree_->loadSequenceShotsAsync();
             asset_list_->loadAssetsAsync();
             version_list_->loadVersionsAsync();
             playlist_tree_->loadPlaylistListAsync(dal::resultView());
@@ -170,7 +171,7 @@ void ShotBrowser::initSignals() {
         &ShotBrowser::onBrowserModeSelected,
         this,
         [this](dal::BrowserMode) {
-            shot_tree_->loadSequenceListAsync(); ///< Loads only on the Shot tab.
+            shot_tree_->loadSequenceShotsAsync(); ///< Loads only on the Shot tab, and keeps a tree already stored.
             asset_list_->loadAssetsAsync();       ///< Loads only on the Asset tab.
         },
         Qt::DirectConnection);
