@@ -343,20 +343,20 @@ using CatalogView = caf::const_typed_message_view<
     utility::JsonStore>;
 
 /**
- * @brief Routes a `version` catalog page to `VersionList::updateVersionList`.
+ * @brief Routes a `version` page or `version_count` to `VersionList`.
  *
  * `or_else` tries the next handler only when `invoke` returns false.
  */
 class VersionPageHandler : public caf::detail::behavior_impl {
   public:
     /**
-     * @brief Stores the list that owns the page update.
+     * @brief Stores the list that owns the page and footer update.
      * @param list Version list on the panel actor.
      */
     explicit VersionPageHandler(VersionList *list) : list_(list) {}
 
     /**
-     * @brief Forwards a version page, or declines the message.
+     * @brief Forwards a version page or count, or declines the message.
      * @param visitor Receives an empty result when the page was ours.
      * @param message Worker page.
      * @return False when this handler does not take the message.
@@ -366,16 +366,21 @@ class VersionPageHandler : public caf::detail::behavior_impl {
         if (!view) {
             return false;
         }
-        if (caf::get<2>(view) != "version") {
+        const std::string &catalog = caf::get<2>(view);
+        if (catalog != "version" && catalog != "version_count") {
             return false; ///< Another catalog: the next handler continues.
         }
-        list_->updateVersionList(caf::get<1>(view), caf::get<12>(view), caf::get<13>(view));
+        if (catalog == "version_count") {
+            list_->updateVersionFooter(caf::get<1>(view), caf::get<13>(view));
+        } else {
+            list_->updateVersionList(caf::get<1>(view), caf::get<12>(view), caf::get<13>(view));
+        }
         visitor(caf::unit);
         return true;
     }
 
   private:
-    VersionList *list_ = nullptr; ///< Receives version pages.
+    VersionList *list_ = nullptr; ///< Receives version pages and footer counts.
 };
 
 /**
@@ -462,6 +467,8 @@ void VersionList::initQmlAttributes(plugin::StandardPlugin &panel) {
     version_cards_ =
         panel.add_json_attribute("VersionCards", "VersionCards", nlohmann::json::array());
     version_cards_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    footer_ = panel.add_string_attribute("VersionListFooter", "VersionListFooter", "");
+    footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     versions_loaded_ = panel.add_boolean_attribute("VersionsLoaded", "VersionsLoaded", false);
     versions_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     open_version_ = panel.add_string_attribute("OpenVersion", "OpenVersion", "");
@@ -479,21 +486,67 @@ void VersionList::loadVersionsAsync() {
         return; ///< No project: leave whatever clearVersions already emptied.
     }
     const std::uint64_t requestId = ++(*version_request_id_); ///< Stop the version fetch already running.
+    const std::int64_t projectId = dal::selectedProject();
     const VersionParents parents = readVersionParents();
     CatalogLoadRequest request = makeCatalogRequest(
-        &panel_, CatalogKind::Version, requestId, dal::selectedProject());
+        &panel_, CatalogKind::Version, requestId, projectId);
     request.sequence = parents.sequenceId;
     request.shot = parents.shotId;
     request.asset = parents.assetId;
     request.generation = version_request_id_; ///< The worker stops before the next find when this moves.
     launchCatalogLoad(panel_.system(), std::move(request));
+    CatalogLoadRequest counts =
+        makeCatalogRequest(&panel_, CatalogKind::VersionCount, requestId, projectId);
+    counts.sequence = parents.sequenceId;
+    counts.shot = parents.shotId;
+    counts.asset = parents.assetId;
+    counts.generation = version_request_id_; ///< Drop a stale footer with the pages.
+    launchCatalogLoad(panel_.system(), std::move(counts));
 }
 
 void VersionList::clearVersions() {
     ++(*version_request_id_); ///< Drop pages that still belong to the previous selection.
     versions_.clear();
+    clearFooterValue(); ///< Clear until the next count arrives.
     sendVersionCardsToQml();
     clearVersionsLoadedFlag();
+}
+
+namespace {
+
+/**
+ * @brief Formats the version-list footer from a total.
+ * @param total Match count.
+ * @return `No versions`, `1 version`, or `N versions`.
+ */
+std::string formatVersionFooter(int total) {
+    if (total <= 0) {
+        return "No versions";
+    }
+    if (total == 1) {
+        return "1 version";
+    }
+    return std::to_string(total) + " versions";
+}
+
+} // namespace
+
+void VersionList::updateVersionFooter(
+    std::uint64_t requestId, const utility::JsonStore &payload) {
+    if (requestId != version_request_id_->load()) {
+        trace::drop("version_count", requestId); ///< clearVersions bumped the id on selection change.
+        return;
+    }
+    if (!footer_) {
+        return;
+    }
+    footer_->set_value(formatVersionFooter(payload.value("versions", 0)));
+}
+
+void VersionList::clearFooterValue() {
+    if (footer_) {
+        footer_->set_value("");
+    }
 }
 
 void VersionList::clearVersionsLoadedFlag() {

@@ -4,7 +4,7 @@ import QtQuick
 import xStudio 1.0
 import xstudio.qml.models 1.0
 
-// Which version cards to show, the list footer, and the flag that the load is done.
+// Which version cards to show, the server total footer, and the flag that the load is done.
 Item {
     id: versions
 
@@ -56,6 +56,8 @@ Item {
         model: attributes
     }
 
+    CatalogValue { id: footer; title: "VersionListFooter"; source: attributes }
+
     XsAttributeValue {
         id: versionsLoaded
         attributeTitle: "VersionsLoaded"
@@ -70,7 +72,8 @@ Item {
         resultMode: versions.resultMode
         onResultChosen: function(mode) { versions.resultChosen(mode) }
         loadedFooter: true
-        footerNoun: "version"
+        customFooter: true
+        footerText: footer.value
         listColor: XsStyleSheet.panelBgColor
         names: versions.versionCardRows()
         placeholder: {

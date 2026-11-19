@@ -243,4 +243,24 @@ int getNumberOfShots(
  */
 int getNumberOfAssets(std::int64_t projectId);
 
+/**
+ * @brief How many versions match the same parents as `findVersionListElements`.
+ *
+ * Strong parent (at most one): shot, else sequence, else asset, else project.
+ * Playlist is an optional weak AND on that parent.
+ *
+ * @param projectId Domain project `id`.
+ * @param sequenceId Optional sequence `id`.
+ * @param shotId Optional shot `id`.
+ * @param assetId Optional asset `id`.
+ * @param playlistId Optional playlist `id`.
+ * @return Match count, or `0` when the lookup fails.
+ */
+int getNumberOfVersions(
+    std::int64_t projectId,
+    std::optional<std::int64_t> sequenceId = std::nullopt,
+    std::optional<std::int64_t> shotId = std::nullopt,
+    std::optional<std::int64_t> assetId = std::nullopt,
+    std::optional<std::int64_t> playlistId = std::nullopt);
+
 } // namespace xstudio::mikros_shotbrowser::dal

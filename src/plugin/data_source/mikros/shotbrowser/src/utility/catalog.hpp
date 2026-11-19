@@ -43,6 +43,7 @@ enum class CatalogKind {
     Asset,            ///< Asset combo.
     AssetCount,       ///< Asset total for the asset-list footer.
     Version,          ///< Version list for the current parents.
+    VersionCount,     ///< Version total for the version-list footer.
     PlaylistTree,     ///< Playlist names, without their versions.
     PlaylistVersions, ///< Versions of one unfolded playlist.
 };

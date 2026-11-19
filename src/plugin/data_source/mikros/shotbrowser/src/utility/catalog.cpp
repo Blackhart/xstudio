@@ -229,6 +229,24 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             rowsToJson(page.rows)); ///< First page only; further pages come later.
         return;
     }
+    case CatalogKind::VersionCount: {
+        const VersionParents parents = versionParentsOf(request);
+        if (request.generation && request.generation->load() != request.request_id) {
+            return; ///< A newer load started. Do not call the DAL.
+        }
+        utility::JsonStore counts;
+        counts["versions"] = dal::getNumberOfVersions(
+            request.project_id, parents.sequenceId, parents.shotId, parents.assetId);
+        sendCatalog(
+            request.panel,
+            request.request_id,
+            "version_count",
+            request.project_id,
+            pageScope(parents),
+            false,
+            std::move(counts));
+        return;
+    }
     case CatalogKind::PlaylistTree:
         publishPages<poco::Playlist>(
             request.panel,

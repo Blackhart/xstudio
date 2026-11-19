@@ -264,13 +264,13 @@ class SharedPms {
 
     /**
      * @brief Builds the fake backend when ShotGrid is not selected.
-     * @return A latency-simulating backend, or empty in ShotGrid mode.
+     * @return A fake backend with no simulated latency, or empty in ShotGrid mode.
      */
     static std::optional<pms::FakeBackend> buildFakeBackend() {
         if (useShotGrid()) {
             return std::nullopt;
         }
-        return pms::FakeBackend(/*simulate_latency=*/true);
+        return pms::FakeBackend(/*simulate_latency=*/false);
     }
 
     /**
@@ -686,6 +686,15 @@ int getNumberOfShots(std::int64_t projectId, std::optional<std::int64_t> sequenc
 
 int getNumberOfAssets(std::int64_t projectId) {
     return fetchCount(pms::Asset().In(pms::scope::project == projectId));
+}
+
+int getNumberOfVersions(
+    std::int64_t projectId,
+    std::optional<std::int64_t> sequenceId,
+    std::optional<std::int64_t> shotId,
+    std::optional<std::int64_t> assetId,
+    std::optional<std::int64_t> playlistId) {
+    return fetchCount(versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId));
 }
 
 } // namespace xstudio::mikros_shotbrowser::dal

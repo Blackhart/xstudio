@@ -70,7 +70,7 @@ class VersionList : public QObject {
     void clearVersions();
 
     /**
-     * @brief Handles a `version` page, a thumb ready mail, and an `open_media` result.
+     * @brief Handles a `version` page, a `version_count`, a thumb ready mail, and an `open_media` result.
      * @return The handlers for those catalogs.
      */
     caf::message_handler message_handler_extensions();
@@ -142,6 +142,18 @@ class VersionList : public QObject {
     [[nodiscard]] VersionCard::ImageReady makeImageReadyNotifier();
 
     /**
+     * @brief Drops a stale count, otherwise writes the version total into the footer.
+     * @param requestId Generation carried by the catalog mail.
+     * @param payload JSON with a `versions` integer.
+     */
+    void updateVersionFooter(std::uint64_t requestId, const utility::JsonStore &payload);
+
+    /**
+     * @brief Clears the footer attribute text.
+     */
+    void clearFooterValue();
+
+    /**
      * @brief Sets `VersionsLoaded` to false (loading / cleared).
      */
     void clearVersionsLoadedFlag();
@@ -161,6 +173,7 @@ class VersionList : public QObject {
     module::JsonAttribute *version_cards_ = nullptr; ///< Array of card objects for QML.
     RequestGeneration version_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale version fetches and pages.
+    module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
     module::BooleanAttribute *versions_loaded_ = nullptr; ///< True once the current request has delivered a page.
     module::StringAttribute *open_version_ = nullptr; ///< JSON request from a double-click or the menu.
     module::StringAttribute *opened_media_ = nullptr; ///< JSON result the panel selects when asked.
