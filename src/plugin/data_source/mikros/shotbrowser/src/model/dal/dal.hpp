@@ -201,4 +201,31 @@ RowPage<poco::Version> findVersions(
     std::optional<std::int64_t> assetId = std::nullopt,
     std::optional<std::int64_t> playlistId = std::nullopt);
 
+/**
+ * @brief How many sequences belong to a project.
+ * @param projectId Domain project `id`.
+ * @return Match count, or `0` when the lookup fails.
+ */
+int getNumberOfSequences(std::int64_t projectId);
+
+/**
+ * @brief How many shots belong to a project, or to one sequence.
+ *
+ * When `sequenceId` is set, counts shots in that sequence. Otherwise counts
+ * every shot under the project.
+ *
+ * @param projectId Domain project `id`. Used when `sequenceId` is empty.
+ * @param sequenceId Optional sequence `id`.
+ * @return Match count, or `0` when the lookup fails.
+ */
+int getNumberOfShots(
+    std::int64_t projectId, std::optional<std::int64_t> sequenceId = std::nullopt);
+
+/**
+ * @brief How many assets belong to a project.
+ * @param projectId Domain project `id`.
+ * @return Match count, or `0` when the lookup fails.
+ */
+int getNumberOfAssets(std::int64_t projectId);
+
 } // namespace xstudio::mikros_shotbrowser::dal

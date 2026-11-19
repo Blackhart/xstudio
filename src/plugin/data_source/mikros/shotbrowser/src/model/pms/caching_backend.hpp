@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file pms/caching_backend.hpp
- * @brief Backend decorator that caches limited find() results with TTL and LRU.
+ * @brief Backend decorator that caches limited find() and count() with TTL and LRU.
  */
 #pragma once
 
@@ -14,20 +14,22 @@
 #include <functional>
 #include <list>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <variant>
 
 namespace pms {
 
 /**
  * @brief Bounds and lifetime for CachingBackend entries.
  *
- * Only limited finds are stored. Unlimited finds forward to the inner backend
- * so unbounded catalogs never fill the cache.
+ * Limited finds and every count are stored. Unlimited finds forward to the
+ * inner backend so unbounded catalogs never fill the cache.
  */
 struct CacheOptions {
-    std::chrono::seconds ttl{300};             ///< Lifetime of each cached page. Five minutes.
-    std::size_t max_bytes{64 * 1024 * 1024};   ///< Approximate byte budget for pages.
+    std::chrono::seconds ttl{300};             ///< Lifetime of each cached entry. Five minutes.
+    std::size_t max_bytes{64 * 1024 * 1024};   ///< Approximate byte budget for entries.
     /// Name of the wrapped backend, forwarded on a cache miss (`fake`, `shotgrid`).
     std::string backend_name{"backend"};
     /// Incoming IR, called before the cache lookup. Empty disables the trace.
@@ -42,7 +44,7 @@ struct CacheOptions {
 };
 
 /**
- * @brief Caches limited find results keyed by dump(ir).
+ * @brief Caches limited find pages and count totals keyed by dump(ir).
  *
  * Thread-safe. Misses call the inner backend. Entries expire after `ttl`, and
  * the least-recently-used entry is dropped when `max_bytes` is exceeded. Call
@@ -74,19 +76,28 @@ class CachingBackend : public Backend {
     Page find(const Ir &ir) override;
 
     /**
-     * @brief Drops every cached page immediately.
+     * @brief Returns a cached count when valid, else fetches.
+     * @param ir Validated count query.
+     * @return Match count.
+     */
+    std::size_t count(const Ir &ir) override;
+
+    /**
+     * @brief Drops every cached entry immediately.
      */
     void clear();
 
     /**
-     * @brief Returns how many pages are currently stored.
+     * @brief Returns how many entries are currently stored.
      * @return Entry count under the mutex.
      */
     std::size_t size() const;
 
   private:
+    using Payload = std::variant<Page, std::size_t>; ///< Find page or count total.
+
     struct Entry {
-        Page page;                                      ///< Cached response.
+        Payload payload;                                ///< Cached response.
         std::chrono::steady_clock::time_point expires;  ///< Absolute expiry.
         std::size_t bytes = 0;                          ///< Approximate size.
         std::list<std::string>::iterator order;         ///< LRU node for this key.
@@ -100,18 +111,24 @@ class CachingBackend : public Backend {
     static std::size_t approxBytes(const Page &page);
 
     /**
+     * @brief Estimates the memory cost of a count entry.
+     * @return Fixed scalar size.
+     */
+    static std::size_t approxCountBytes();
+
+    /**
      * @brief Evicts least-recently-used entries until within capacity.
      * @note Caller must hold mutex_.
      */
     void evictIfNeeded();
 
     /**
-     * @brief Stores `page` under `key`, runs LRU eviction, and returns `page`.
+     * @brief Stores `payload` under `key`, runs LRU eviction, and returns it.
      * @note Caller must hold mutex_.
      */
-    Page store(
+    Payload store(
         const std::string &key,
-        Page page,
+        Payload payload,
         std::chrono::steady_clock::time_point nowPoint);
 
     /**

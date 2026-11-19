@@ -11,6 +11,7 @@
 #include <caf/make_counted.hpp>
 #include <caf/unit.hpp>
 
+#include <string>
 #include <utility>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
@@ -22,18 +23,19 @@ namespace xstudio::mikros_shotbrowser {
 
 namespace {
 
-using AssetPage = std::function<void(std::uint64_t, bool, const utility::JsonStore &)>;
+using AssetPage = std::function<
+    void(const std::string &, std::uint64_t, bool, const utility::JsonStore &)>;
 
 /**
- * @brief Applies an asset page and declines every other catalog.
+ * @brief Applies an asset page or count and declines every other catalog.
  *
  * `or_else` tries the next handler only when `invoke` returns false.
  */
 class AssetPageHandler : public caf::detail::behavior_impl {
   public:
     /**
-     * @brief Stores the lambda that applies one asset page.
-     * @param apply Called on the panel actor for a current asset page.
+     * @brief Stores the lambda that applies one asset page or count.
+     * @param apply Called on the panel actor for a current asset message.
      */
     explicit AssetPageHandler(AssetPage apply) : apply_(std::move(apply)) {}
 
@@ -63,16 +65,17 @@ class AssetPageHandler : public caf::detail::behavior_impl {
         if (!view) {
             return false;
         }
-        if (caf::get<2>(view) != "asset") {
+        const std::string catalog = caf::get<2>(view);
+        if (catalog != "asset" && catalog != "asset_count") {
             return false; ///< Another catalog: the next handler continues.
         }
-        apply_(caf::get<1>(view), caf::get<12>(view), caf::get<13>(view));
+        apply_(catalog, caf::get<1>(view), caf::get<12>(view), caf::get<13>(view));
         visitor(caf::unit);
         return true;
     }
 
   private:
-    AssetPage apply_; ///< Lambda stored by `loadAssetsAsync`.
+    AssetPage apply_; ///< Lambda stored by `message_handler_extensions`.
 };
 
 } // namespace
@@ -88,6 +91,8 @@ AssetList::AssetList(plugin::StandardPlugin &panel) : QObject(nullptr), panel_(p
 void AssetList::initQmlAttributes(plugin::StandardPlugin &panel) {
     asset_ = panel.add_string_choice_attribute("Asset", "Asset", "", {}, {});
     asset_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    footer_ = panel.add_string_attribute("AssetListFooter", "AssetListFooter", "");
+    footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 // ---------------------------------------------------------------------------
@@ -103,66 +108,109 @@ void AssetList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
 
 void AssetList::applyAssetFromQml() {
     const std::optional<poco::Asset> asset = findRowByLabel(assets_, asset_->value());
-    const std::int64_t assetId = asset ? asset->id : -1;
+    setSelectedAsset(asset ? asset->id : -1);
+}
+
+void AssetList::setSelectedAsset(std::int64_t assetId) {
     if (assetId == dal::selectedAsset()) {
-        return; ///< The QML write repeats an id already stored.
+        return; ///< The id is already stored.
     }
     dal::setSelectedAsset(assetId); ///< Other screens read this id from the DAL.
-    logSelection("asset", asset);
+    if (assetId == -1) {
+        if (asset_ && !asset_->value().empty()) {
+            asset_->set_value("", false); ///< Do not re-enter the asset handler.
+        }
+        trace::select("asset", false, 0, {});
+    } else {
+        std::optional<poco::Asset> asset;
+        for (const poco::Asset &row : assets_) {
+            if (row.id == assetId) {
+                asset = row;
+                break;
+            }
+        }
+        logSelection("asset", asset);
+    }
     emit onAssetSelected(assetId);
 }
 
-void AssetList::clearAssetSelected() {
-    const bool hadSelection = dal::selectedAsset() != -1 || (asset_ && !asset_->value().empty());
-    dal::setSelectedAsset(-1);
-    if (asset_ && !asset_->value().empty()) {
-        asset_->set_value("", false); ///< Do not re-enter the asset handler.
-    }
-    if (hadSelection) {
-        trace::select("asset", false, 0, {});
-    }
+// ---------------------------------------------------------------------------
+// Asset list. Non-empty assets_ is reused. A new project clears it first.
+// ---------------------------------------------------------------------------
+
+bool AssetList::checkProjectSelected() const {
+    return dal::selectedProject() != -1;
 }
 
-void AssetList::clearAssetSelected(std::int64_t parentId) {
-    if (parentId == -1) {
-        return; ///< The sequence or shot was cleared. Keep the asset.
-    }
-    clearAssetSelected(); ///< Sequence and asset are mutually exclusive.
+bool AssetList::checkBrowserModeIsAsset() const {
+    return dal::browserMode() == dal::BrowserMode::Asset;
 }
-
-// ---------------------------------------------------------------------------
-// Asset list. A load clears the combo, then each page extends it.
-// ---------------------------------------------------------------------------
 
 void AssetList::loadAssetsAsync() {
-    const std::uint64_t requestId = ++(*asset_request_id_); ///< Stop the asset fetch already running.
-    page_ = [this](std::uint64_t id, bool append, const utility::JsonStore &payload) {
-        if (id != asset_request_id_->load()) {
-            trace::drop("asset", id);
-            return;
-        }
-        updateAssetList(append, payload);
-    };
-    clearAssetList();
-    if (dal::selectedProject() == -1 || dal::browserMode() != dal::BrowserMode::Asset) {
-        return; ///< No project, or the shot tab is showing.
+    if (!assets_.empty() || !checkProjectSelected() || !checkBrowserModeIsAsset()) {
+        return; ///< List already loaded, no project, or the shot tab is showing.
     }
-    CatalogLoadRequest request = makeCatalogRequest(
-        &panel_, CatalogKind::Asset, requestId, dal::selectedProject());
-    request.generation = asset_request_id_; ///< The worker stops before the next find when this moves.
-    launchCatalogLoad(panel_.system(), std::move(request));
+    const std::uint64_t requestId = ++(*asset_request_id_); ///< Stop the asset fetch already running.
+    const std::int64_t projectId = dal::selectedProject();
+    CatalogLoadRequest pages =
+        makeCatalogRequest(&panel_, CatalogKind::Asset, requestId, projectId);
+    pages.generation = asset_request_id_; ///< The worker stops before the next find when this moves.
+    launchCatalogLoad(panel_.system(), std::move(pages));
+    CatalogLoadRequest counts =
+        makeCatalogRequest(&panel_, CatalogKind::AssetCount, requestId, projectId);
+    counts.generation = asset_request_id_; ///< Drop a stale footer with the pages.
+    launchCatalogLoad(panel_.system(), std::move(counts));
 }
 
-void AssetList::clearAssetList() {
+void AssetList::clearAssets() {
+    ++(*asset_request_id_); ///< Drop pages that still belong to the previous project.
     assets_.clear();
-    if (asset_) {
-        asset_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
-    }
-    clearAssetSelected();
+    clearFooterValue(); ///< Clear until the next count arrives.
+    sendAssetsListToQml();
+    setSelectedAsset(-1);
 }
 
 void AssetList::updateAssetList(bool append, const utility::JsonStore &payload) {
     applyCatalogPage(assets_, asset_, rowsFromJson<poco::Asset>(payload), append);
+}
+
+namespace {
+
+/**
+ * @brief Formats the asset-list footer from a total.
+ * @param total Match count.
+ * @return `No assets`, `1 asset`, or `N assets`.
+ */
+std::string formatAssetFooter(int total) {
+    if (total <= 0) {
+        return "No assets";
+    }
+    if (total == 1) {
+        return "1 asset";
+    }
+    return std::to_string(total) + " assets";
+}
+
+} // namespace
+
+void AssetList::updateAssetFooter(const utility::JsonStore &payload) {
+    if (!footer_) {
+        return;
+    }
+    footer_->set_value(formatAssetFooter(payload.value("assets", 0)));
+}
+
+void AssetList::clearFooterValue() {
+    if (footer_) {
+        footer_->set_value("");
+    }
+}
+
+void AssetList::sendAssetsListToQml() {
+    if (!asset_) {
+        return;
+    }
+    asset_->set_role_data(module::Attribute::StringChoices, buildUniqueLabels(assets_));
 }
 
 // ---------------------------------------------------------------------------
@@ -170,10 +218,20 @@ void AssetList::updateAssetList(bool append, const utility::JsonStore &payload) 
 // ---------------------------------------------------------------------------
 
 caf::message_handler AssetList::message_handler_extensions() {
-    auto apply = [this](std::uint64_t requestId, bool append, const utility::JsonStore &payload) {
-        if (page_) {
-            page_(requestId, append, payload); ///< The lambda from the latest loadAssetsAsync.
+    auto apply = [this](
+                     const std::string &catalog,
+                     std::uint64_t requestId,
+                     bool append,
+                     const utility::JsonStore &payload) {
+        if (requestId != asset_request_id_->load()) {
+            trace::drop("asset", requestId);
+            return;
         }
+        if (catalog == "asset_count") {
+            updateAssetFooter(payload);
+            return;
+        }
+        updateAssetList(append, payload);
     };
     caf::detail::behavior_impl::pointer handler = caf::make_counted<AssetPageHandler>(std::move(apply));
     return caf::message_handler{std::move(handler)};

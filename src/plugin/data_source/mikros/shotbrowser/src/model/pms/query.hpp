@@ -18,12 +18,13 @@
 namespace pms {
 
 /**
- * @brief Builds In and Where trees for one entity, then runs find().
+ * @brief Builds In and Where trees for one entity, then runs find() or count().
  *
  * Start from the generated function, for example Version(). In() and Where()
  * may be repeated; each extra clause is combined with the previous one by
  * `and`. Calling find() with neither clause lists every row. Limit() and
- * After() turn the same find() into a keyset page.
+ * After() turn the same find() into a keyset page. count() uses the same
+ * filters and rejects Limit() and After().
  *
  * The generated function hides the entity struct in ordinary lookup. Name the
  * query type with `decltype(Project())` rather than `Query<Project>`.
@@ -133,7 +134,7 @@ template <typename Entity> class Query {
      *
      * Without Limit(), returns every match and leaves next_cursor empty. With
      * Limit(), returns one page; pass After(next_cursor) to continue.
-     * CachingBackend caches only limited finds.
+     * CachingBackend caches limited finds and every count.
      *
      * @param session Schema and backend. The backend is not owned.
      * @return Page of rows and an optional next cursor.
@@ -148,6 +149,23 @@ template <typename Entity> class Query {
             checkRecord(row);
         }
         return page;
+    }
+
+    /**
+     * @brief Validates the query and asks how many rows match.
+     *
+     * Uses the same In() and Where() trees as find(). Limit() and After() are
+     * rejected by validation.
+     *
+     * @param session Schema and backend. The backend is not owned.
+     * @return Match count.
+     * @throw Error When validation fails or the backend rejects the query.
+     */
+    std::size_t count(Session &session) const {
+        Ir out = ir();
+        out.op = Op::Count;
+        validate(out, session.schema());
+        return session.backend().count(out);
     }
 
   private:

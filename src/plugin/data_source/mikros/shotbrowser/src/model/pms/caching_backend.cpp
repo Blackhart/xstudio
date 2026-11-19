@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file caching_backend.cpp
- * @brief TTL + LRU cache for limited find results.
+ * @brief TTL + LRU cache for limited find results and count totals.
  */
 
 #include "pms/caching_backend.hpp"
@@ -69,6 +69,10 @@ std::size_t CachingBackend::approxBytes(const Page &page) {
     return bytes;
 }
 
+std::size_t CachingBackend::approxCountBytes() {
+    return sizeof(std::size_t);
+}
+
 void CachingBackend::evictIfNeeded() {
     while (!map_.empty() && total_bytes_ > options_.max_bytes) {
         const std::string &victim = order_.back();
@@ -81,24 +85,24 @@ void CachingBackend::evictIfNeeded() {
     }
 }
 
-/**
- * @brief Inserts a page under `key` and returns it.
- * @note Caller must hold mutex_.
- */
-Page CachingBackend::store(
+CachingBackend::Payload CachingBackend::store(
     const std::string &key,
-    Page page,
+    Payload payload,
     std::chrono::steady_clock::time_point nowPoint) {
     Entry entry;
-    entry.page = page;
+    entry.payload = payload;
     entry.expires = nowPoint + options_.ttl;
-    entry.bytes = approxBytes(page);
+    if (const Page *page = std::get_if<Page>(&payload)) {
+        entry.bytes = approxBytes(*page);
+    } else {
+        entry.bytes = approxCountBytes();
+    }
     order_.push_front(key);
     entry.order = order_.begin();
     total_bytes_ += entry.bytes;
     map_[key] = std::move(entry);
     evictIfNeeded();
-    return page;
+    return payload;
 }
 
 Page CachingBackend::find(const Ir &ir) {
@@ -121,24 +125,60 @@ Page CachingBackend::find(const Ir &ir) {
             order_.push_front(key);
             found->second.order = order_.begin();
             traceLookup("hit", ir);
-            traceResult("cache", ir, found->second.page);
-            return found->second.page;
+            Page *page = std::get_if<Page>(&found->second.payload);
+            if (!page) {
+                throw Error("caching backend: find hit has no page");
+            }
+            traceResult("cache", ir, *page);
+            return *page;
         }
         total_bytes_ -= found->second.bytes;
         order_.erase(found->second.order);
         map_.erase(found);
         traceLookup("miss expired", ir);
         traceMiss(ir);
-        Page page = store(key, inner_->find(ir), nowPoint);
+        Page page = std::get<Page>(store(key, inner_->find(ir), nowPoint));
         traceResult("backend", ir, page);
         return page;
     }
 
     traceLookup("miss", ir);
     traceMiss(ir);
-    Page page = store(key, inner_->find(ir), nowPoint);
+    Page page = std::get<Page>(store(key, inner_->find(ir), nowPoint));
     traceResult("backend", ir, page);
     return page;
+}
+
+std::size_t CachingBackend::count(const Ir &ir) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    traceQuery(ir);
+
+    const std::string key = dump(ir);
+    const auto nowPoint = now();
+    const auto found = map_.find(key);
+    if (found != map_.end()) {
+        if (found->second.expires > nowPoint) {
+            order_.erase(found->second.order);
+            order_.push_front(key);
+            found->second.order = order_.begin();
+            traceLookup("hit", ir);
+            const std::size_t *total = std::get_if<std::size_t>(&found->second.payload);
+            if (!total) {
+                throw Error("caching backend: count hit has no total");
+            }
+            return *total;
+        }
+        total_bytes_ -= found->second.bytes;
+        order_.erase(found->second.order);
+        map_.erase(found);
+        traceLookup("miss expired", ir);
+        traceMiss(ir);
+        return std::get<std::size_t>(store(key, inner_->count(ir), nowPoint));
+    }
+
+    traceLookup("miss", ir);
+    traceMiss(ir);
+    return std::get<std::size_t>(store(key, inner_->count(ir), nowPoint));
 }
 
 void CachingBackend::clear() {

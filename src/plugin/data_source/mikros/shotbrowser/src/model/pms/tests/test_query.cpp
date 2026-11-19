@@ -98,6 +98,18 @@ where:
     CHECK(dump(Project().ir()) == expected);
 }
 
+TEST_CASE("count dump names the verb") {
+    Ir ir = Sequence().In(scope::project == std::int64_t{1}).ir();
+    ir.op = Op::Count;
+    const char *expected = R"(op: count
+entity: sequence
+in:
+  scope project eq 1
+where:
+)";
+    CHECK(dump(ir) == expected);
+}
+
 TEST_CASE("in builds a scope leaf on sequence by project id") {
     const char *expected = R"(op:
 entity: sequence

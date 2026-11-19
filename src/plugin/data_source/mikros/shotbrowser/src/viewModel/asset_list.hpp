@@ -15,7 +15,6 @@ using namespace xstudio;
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -50,23 +49,25 @@ class AssetList : public QObject {
     void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
     /**
-     * @brief Stops the previous asset fetch, clears the combo, then loads on the Asset tab.
+     * @brief Loads asset pages when `assets_` is empty.
      *
-     * The request id always moves. The catalog starts only when a project is selected
-     * and the left tab is Asset. Returns before the pages arrive.
+     * Rows already on screen are kept. The catalog starts only when a project
+     * is selected and the left tab is Asset. Returns before the pages arrive.
      */
     void loadAssetsAsync();
 
     /**
-     * @brief Selects no asset and clears the combo without a signal.
+     * @brief Clears `assets_` and stops a load that is still running.
+     *
+     * The panel calls this when the selected project changes.
      */
-    void clearAssetSelected();
+    void clearAssets();
 
     /**
-     * @brief Clears the asset when a sequence or shot was chosen.
-     * @param parentId Sequence or shot id. `-1` leaves the asset alone.
+     * @brief Stores the asset id and emits `onAssetSelected`.
+     * @param assetId Asset id, or `-1` when none is selected.
      */
-    void clearAssetSelected(std::int64_t parentId);
+    void setSelectedAsset(std::int64_t assetId);
 
     /**
      * @brief Handles an `asset` page and declines every other catalog.
@@ -94,9 +95,16 @@ class AssetList : public QObject {
     void applyAssetFromQml();
 
     /**
-     * @brief Empties the asset list and selects no asset.
+     * @brief True when a project id is stored.
+     * @return True when `dal::selectedProject` is not `-1`.
      */
-    void clearAssetList();
+    bool checkProjectSelected() const;
+
+    /**
+     * @brief True when the left tab is the asset list.
+     * @return True when `dal::browserMode` is `Asset`.
+     */
+    bool checkBrowserModeIsAsset() const;
 
     /**
      * @brief Replaces or extends `assets_` with one page, then publishes it.
@@ -105,12 +113,28 @@ class AssetList : public QObject {
      */
     void updateAssetList(bool append, const utility::JsonStore &payload);
 
+    /**
+     * @brief Writes the asset total into the footer attribute.
+     * @param payload JSON with an `assets` integer.
+     */
+    void updateAssetFooter(const utility::JsonStore &payload);
+
+    /**
+     * @brief Clears the footer attribute text.
+     */
+    void clearFooterValue();
+
+    /**
+     * @brief Writes the asset labels to the attribute the combo displays.
+     */
+    void sendAssetsListToQml();
+
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
     std::vector<poco::Asset> assets_; ///< Pages received for this combo.
     RequestGeneration asset_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale asset fetches and pages.
-    std::function<void(std::uint64_t, bool, const utility::JsonStore &)> page_; ///< Applies one page on the panel actor.
     module::StringChoiceAttribute *asset_ = nullptr; ///< Labels the combo displays.
+    module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
 };
 
 } // namespace xstudio::mikros_shotbrowser

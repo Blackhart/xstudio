@@ -10,6 +10,8 @@
 #include <caf/allowed_unsafe_message_type.hpp>
 #include <caf/event_based_actor.hpp>
 
+#include <utility>
+
 namespace trace = xstudio::mikros_shotbrowser::log;
 
 using namespace xstudio;
@@ -159,6 +161,23 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         }
         return;
     }
+    case CatalogKind::ShotTreeCount: {
+        if (request.generation && request.generation->load() != request.request_id) {
+            return; ///< A newer load started. Do not call the DAL.
+        }
+        utility::JsonStore counts;
+        counts["sequences"] = dal::getNumberOfSequences(request.project_id);
+        counts["shots"] = dal::getNumberOfShots(request.project_id);
+        sendCatalog(
+            request.panel,
+            request.request_id,
+            "shot_tree_count",
+            request.project_id,
+            {},
+            false,
+            std::move(counts));
+        return;
+    }
     case CatalogKind::Asset:
         publishPages<poco::Asset>(
             request.panel,
@@ -171,6 +190,22 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             {},
             request.generation); ///< Stops before the next findAssets when the id moves.
         return;
+    case CatalogKind::AssetCount: {
+        if (request.generation && request.generation->load() != request.request_id) {
+            return; ///< A newer load started. Do not call the DAL.
+        }
+        utility::JsonStore counts;
+        counts["assets"] = dal::getNumberOfAssets(request.project_id);
+        sendCatalog(
+            request.panel,
+            request.request_id,
+            "asset_count",
+            request.project_id,
+            {},
+            false,
+            std::move(counts));
+        return;
+    }
     case CatalogKind::Version: {
         const VersionParents parents = versionParentsOf(request);
         publishPages<poco::Version>(

@@ -101,3 +101,22 @@ where:
     REQUIRE(rows.size() == 1);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw01_sq010_v001");
 }
+
+TEST_CASE("count sends the ir and returns the backend total") {
+    RecordingBackend backend;
+    backend.next_count = 12;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    const std::size_t total =
+        Shot().In(scope::project == std::int64_t{3}).count(session);
+
+    REQUIRE(backend.calls.size() == 1);
+    const char *expected = R"(op: count
+entity: shot
+in:
+  scope project eq 3
+where:
+)";
+    CHECK(dump(backend.calls[0]) == expected);
+    CHECK(total == 12);
+}

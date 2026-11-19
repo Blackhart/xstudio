@@ -39,7 +39,9 @@ namespace trace = log;
 enum class CatalogKind {
     Project,          ///< Project combo.
     ShotTree,         ///< Sequences of one project, each with its shots.
+    ShotTreeCount,    ///< Sequence and shot totals for the shot-tree footer.
     Asset,            ///< Asset combo.
+    AssetCount,       ///< Asset total for the asset-list footer.
     Version,          ///< Version list for the current parents.
     PlaylistTree,     ///< Playlist names, without their versions.
     PlaylistVersions, ///< Versions of one unfolded playlist.

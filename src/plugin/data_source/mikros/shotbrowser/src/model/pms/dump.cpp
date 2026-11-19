@@ -107,10 +107,13 @@ std::string dump(const Ir &ir) {
     std::ostringstream out;
     out << "op:";
     if (ir.op) {
-        if (*ir.op != Op::Find) {
+        if (*ir.op == Op::Find) {
+            out << " find";
+        } else if (*ir.op == Op::Count) {
+            out << " count";
+        } else {
             throw Error("dump: unsupported operation");
         }
-        out << " find";
     }
     out << "\nentity: " << ir.entity << "\nin:\n";
     if (ir.in) {

@@ -49,11 +49,19 @@ class ProjectSelector : public QObject {
     void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
     /**
-     * @brief Clears the combo, then loads project pages on a detached actor.
+     * @brief Loads project pages when `projects_` is empty.
      *
-     * Returns before the pages arrive. Each page is applied by the lambda stored here.
+     * Rows already on screen are kept. Returns before the pages arrive. Each
+     * page is applied by the lambda stored here.
      */
     void loadProjectsAsync();
+
+    /**
+     * @brief Empties the project list and selects None.
+     *
+     * The empty list is sent to the combo. None is sent on the selected-id attribute.
+     */
+    void clearProjects();
 
     /**
      * @brief Handles a `project` page and declines every other catalog.
@@ -105,13 +113,6 @@ class ProjectSelector : public QObject {
      * @return The name, or empty when the id is not in `projects_`.
      */
     std::string nameOf(std::int64_t projectId) const;
-
-    /**
-     * @brief Empties the project list and selects None.
-     *
-     * The empty list is sent to the combo. None is sent on the selected-id attribute.
-     */
-    void clearProjectsList();
 
     /**
      * @brief Replaces or extends `projects_` with one page, then publishes it.

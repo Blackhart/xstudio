@@ -19,7 +19,8 @@ namespace pms {
  * @brief Verb carried by an intermediate representation once it is executed.
  */
 enum class Op {
-    Find, ///< Read matching rows. The only verb in this slice.
+    Find,  ///< Read matching rows.
+    Count, ///< Return how many rows match. No pagination.
 };
 
 /**
@@ -61,8 +62,8 @@ struct ExprNode {
 /**
  * @brief Query handed to validate() and to the backend.
  *
- * Query::ir() leaves `op` empty and does not validate. find() sets `op` to
- * Find before validation. `in` and `where` are null when the clause is absent.
+ * Query::ir() leaves `op` empty and does not validate. find() and count() set
+ * `op` before validation. `in` and `where` are null when the clause is absent.
  */
 struct Ir {
     std::optional<Op> op; ///< Empty until a verb runs.

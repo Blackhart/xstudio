@@ -68,6 +68,25 @@ TEST_CASE("the fake backend lists sequences in a project") {
     CHECK(shots[1].name == "paw20_sq010_sh020");
 }
 
+TEST_CASE("the fake backend counts sequences shots and assets in a project") {
+    FakeBackend backend;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    CHECK(
+        Sequence().In(scope::project == std::int64_t{1}).count(session) ==
+        FakeBackend::sequencesPerProject);
+    CHECK(
+        Shot().In(scope::project == std::int64_t{1}).count(session) ==
+        FakeBackend::sequencesPerProject * FakeBackend::shotsPerSequence);
+    CHECK(
+        Asset().In(scope::project == std::int64_t{1}).count(session) ==
+        FakeBackend::assetsPerProject);
+
+    const Records sequences = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    const auto sequenceId = std::get<std::int64_t>(sequences[0].at("id"));
+    CHECK(Shot().In(scope::sequence == sequenceId).count(session) == FakeBackend::shotsPerSequence);
+}
+
 TEST_CASE("the fake backend lists shots in a sequence") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);

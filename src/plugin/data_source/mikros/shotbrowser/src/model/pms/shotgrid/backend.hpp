@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file pms/shotgrid/backend.hpp
- * @brief ShotGrid REST backend for validated find queries.
+ * @brief ShotGrid REST backend for validated find and count queries.
  */
 #pragma once
 
@@ -115,6 +115,14 @@ class ShotGridBackend : public Backend {
      */
     Page find(const Ir &ir) override;
 
+    /**
+     * @brief Runs a validated count against ShotGrid `_summarize`.
+     * @param ir Count query with the same filters as find().
+     * @return Match count from `summaries.id`.
+     * @throw Error When the mapping is incomplete, auth fails, or HTTP fails.
+     */
+    std::size_t count(const Ir &ir) override;
+
   private:
     /**
      * @brief Reads the ShotGrid schema for the entity named in the IR.
@@ -169,6 +177,28 @@ class ShotGridBackend : public Backend {
      * @return The path.
      */
     std::string buildEntityUrl(const ShotGridSchema &schema) const;
+
+    /**
+     * @brief Builds `/api/v1.1/entity/{collection}/_summarize` with no query parameters.
+     * @param schema ShotGrid schema for the queried entity.
+     * @return The path.
+     */
+    std::string buildSummarizeUrl(const ShotGridSchema &schema) const;
+
+    /**
+     * @brief Builds the summarize body: filters plus a count on `id`.
+     * @param ir Incoming count query.
+     * @return JSON object sent as the POST body.
+     */
+    nlohmann::json buildSummarizeBody(const Ir &ir) const;
+
+    /**
+     * @brief Reads `data.summaries.id` from a summarize response.
+     * @param response Successful summarize HTTP result.
+     * @return Match count.
+     * @throw Error When the summary is missing or not an integer.
+     */
+    std::size_t readSummarizeCount(const httplib::Result &response) const;
 
     /**
      * @brief Appends the `fields` query parameter.

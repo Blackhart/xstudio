@@ -7,20 +7,23 @@
 
 #include "pms/backend.hpp"
 
+#include <cstddef>
 #include <vector>
 
 namespace pms {
 
 /**
- * @brief Stores each find query and answers with `next`.
+ * @brief Stores each find or count query and answers with prepared values.
  *
  * The returned rows are already in domain vocabulary. Set `next` before calling
- * find(). The response is wrapped in a Page with no next_cursor.
+ * find(). Set `next_count` before calling count(). A find response is wrapped
+ * in a Page with no next_cursor.
  */
 class RecordingBackend : public Backend {
   public:
-    Records next;          ///< Rows returned by the next find, then kept as-is.
-    std::vector<Ir> calls; ///< Queries received, in call order.
+    Records next;                 ///< Rows returned by the next find, then kept as-is.
+    std::size_t next_count = 0;   ///< Value returned by the next count.
+    std::vector<Ir> calls;        ///< Queries received, in call order.
 
     /**
      * @brief Records `ir` and returns `next` as a single page.
@@ -32,6 +35,16 @@ class RecordingBackend : public Backend {
         Page page;
         page.rows = next;
         return page;
+    }
+
+    /**
+     * @brief Records `ir` and returns `next_count`.
+     * @param ir Validated count query.
+     * @return The prepared match count.
+     */
+    std::size_t count(const Ir &ir) override {
+        calls.push_back(ir);
+        return next_count;
     }
 };
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file validate.cpp
- * @brief Schema checks for a find query and for a returned row.
+ * @brief Schema checks for a find or count query and for a returned row.
  */
 
 #include "pms/validate.hpp"
@@ -151,7 +151,10 @@ void checkIn(const ExprNode &node, const EntitySpec &entity, const Schema &schem
 } // namespace
 
 void validate(const Ir &ir, const Schema &schema) {
-    if (!ir.op || *ir.op != Op::Find) {
+    if (!ir.op) {
+        throw Error("missing operation");
+    }
+    if (*ir.op != Op::Find && *ir.op != Op::Count) {
         throw Error("missing operation");
     }
     const EntitySpec *entity = schema.entity(ir.entity);
@@ -163,6 +166,15 @@ void validate(const Ir &ir, const Schema &schema) {
     }
     if (ir.where) {
         checkWhere(*ir.where, *entity);
+    }
+    if (*ir.op == Op::Count) {
+        if (ir.limit) {
+            throw Error("count does not accept a limit");
+        }
+        if (ir.cursor) {
+            throw Error("count does not accept a cursor");
+        }
+        return;
     }
     if (ir.limit && *ir.limit == 0) {
         throw Error("limit must be greater than zero");

@@ -179,10 +179,13 @@ std::string ProjectSelector::nameOf(std::int64_t projectId) const {
 }
 
 // ---------------------------------------------------------------------------
-// Project list. A load clears the catalog, then each page extends it.
+// Project list. Non-empty projects_ is reused. clearProjects empties it first.
 // ---------------------------------------------------------------------------
 
 void ProjectSelector::loadProjectsAsync() {
+    if (!projects_.empty()) {
+        return; ///< The combo already has the project list.
+    }
     const std::uint64_t requestId = ++(*project_request_id_); ///< Drop pages from the previous project load.
     page_ = [this](std::uint64_t id, bool append, const utility::JsonStore &payload) {
         if (id != project_request_id_->load()) {
@@ -191,14 +194,14 @@ void ProjectSelector::loadProjectsAsync() {
         }
         updateProjectList(append, payload);
     };
-    clearProjectsList();
     CatalogLoadRequest request =
         makeCatalogRequest(&panel_, CatalogKind::Project, requestId, 0);
     request.generation = project_request_id_; ///< The worker stops before the next find when this moves.
     launchCatalogLoad(panel_.system(), std::move(request));
 }
 
-void ProjectSelector::clearProjectsList() {
+void ProjectSelector::clearProjects() {
+    ++(*project_request_id_); ///< Drop pages from the previous project load.
     projects_.clear();
     sendProjectsListToQml(); ///< The combo shows Loading until the next page.
     clearProjectSelected();

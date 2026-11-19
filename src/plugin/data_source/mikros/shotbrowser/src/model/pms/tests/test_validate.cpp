@@ -183,6 +183,21 @@ TEST_CASE("validate rejects a zero limit and a cursor without limit") {
     CHECK_NOTHROW(validate(ir, loaded));
 }
 
+TEST_CASE("validate accepts count and rejects its pagination") {
+    const Schema loaded = schema();
+    Ir ir;
+    ir.op = Op::Count;
+    ir.entity = "sequence";
+    CHECK_NOTHROW(validate(ir, loaded));
+
+    ir.limit = 10;
+    CHECK_THROWS_WITH_AS(validate(ir, loaded), "count does not accept a limit", Error);
+
+    ir.limit = std::nullopt;
+    ir.cursor = std::string("5");
+    CHECK_THROWS_WITH_AS(validate(ir, loaded), "count does not accept a cursor", Error);
+}
+
 TEST_CASE("a returned record must carry id and name") {
     Record good;
     good.fields["id"] = std::int64_t{12};

@@ -17,7 +17,6 @@ using namespace xstudio;
 #include <caf/message_handler.hpp>
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -172,6 +171,16 @@ class ShotTree : public QObject {
     void clearSequenceShots();
 
     /**
+     * @brief Stores the sequence and shot pair and emits `onSequenceAndShotSelected`.
+     *
+     * Writes both ids through the DAL, then syncs the QML attributes without re-entry.
+     * A pair already stored does not emit.
+     * @param sequenceId Sequence id, or `-1` when none is selected.
+     * @param shotId Shot id, or `-1` when none is selected.
+     */
+    void setSelectedSequenceAndShot(std::int64_t sequenceId, std::int64_t shotId);
+
+    /**
      * @brief Handles a shot-tree page and declines every other catalog.
      *
      * The shell chains this with `or_else`. A declined page is left for the next handler.
@@ -224,16 +233,6 @@ class ShotTree : public QObject {
      * @return The id, or `-1` when none is selected.
      */
     std::int64_t readSelectedShotIdFromQml() const;
-
-    /**
-     * @brief Stores the sequence and shot pair and emits `onSequenceAndShotSelected`.
-     *
-     * Writes both ids through the DAL, then syncs the QML attributes without re-entry.
-     * A pair already stored does not emit.
-     * @param sequenceId Sequence id, or `-1` when none is selected.
-     * @param shotId Shot id, or `-1` when none is selected.
-     */
-    void setSelectedSequenceAndShot(std::int64_t sequenceId, std::int64_t shotId);
 
     /**
      * @brief True when a project id is stored.
@@ -293,6 +292,17 @@ class ShotTree : public QObject {
     void updateSequenceShots(bool append, const utility::JsonStore &payload);
 
     /**
+     * @brief Writes the sequence and shot totals into the footer attribute.
+     * @param payload JSON with `sequences` and `shots` integers.
+     */
+    void updateShotTreeFooter(const utility::JsonStore &payload);
+
+    /**
+     * @brief Clears the footer attribute text.
+     */
+    void clearFooterValue();
+
+    /**
      * @brief Sorts the shots inside every sequence by name.
      */
     void sortShotsByName();
@@ -308,9 +318,9 @@ class ShotTree : public QObject {
     ShotTreeFilterModel filter_model_;    ///< Recursive name filter over `item_model_`.
     RequestGeneration sequence_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Stops the next sequence fetch when it moves.
-    std::function<void(std::uint64_t, bool, const utility::JsonStore &)> sequence_page_; ///< Applies one sequence page.
     module::StringAttribute *sequence_ = nullptr; ///< Selected sequence id, or `-1`.
     module::StringAttribute *shot_ = nullptr;     ///< Selected shot id, or `-1`.
+    module::StringAttribute *footer_ = nullptr;   ///< Footer text for the QML tree.
 };
 
 } // namespace xstudio::mikros_shotbrowser

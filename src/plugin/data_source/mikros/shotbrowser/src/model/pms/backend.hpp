@@ -8,10 +8,12 @@
 #include "pms/ir.hpp"
 #include "pms/page.hpp"
 
+#include <cstddef>
+
 namespace pms {
 
 /**
- * @brief Receives a domain query and returns domain rows.
+ * @brief Receives a domain query and returns domain rows or a match count.
  *
  * RecordingBackend is the unit-test double. FakeBackend lives under
  * model/pms/fake/ (see model/pms/dev/). ShotGridBackend lives under
@@ -19,7 +21,7 @@ namespace pms {
  *
  * When `ir.limit` is set, find() returns one keyset page and may set
  * `next_cursor`. When `limit` is absent, find() returns every matching row and
- * leaves `next_cursor` empty.
+ * leaves `next_cursor` empty. count() never takes a limit or cursor.
  */
 class Backend {
   public:
@@ -35,6 +37,13 @@ class Backend {
      * @return Page of matching rows in domain vocabulary.
      */
     virtual Page find(const Ir &ir) = 0;
+
+    /**
+     * @brief Runs a validated count.
+     * @param ir Query with `op` set to Count. No `limit` / `cursor`.
+     * @return How many rows match the same filters as find().
+     */
+    virtual std::size_t count(const Ir &ir) = 0;
 };
 
 } // namespace pms

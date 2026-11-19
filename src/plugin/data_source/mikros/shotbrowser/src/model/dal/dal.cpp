@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file dal.cpp
- * @brief pms find wrappers that return one page of POCO rows.
+ * @brief pms find and count wrappers that return POCO pages or totals.
  */
 
 #include "model/dal/dal.hpp"
@@ -574,6 +574,37 @@ RowPage<poco::Version> findVersions(
         query = query.In(pms::scope::playlist == *playlistId); ///< Weak parent, combined with AND.
     }
     return fetchPage<poco::Version>(std::move(query), limit, cursor);
+}
+
+/**
+ * @brief Runs one count against the shared session, or returns 0 on error.
+ * @tparam QueryT Fluent query type.
+ * @param query Built query (In/Where already applied).
+ * @return Match count, or 0 when the lookup fails.
+ */
+template <typename QueryT> int fetchCount(QueryT query) {
+    try {
+        const std::size_t total = std::move(query).count(SharedPms::getInstance().getSession());
+        return static_cast<int>(total);
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return 0;
+    }
+}
+
+int getNumberOfSequences(std::int64_t projectId) {
+    return fetchCount(pms::Sequence().In(pms::scope::project == projectId));
+}
+
+int getNumberOfShots(std::int64_t projectId, std::optional<std::int64_t> sequenceId) {
+    if (sequenceId) {
+        return fetchCount(pms::Shot().In(pms::scope::sequence == *sequenceId));
+    }
+    return fetchCount(pms::Shot().In(pms::scope::project == projectId));
+}
+
+int getNumberOfAssets(std::int64_t projectId) {
+    return fetchCount(pms::Asset().In(pms::scope::project == projectId));
 }
 
 } // namespace xstudio::mikros_shotbrowser::dal

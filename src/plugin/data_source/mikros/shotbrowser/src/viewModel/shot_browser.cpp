@@ -160,19 +160,25 @@ void ShotBrowser::initSignals() {
         [this](std::int64_t) {
             shot_tree_->clearSequenceShots(); ///< The previous project's tree must not be reused.
             shot_tree_->loadSequenceShotsAsync();
+            asset_list_->clearAssets(); ///< The previous project's assets must not be reused.
             asset_list_->loadAssetsAsync();
             version_list_->loadVersionsAsync();
             playlist_tree_->loadPlaylistListAsync(dal::resultView());
         },
         Qt::DirectConnection);
-    // Left tab: reload the sequence tree on Shot, or the asset list on Asset.
+    // Left tab: clear the other side's selection, then reload that tab's catalog.
     QObject::connect(
         this,
         &ShotBrowser::onBrowserModeSelected,
         this,
-        [this](dal::BrowserMode) {
-            shot_tree_->loadSequenceShotsAsync(); ///< Loads only on the Shot tab, and keeps a tree already stored.
-            asset_list_->loadAssetsAsync();       ///< Loads only on the Asset tab.
+        [this](dal::BrowserMode mode) {
+            if (mode == dal::BrowserMode::Shot) {
+                asset_list_->setSelectedAsset(-1); ///< Shot and asset are mutually exclusive.
+                shot_tree_->loadSequenceShotsAsync(); ///< Loads only on the Shot tab, and keeps a tree already stored.
+        } else {
+                shot_tree_->setSelectedSequenceAndShot(-1, -1);
+                asset_list_->loadAssetsAsync(); ///< Loads only on the Asset tab, and keeps a list already stored.
+        }
         },
         Qt::DirectConnection);
     // Right tab: reload the playlist names when the view is Playlist.
@@ -182,20 +188,17 @@ void ShotBrowser::initSignals() {
         this,
         [this](ResultView view) { playlist_tree_->loadPlaylistListAsync(view); },
         Qt::DirectConnection);
-    // Sequence/shot pair chosen: drop the asset when needed, then reload versions and the open playlist.
+    // Sequence/shot pair chosen: reload versions and the open playlist.
     QObject::connect(
         shot_tree_.get(),
         &ShotTree::onSequenceAndShotSelected,
         this,
-        [this](std::int64_t sequenceId, std::int64_t shotId) {
-            if (sequenceId != -1 || shotId != -1) {
-                asset_list_->clearAssetSelected(sequenceId != -1 ? sequenceId : shotId);
-            }
+        [this](std::int64_t, std::int64_t) {
             version_list_->loadVersionsAsync();
             playlist_tree_->reloadExpanded(dal::resultView());
         },
         Qt::DirectConnection);
-    // Asset chosen: reload versions and the open playlist (the pair was cleared at the tab switch).
+    // Asset chosen: reload versions and the open playlist.
     QObject::connect(
         asset_list_.get(),
         &AssetList::onAssetSelected,

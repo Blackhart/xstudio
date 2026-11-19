@@ -58,6 +58,7 @@ Item {
 
     CatalogValue { id: project; title: "Project"; source: attributes }
     CatalogValue { id: asset; title: "Asset"; source: attributes }
+    CatalogValue { id: footer; title: "AssetListFooter"; source: attributes }
 
     NameColumn {
         anchors.fill: parent
@@ -66,6 +67,9 @@ Item {
         listColor: XsStyleSheet.panelBgColor
         names: assets.assetTreeRows()
         placeholder: assets.listPlaceholder()
+        loadedFooter: true
+        customFooter: true
+        footerText: footer.value
         rowDelegate: assetRow
     }
 

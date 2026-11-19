@@ -16,6 +16,8 @@ ColumnLayout {
     property bool boxedCount: false
     property bool loadedFooter: false
     property string footerNoun: "version"
+    property string footerText: ""
+    property bool customFooter: false
     property bool resultSwitcher: false
     property string resultMode: "versions"
     property int switcherHeight: XsStyleSheet.widgetStdHeight + 4
@@ -30,6 +32,11 @@ ColumnLayout {
 
     readonly property int count: names && names.length ? names.length : 0
     readonly property int footerValue: footerCount >= 0 ? footerCount : count
+    readonly property string footerLabel: customFooter
+            ? footerText
+            : (footerValue === 0 ? "No " + footerNoun + "s found"
+               : footerValue === 1 ? "1 " + footerNoun + " loaded"
+               : footerValue + " " + footerNoun + "s loaded")
 
     onNamesChanged: nameView.holdScroll() ///< A new page must not jump back to the top.
 
@@ -189,9 +196,7 @@ ColumnLayout {
         Layout.fillHeight: false
         Layout.preferredHeight: implicitHeight
         Layout.maximumHeight: implicitHeight
-        text: column.footerValue === 0 ? "No " + column.footerNoun + "s found"
-              : column.footerValue === 1 ? "1 " + column.footerNoun + " loaded"
-              : column.footerValue + " " + column.footerNoun + "s loaded"
+        text: column.footerLabel
         color: "white"
         font.pixelSize: XsStyleSheet.fontSize * 0.8
         horizontalAlignment: Text.AlignRight

@@ -21,7 +21,9 @@ namespace pms {
  * and may also belong to one or more playlists. In(playlist) uses that weak
  * membership. Returned sequence, shot, asset, playlist, and version records
  * expose only `id` and `name`. When `ir.limit` is set, find() keysets on `id`.
- * When `simulate_latency` is true, find() sleeps 50–200 ms before returning.
+ * count() uses the same filters and returns the match total. When
+ * `simulate_latency` is true, find() and count() sleep 50–200 ms before
+ * returning.
  */
 class FakeBackend : public Backend {
   public:
@@ -62,10 +64,19 @@ class FakeBackend : public Backend {
      */
     Page find(const Ir &ir) override;
 
+    /**
+     * @brief Returns how many rows match the filters.
+     * @param ir Count query. Same filters as find(); no pagination.
+     * @return Match count.
+     * @throw Error When the verb is not count, the entity is unknown, or a tree
+     *     is malformed.
+     */
+    std::size_t count(const Ir &ir) override;
+
   private:
     /**
      * @brief Matches the query against the catalogs without sleeping.
-     * @param ir Find query. Pagination fields are ignored.
+     * @param ir Find or count query. Pagination fields are ignored.
      * @return All matching public rows in catalog order.
      */
     Records matchAll(const Ir &ir) const;
@@ -73,7 +84,7 @@ class FakeBackend : public Backend {
     /** @brief Optionally sleeps when simulate_latency_ is true. */
     void maybeSleep() const;
 
-    bool simulate_latency_ = false; ///< Random sleep on find exit when true.
+    bool simulate_latency_ = false; ///< Random sleep on find or count exit when true.
     Records projects_;  ///< The twenty projects, in id order.
     Records sequences_; ///< Sequences linked to projects.
     Records shots_;     ///< Shots linked to sequences.

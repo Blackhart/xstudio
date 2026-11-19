@@ -125,6 +125,50 @@ TEST_CASE("caching backend does not cache unlimited find") {
     CHECK(cache.size() == 0);
 }
 
+TEST_CASE("caching backend serves a second count from cache") {
+    RecordingBackend backend;
+    backend.next_count = 42;
+    CachingBackend cache(backend);
+    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+
+    CHECK(Sequence().In(scope::project == std::int64_t{1}).count(session) == 42);
+    backend.next_count = 99;
+    CHECK(Sequence().In(scope::project == std::int64_t{1}).count(session) == 42);
+    REQUIRE(backend.calls.size() == 1);
+    CHECK(cache.size() == 1);
+}
+
+TEST_CASE("caching backend keeps find and count entries apart") {
+    RecordingBackend backend;
+    backend.next = {projectRow(1, "paw01")};
+    backend.next_count = 7;
+    CachingBackend cache(backend);
+    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+
+    CHECK(Project().Limit(10).find(session).rows.size() == 1);
+    CHECK(Project().count(session) == 7);
+    CHECK(cache.size() == 2);
+    REQUIRE(backend.calls.size() == 2);
+    CHECK(backend.calls[0].op == Op::Find);
+    CHECK(backend.calls[1].op == Op::Count);
+}
+
+TEST_CASE("caching backend expires a count after the ttl") {
+    RecordingBackend backend;
+    backend.next_count = 1;
+    auto tick = std::chrono::steady_clock::time_point{};
+    CacheOptions options;
+    options.ttl = std::chrono::seconds(5);
+    CachingBackend cache(backend, options, [&tick]() { return tick; });
+    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+
+    CHECK(Asset().In(scope::project == std::int64_t{1}).count(session) == 1);
+    tick += std::chrono::seconds(6);
+    backend.next_count = 2;
+    CHECK(Asset().In(scope::project == std::int64_t{1}).count(session) == 2);
+    REQUIRE(backend.calls.size() == 2);
+}
+
 TEST_CASE("caching backend evicts the least recently used entry") {
     RecordingBackend backend;
     CacheOptions options;

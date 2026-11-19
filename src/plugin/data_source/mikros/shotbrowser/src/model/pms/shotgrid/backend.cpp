@@ -194,6 +194,40 @@ std::string ShotGridBackend::buildEntityUrl(const ShotGridSchema &schema) const 
     return std::string(kApiRoot) + "/entity/" + findCollectionName(schema.shotgridName) + "/_search";
 }
 
+std::string ShotGridBackend::buildSummarizeUrl(const ShotGridSchema &schema) const {
+    return std::string(kApiRoot) + "/entity/" + findCollectionName(schema.shotgridName) +
+           "/_summarize";
+}
+
+nlohmann::json ShotGridBackend::buildSummarizeBody(const Ir &ir) const {
+    nlohmann::json body = buildRequestBody(ir);
+    body["summary_fields"] = nlohmann::json::array(
+        {nlohmann::json{{"field", "id"}, {"type", "count"}}});
+    return body;
+}
+
+std::size_t ShotGridBackend::readSummarizeCount(const httplib::Result &response) const {
+    const nlohmann::json payload = nlohmann::json::parse(response->body);
+    const nlohmann::json *summaries = nullptr;
+    if (payload.contains("data") && payload["data"].is_object() &&
+        payload["data"].contains("summaries")) {
+        summaries = &payload["data"]["summaries"];
+    } else if (payload.contains("summaries")) {
+        summaries = &payload["summaries"];
+    }
+    if (!summaries || !summaries->is_object() || !summaries->contains("id")) {
+        throw Error("shotgrid: summarize response missing summaries.id");
+    }
+    const nlohmann::json &id = (*summaries)["id"];
+    if (id.is_number_integer()) {
+        return static_cast<std::size_t>(id.get<std::int64_t>());
+    }
+    if (id.is_number_unsigned()) {
+        return id.get<std::size_t>();
+    }
+    throw Error("shotgrid: summarize summaries.id is not an int");
+}
+
 std::string ShotGridBackend::appendFields(std::string url, const ShotGridSchema &schema) const {
     const std::vector<std::string> fields = shotgridFieldNames(schema);
     url += "?fields=";
@@ -292,6 +326,16 @@ Page ShotGridBackend::find(const Ir &ir) {
     const nlohmann::json body = buildRequestBody(ir);
     const httplib::Result response = postSearch(url, body);
     return buildPage(response, schema, ir);
+}
+
+std::size_t ShotGridBackend::count(const Ir &ir) {
+    const ShotGridSchema &schema = extractSchemaFromIR(ir);
+    connectIfNeeded();
+    const std::string url = buildSummarizeUrl(schema);
+    const nlohmann::json body = buildSummarizeBody(ir);
+    const httplib::Result response = postSearch(url, body);
+    throwIfSearchFailed(response);
+    return readSummarizeCount(response);
 }
 
 } // namespace pms

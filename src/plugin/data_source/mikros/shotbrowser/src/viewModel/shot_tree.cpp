@@ -17,6 +17,7 @@
 #include <QtQml>
 
 #include <algorithm>
+#include <string>
 #include <utility>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
@@ -30,10 +31,11 @@ namespace {
 
 ShotTree *qml_shot_tree = nullptr; ///< Instance exposed to QML as ShotTreeBridge.
 
-using TreePage = std::function<void(std::uint64_t, bool, const utility::JsonStore &)>;
+using TreePage = std::function<
+    void(const std::string &, std::uint64_t, bool, const utility::JsonStore &)>;
 
 /**
- * @brief Applies a shot-tree page and declines every other catalog.
+ * @brief Applies a shot-tree page or count and declines every other catalog.
  *
  * `or_else` tries the next handler only when `invoke` returns false. Returning
  * `caf::skip` from a matched functor still consumes the message, so a page for
@@ -42,8 +44,8 @@ using TreePage = std::function<void(std::uint64_t, bool, const utility::JsonStor
 class ShotTreePageHandler : public caf::detail::behavior_impl {
   public:
     /**
-     * @brief Stores the lambda that applies one shot-tree page.
-     * @param apply Called on the panel actor for a current shot-tree page.
+     * @brief Stores the lambda that applies one shot-tree page or count.
+     * @param apply Called on the panel actor for a current shot-tree message.
      */
     explicit ShotTreePageHandler(TreePage apply) : apply_(std::move(apply)) {}
 
@@ -74,10 +76,10 @@ class ShotTreePageHandler : public caf::detail::behavior_impl {
             return false;
         }
         const std::string catalog = caf::get<2>(view);
-        if (catalog != "shot_tree") {
+        if (catalog != "shot_tree" && catalog != "shot_tree_count") {
             return false; ///< Another catalog: the shell handler continues.
         }
-        apply_(caf::get<1>(view), caf::get<12>(view), caf::get<13>(view));
+        apply_(catalog, caf::get<1>(view), caf::get<12>(view), caf::get<13>(view));
         visitor(caf::unit);
         return true;
     }
@@ -379,6 +381,8 @@ void ShotTree::initQmlAttributes(plugin::StandardPlugin &panel) {
     sequence_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     shot_ = panel.add_string_attribute("Shot", "Shot", "-1");
     shot_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    footer_ = panel.add_string_attribute("ShotTreeFooter", "ShotTreeFooter", "");
+    footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 void ShotTree::registerQmlSingleton() {
@@ -552,17 +556,15 @@ void ShotTree::loadSequenceShotsAsync() {
         return; ///< Tree already loaded, no project, or the asset tab is showing.
     }
     const std::uint64_t requestId = ++(*sequence_request_id_); ///< Stop the sequence fetch already running.
-    sequence_page_ = [this](std::uint64_t id, bool append, const utility::JsonStore &payload) {
-        if (id != sequence_request_id_->load()) {
-            trace::drop("shot_tree", id);
-            return;
-        }
-        updateSequenceShots(append, payload);
-    };
-    CatalogLoadRequest request =
-        makeCatalogRequest(&panel_, CatalogKind::ShotTree, requestId, dal::selectedProject());
-    request.generation = sequence_request_id_; ///< The worker stops before the next findSequenceShots.
-    launchCatalogLoad(panel_.system(), std::move(request));
+    const std::int64_t projectId = dal::selectedProject();
+    CatalogLoadRequest pages =
+        makeCatalogRequest(&panel_, CatalogKind::ShotTree, requestId, projectId);
+    pages.generation = sequence_request_id_; ///< The worker stops before the next findSequenceShots.
+    launchCatalogLoad(panel_.system(), std::move(pages));
+    CatalogLoadRequest counts =
+        makeCatalogRequest(&panel_, CatalogKind::ShotTreeCount, requestId, projectId);
+    counts.generation = sequence_request_id_; ///< Drop a stale footer with the pages.
+    launchCatalogLoad(panel_.system(), std::move(counts));
 }
 
 void ShotTree::clearSequenceShots() {
@@ -573,7 +575,45 @@ void ShotTree::clearSequenceShots() {
 void ShotTree::clearShotTree() {
     sequences_.clear();
     item_model_.resetFromSequences();
+    clearFooterValue(); ///< Clear until the next count arrives.
     setSelectedSequenceAndShot(-1, -1); ///< Drop the pair with the previous project's tree.
+}
+
+namespace {
+
+/**
+ * @brief Formats one count for the shot-tree footer.
+ * @param total Match count.
+ * @param singular Noun without a trailing `s`.
+ * @return `No …s`, `1 …`, or `N …s`.
+ */
+std::string formatCountLabel(int total, const char *singular) {
+    const std::string plural = std::string(singular) + "s";
+    if (total <= 0) {
+        return "No " + plural;
+    }
+    if (total == 1) {
+        return "1 " + std::string(singular);
+    }
+    return std::to_string(total) + " " + plural;
+}
+
+} // namespace
+
+void ShotTree::updateShotTreeFooter(const utility::JsonStore &payload) {
+    if (!footer_) {
+        return;
+    }
+    const int sequences = payload.value("sequences", 0);
+    const int shots = payload.value("shots", 0);
+    footer_->set_value(
+        formatCountLabel(sequences, "sequence") + " · " + formatCountLabel(shots, "shot"));
+}
+
+void ShotTree::clearFooterValue() {
+    if (footer_) {
+        footer_->set_value("");
+    }
 }
 
 void ShotTree::updateSequenceShots(bool append, const utility::JsonStore &payload) {
@@ -607,10 +647,20 @@ void ShotTree::sortSequencesByName() {
 // ---------------------------------------------------------------------------
 
 caf::message_handler ShotTree::message_handler_extensions() {
-    auto apply = [this](std::uint64_t requestId, bool append, const utility::JsonStore &payload) {
-        if (sequence_page_) {
-            sequence_page_(requestId, append, payload);
+    auto apply = [this](
+                     const std::string &catalog,
+                     std::uint64_t requestId,
+                     bool append,
+                     const utility::JsonStore &payload) {
+        if (requestId != sequence_request_id_->load()) {
+            trace::drop("shot_tree", requestId);
+            return;
         }
+        if (catalog == "shot_tree_count") {
+            updateShotTreeFooter(payload);
+            return;
+        }
+        updateSequenceShots(append, payload);
     };
     caf::detail::behavior_impl::pointer handler =
         caf::make_counted<ShotTreePageHandler>(std::move(apply));

@@ -568,6 +568,9 @@ void FakeBackend::maybeSleep() const {
 }
 
 Page FakeBackend::find(const Ir &ir) {
+    if (!ir.op || *ir.op != Op::Find) {
+        throw Error("fake backend: missing operation");
+    }
     Records matched = matchAll(ir);
     Page page;
     if (!ir.limit) {
@@ -609,8 +612,17 @@ Page FakeBackend::find(const Ir &ir) {
     return page;
 }
 
+std::size_t FakeBackend::count(const Ir &ir) {
+    if (!ir.op || *ir.op != Op::Count) {
+        throw Error("fake backend: missing operation");
+    }
+    const std::size_t total = matchAll(ir).size();
+    maybeSleep();
+    return total;
+}
+
 Records FakeBackend::matchAll(const Ir &ir) const {
-    if (!ir.op || *ir.op != Op::Find) {
+    if (!ir.op || (*ir.op != Op::Find && *ir.op != Op::Count)) {
         throw Error("fake backend: missing operation");
     }
 
