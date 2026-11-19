@@ -162,8 +162,10 @@ void ShotBrowser::initSignals() {
             shot_tree_->loadSequenceShotsAsync();
             asset_list_->clearAssets(); ///< The previous project's assets must not be reused.
             asset_list_->loadAssetsAsync();
+            version_list_->clearVersions(); ///< The previous project's versions must not be reused.
             version_list_->loadVersionsAsync();
-            playlist_tree_->loadPlaylistListAsync(dal::resultView());
+            playlist_tree_->clearPlaylists(); ///< The previous project's playlists must not be reused.
+            playlist_tree_->loadPlaylistListAsync();
         },
         Qt::DirectConnection);
     // Left tab: clear the other side's selection, then reload that tab's catalog.
@@ -175,18 +177,27 @@ void ShotBrowser::initSignals() {
             if (mode == dal::BrowserMode::Shot) {
                 asset_list_->setSelectedAsset(-1); ///< Shot and asset are mutually exclusive.
                 shot_tree_->loadSequenceShotsAsync(); ///< Loads only on the Shot tab, and keeps a tree already stored.
-        } else {
+            } else {
                 shot_tree_->setSelectedSequenceAndShot(-1, -1);
                 asset_list_->loadAssetsAsync(); ///< Loads only on the Asset tab, and keeps a list already stored.
-        }
+            }
         },
         Qt::DirectConnection);
-    // Right tab: reload the playlist names when the view is Playlist.
+    // Right tab: clear the other side, then reload that tab's catalog.
     QObject::connect(
         this,
         &ShotBrowser::onResultViewSelected,
         this,
-        [this](ResultView view) { playlist_tree_->loadPlaylistListAsync(view); },
+        [this](ResultView view) {
+            if (view == ResultView::Playlist) {
+                version_list_->clearVersions(); ///< Versions and playlist are mutually exclusive.
+                playlist_tree_->loadPlaylistListAsync();
+            } else {
+                playlist_tree_->clearPlaylists();
+                version_list_->clearVersions();
+                version_list_->loadVersionsAsync();
+            }
+        },
         Qt::DirectConnection);
     // Sequence/shot pair chosen: reload versions and the open playlist.
     QObject::connect(
@@ -194,8 +205,9 @@ void ShotBrowser::initSignals() {
         &ShotTree::onSequenceAndShotSelected,
         this,
         [this](std::int64_t, std::int64_t) {
+            version_list_->clearVersions();
             version_list_->loadVersionsAsync();
-            playlist_tree_->reloadExpanded(dal::resultView());
+            playlist_tree_->reloadExpanded();
         },
         Qt::DirectConnection);
     // Asset chosen: reload versions and the open playlist.
@@ -204,8 +216,9 @@ void ShotBrowser::initSignals() {
         &AssetList::onAssetSelected,
         this,
         [this](std::int64_t) {
+            version_list_->clearVersions();
             version_list_->loadVersionsAsync();
-            playlist_tree_->reloadExpanded(dal::resultView());
+            playlist_tree_->reloadExpanded();
         },
         Qt::DirectConnection);
 }
@@ -310,12 +323,9 @@ caf::message_handler ShotBrowser::message_handler_extensions() {
             if (catalog != kVersionThumbsCatalog) {
                 return; ///< Another catalog was already declined by its screen.
             }
-            rememberThumbs(projectId, payload); ///< Keep the file even if the filter moved on.
+            rememberThumbs(projectId, payload); ///< Playlist rows still read thumbFor.
             if (dal::selectedProject() != projectId) {
                 return;
-            }
-            if (version_list_) {
-                version_list_->sendVersionCardsToQml();
             }
             if (playlist_tree_) {
                 playlist_tree_->stampPlaylistThumbs();

@@ -8,13 +8,20 @@
 
 #include "pms/error.hpp"
 
+#include <OpenImageIO/imagebuf.h>
+#include <OpenImageIO/imagebufalgo.h>
+
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <optional>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -223,28 +230,218 @@ std::map<std::int64_t, std::vector<std::int64_t>> linkVersionsToPlaylists(
 }
 
 /**
- * @brief Fills the card fields of one sample version.
- * @param row Version row that will show notes, the client flag, and two sites.
+ * @brief 5x7 glyphs for ASCII 32–90. Lowercase maps to uppercase.
+ *
+ * Our OIIO build has no FreeType, so `render_text` cannot run. Each byte is one
+ * row; bits 4..0 are the columns left to right.
  */
-void fillSampleCard(Record &row) {
-    row.fields["author"] = std::string("Ada");
-    row.fields["created_at"] = std::string("2024-03-01");
-    row.fields["frame_range"] = std::string("1001-1100");
-    row.fields["description"] = std::string("Comp review");
-    row.fields["step"] = std::string("Comp");
-    row.fields["status"] = std::string("ip");
-    row.fields["artistic_status"] = std::string("apr");
-    row.fields["sites"] = std::string("Paris,Montreal");
-    row.fields["has_notes"] = std::int64_t{1};
-    row.fields["synced_to_client"] = std::int64_t{1};
+const std::uint8_t kGlyph5x7[][7] = {
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, {0x04, 0x04, 0x04, 0x04, 0x00, 0x04, 0x00},
+    {0x0A, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00}, {0x0A, 0x1F, 0x0A, 0x1F, 0x0A, 0x00, 0x00},
+    {0x04, 0x0F, 0x14, 0x0E, 0x05, 0x1E, 0x04}, {0x18, 0x19, 0x02, 0x04, 0x08, 0x13, 0x03},
+    {0x08, 0x14, 0x08, 0x15, 0x12, 0x0D, 0x00}, {0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00},
+    {0x02, 0x04, 0x04, 0x04, 0x04, 0x02, 0x00}, {0x08, 0x04, 0x04, 0x04, 0x04, 0x08, 0x00},
+    {0x00, 0x0A, 0x04, 0x1F, 0x04, 0x0A, 0x00}, {0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00},
+    {0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x08}, {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00},
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00}, {0x01, 0x02, 0x04, 0x08, 0x10, 0x00, 0x00},
+    {0x0E, 0x11, 0x13, 0x15, 0x19, 0x0E, 0x00}, {0x04, 0x0C, 0x04, 0x04, 0x04, 0x0E, 0x00},
+    {0x0E, 0x11, 0x01, 0x06, 0x08, 0x1F, 0x00}, {0x1F, 0x02, 0x06, 0x01, 0x11, 0x0E, 0x00},
+    {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x00}, {0x1F, 0x10, 0x1E, 0x01, 0x11, 0x0E, 0x00},
+    {0x06, 0x08, 0x1E, 0x11, 0x11, 0x0E, 0x00}, {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x00},
+    {0x0E, 0x11, 0x0E, 0x11, 0x11, 0x0E, 0x00}, {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x0C, 0x00},
+    {0x00, 0x04, 0x00, 0x00, 0x04, 0x00, 0x00}, {0x00, 0x04, 0x00, 0x00, 0x04, 0x04, 0x08},
+    {0x02, 0x04, 0x08, 0x04, 0x02, 0x00, 0x00}, {0x00, 0x00, 0x1F, 0x00, 0x1F, 0x00, 0x00},
+    {0x08, 0x04, 0x02, 0x04, 0x08, 0x00, 0x00}, {0x0E, 0x11, 0x01, 0x06, 0x00, 0x04, 0x00},
+    {0x0E, 0x11, 0x17, 0x15, 0x17, 0x10, 0x0E}, {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x00},
+    {0x1E, 0x11, 0x1E, 0x11, 0x11, 0x1E, 0x00}, {0x0E, 0x11, 0x10, 0x10, 0x11, 0x0E, 0x00},
+    {0x1E, 0x11, 0x11, 0x11, 0x11, 0x1E, 0x00}, {0x1F, 0x10, 0x1E, 0x10, 0x10, 0x1F, 0x00},
+    {0x1F, 0x10, 0x1E, 0x10, 0x10, 0x10, 0x00}, {0x0E, 0x11, 0x10, 0x13, 0x11, 0x0F, 0x00},
+    {0x11, 0x11, 0x1F, 0x11, 0x11, 0x11, 0x00}, {0x0E, 0x04, 0x04, 0x04, 0x04, 0x0E, 0x00},
+    {0x01, 0x01, 0x01, 0x01, 0x11, 0x0E, 0x00}, {0x11, 0x12, 0x1C, 0x12, 0x11, 0x11, 0x00},
+    {0x10, 0x10, 0x10, 0x10, 0x10, 0x1F, 0x00}, {0x11, 0x1B, 0x15, 0x11, 0x11, 0x11, 0x00},
+    {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x00}, {0x0E, 0x11, 0x11, 0x11, 0x11, 0x0E, 0x00},
+    {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x00}, {0x0E, 0x11, 0x11, 0x15, 0x12, 0x0D, 0x00},
+    {0x1E, 0x11, 0x11, 0x1E, 0x12, 0x11, 0x00}, {0x0F, 0x10, 0x0E, 0x01, 0x01, 0x1E, 0x00},
+    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00}, {0x11, 0x11, 0x11, 0x11, 0x11, 0x0E, 0x00},
+    {0x11, 0x11, 0x11, 0x11, 0x0A, 0x04, 0x00}, {0x11, 0x11, 0x11, 0x15, 0x1B, 0x11, 0x00},
+    {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x00}, {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x00},
+    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x1F, 0x00},
+};
+
+/**
+ * @brief Glyph rows for one printable character.
+ * @param ch Character to draw. Unknown glyphs become '?'.
+ * @return Seven row bitmasks.
+ */
+const std::uint8_t *glyphFor(char ch) {
+    if (ch >= 'a' && ch <= 'z') {
+        ch = static_cast<char>(ch - 'a' + 'A');
+    }
+    if (ch >= ' ' && ch <= 'Z') {
+        return kGlyph5x7[static_cast<std::size_t>(ch - ' ')];
+    }
+    return kGlyph5x7[static_cast<std::size_t>('?' - ' ')];
 }
 
 /**
- * @brief Marks one version present in Bangalore only.
- * @param row Version row whose other card fields stay empty.
+ * @brief Draws `label` centered into an RGB buffer with the 5x7 font.
+ * @param pixels RGB8 buffer of `width` x `height`.
+ * @param width Image width.
+ * @param height Image height.
+ * @param label Text to draw. Truncated when too wide.
  */
-void fillBangaloreCard(Record &row) {
-    row.fields["sites"] = std::string("Bangalore");
+void drawCenteredLabel(
+    std::vector<std::uint8_t> &pixels, int width, int height, const std::string &label) {
+    constexpr int scale = 2;
+    constexpr int glyphH = 7 * scale;
+    constexpr int advance = 5 * scale + scale;
+    const int maxChars = (width - 24) / advance;
+    std::string text = label;
+    if (maxChars > 0 && static_cast<int>(text.size()) > maxChars) {
+        text = text.substr(0, static_cast<std::size_t>(maxChars));
+    }
+    if (text.empty()) {
+        return;
+    }
+    const int textW = static_cast<int>(text.size()) * advance - scale;
+    const int originX = std::max(0, (width - textW) / 2);
+    const int originY = std::max(0, (height - glyphH) / 2);
+    auto put = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= width || y >= height) {
+            return;
+        }
+        const std::size_t at = static_cast<std::size_t>((y * width + x) * 3);
+        pixels[at] = 230;
+        pixels[at + 1] = 230;
+        pixels[at + 2] = 235;
+    };
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        const std::uint8_t *glyph = glyphFor(text[index]);
+        const int baseX = originX + static_cast<int>(index) * advance;
+        for (int row = 0; row < 7; ++row) {
+            for (int col = 0; col < 5; ++col) {
+                if ((glyph[row] & (1 << (4 - col))) == 0) {
+                    continue;
+                }
+                for (int dy = 0; dy < scale; ++dy) {
+                    for (int dx = 0; dx < scale; ++dx) {
+                        put(baseX + col * scale + dx, originY + row * scale + dy);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * @brief Writes a JPEG thumb with the version name centered, via OpenImageIO.
+ *
+ * OIIO fills and writes the file. Text uses a bitmap font because this OIIO
+ * build has no FreeType (`render_text` aborts the thumb otherwise).
+ * @param name Version name drawn on the image.
+ * @param projectId Project id for the cache folder.
+ * @param versionId Version id for the cache folder.
+ * @return Absolute path of the JPEG, or empty when home is missing or the write fails.
+ */
+std::string writeVersionThumb(
+    const std::string &name, std::int64_t projectId, std::int64_t versionId) {
+    const char *home = std::getenv("HOME");
+    if (home == nullptr || *home == '\0') {
+        return {};
+    }
+    const std::filesystem::path path = std::filesystem::path(home) / "xStudio" /
+                                       "mikros_shotbrowser" / "fake_thumbs" /
+                                       std::to_string(projectId) / std::to_string(versionId) /
+                                       "thumbnail.jpg";
+    std::error_code error;
+    if (std::filesystem::is_regular_file(path, error) && !error &&
+        std::filesystem::file_size(path, error) > 0 && !error) {
+        return path.string(); ///< Keep a thumb written by an earlier FakeBackend.
+    }
+    std::filesystem::create_directories(path.parent_path(), error);
+    if (error) {
+        return {};
+    }
+
+    constexpr int width = 320;
+    constexpr int height = 180;
+    OIIO::ImageSpec spec(width, height, 3, OIIO::TypeDesc::UINT8);
+    OIIO::ImageBuf image(spec);
+    const float background[3] = {
+        static_cast<float>(32 + (versionId % 40)) / 255.0f,
+        36.0f / 255.0f,
+        48.0f / 255.0f};
+    if (!OIIO::ImageBufAlgo::fill(image, background)) {
+        return {};
+    }
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width * height * 3));
+    if (!image.get_pixels(OIIO::ROI(), OIIO::TypeDesc::UINT8, pixels.data())) {
+        return {};
+    }
+    drawCenteredLabel(pixels, width, height, name);
+    if (!image.set_pixels(OIIO::ROI(), OIIO::TypeDesc::UINT8, pixels.data())) {
+        return {};
+    }
+    if (!image.write(path.string())) {
+        return {};
+    }
+    return path.string();
+}
+
+/**
+ * @brief Fills every VersionCard field, including a local thumb path.
+ * @param row Version row that already has id, name, and project.
+ * @param index 1-based index among the parent's versions (varies the sample).
+ */
+void fillVersionCard(Record &row, std::size_t index) {
+    const std::int64_t id = std::get<std::int64_t>(row.fields.at("id"));
+    const std::string name = std::get<std::string>(row.fields.at("name"));
+    const std::int64_t projectId = std::get<std::int64_t>(row.fields.at("project"));
+    const std::size_t pick = static_cast<std::size_t>((id + static_cast<std::int64_t>(index)) % 5);
+
+    static const char *authors[] = {"Ada", "Lin", "Sam", "Kai", "Noa"};
+    static const char *steps[] = {"Comp", "Light", "Anim", "FX", "Paint"};
+    static const char *statuses[] = {"ip", "rev", "apr", "hld", "omt"};
+    static const char *artistic[] = {"apr", "wip", "ret", "fin", "na"};
+    static const char *sites[] = {
+        "Paris",
+        "Montreal",
+        "Bangalore",
+        "Paris,Montreal",
+        "Paris,Bangalore"};
+    static const char *descriptions[] = {
+        "Comp review",
+        "Lighting pass",
+        "Anim blocking",
+        "FX polish",
+        "Paint fix"};
+    static const char *ranges[] = {
+        "1001-1100", "1001-1050", "1001-1200x2", "1010-1090", "1001-1001"};
+
+    row.fields["author"] = std::string(authors[pick]);
+    row.fields["created_at"] =
+        std::string("2024-0") + std::to_string(1 + static_cast<int>(pick)) + "-0" +
+        std::to_string(1 + static_cast<int>(index));
+    row.fields["frame_range"] = std::string(ranges[pick]);
+    row.fields["description"] = std::string(descriptions[pick]);
+    row.fields["step"] = std::string(steps[pick]);
+    row.fields["status"] = std::string(statuses[pick]);
+    row.fields["artistic_status"] = std::string(artistic[pick]);
+    row.fields["sites"] = std::string(sites[pick]);
+    row.fields["has_notes"] = std::int64_t{(id % 2) == 0 ? 1 : 0};
+    row.fields["synced_to_client"] = std::int64_t{(id % 3) == 0 ? 1 : 0};
+    row.fields["frames"] = "/tmp/fake_media/" + name + "/.####.exr";
+    row.fields["frames_provider"] = std::string("fileSeq");
+    row.fields["movie"] = "/tmp/fake_media/" + name + "/movie.mov";
+    row.fields["movie_provider"] = std::string("file");
+    row.fields["uploaded_movie"] = "https://example.test/movies/" + name + ".mp4";
+    row.fields["uploaded_movie_provider"] = std::string("url");
+
+    const std::string thumb = writeVersionThumb(name, projectId, id);
+    if (!thumb.empty()) {
+        row.fields["image"] = thumb;
+        row.fields["image_provider"] = std::string("file");
+    }
 }
 
 /**
@@ -253,7 +450,7 @@ void fillBangaloreCard(Record &row) {
  * Sequence versions omit `shot` and `asset`. Shot versions set `shot`,
  * `sequence`, and `project`. Asset versions set `asset` and `project`.
  * Playlist membership is stored separately (weak many-to-many).
- * The first version of each parent carries a full card. The second is in Bangalore.
+ * Every version carries a full VersionCard payload and a local thumb.
  */
 Records makeVersions(
     const Records &sequences, const Records &shots, const Records &assets) {
@@ -274,11 +471,7 @@ Records makeVersions(
             row.fields["name"] = sequenceName + "_v" + versionNumber;
             row.fields["sequence"] = sequence.fields.at("id");
             row.fields["project"] = sequence.fields.at("project");
-            if (index == 1) {
-                fillSampleCard(row);
-            } else if (index == 2) {
-                fillBangaloreCard(row);
-            }
+            fillVersionCard(row, index);
             rows.push_back(std::move(row));
         }
     }
@@ -294,11 +487,7 @@ Records makeVersions(
             row.fields["shot"] = shot.fields.at("id");
             row.fields["sequence"] = shot.fields.at("sequence");
             row.fields["project"] = shot.fields.at("project");
-            if (index == 1) {
-                fillSampleCard(row);
-            } else if (index == 2) {
-                fillBangaloreCard(row);
-            }
+            fillVersionCard(row, index);
             rows.push_back(std::move(row));
         }
     }
@@ -313,11 +502,7 @@ Records makeVersions(
             row.fields["name"] = assetName + "_v" + versionNumber;
             row.fields["asset"] = asset.fields.at("id");
             row.fields["project"] = asset.fields.at("project");
-            if (index == 1) {
-                fillSampleCard(row);
-            } else if (index == 2) {
-                fillBangaloreCard(row);
-            }
+            fillVersionCard(row, index);
             rows.push_back(std::move(row));
         }
     }
@@ -515,11 +700,13 @@ void copyPresent(Record &out, const Record &row, const std::string &key) {
 
 /**
  * @brief Returns a version without its private parent links.
- * @param row Catalog version, including the card fields when this sample has them.
- * @return Id, name, and any card field already filled.
+ * @param row Catalog version, including the card fields and thumb path.
+ * @return Id, name, and every VersionCard field already filled.
  */
 Record publicVersion(const Record &row) {
     Record out = publicNamed(row);
+    copyPresent(out, row, "image");
+    copyPresent(out, row, "image_provider");
     copyPresent(out, row, "author");
     copyPresent(out, row, "created_at");
     copyPresent(out, row, "frame_range");
@@ -530,6 +717,12 @@ Record publicVersion(const Record &row) {
     copyPresent(out, row, "sites");
     copyPresent(out, row, "has_notes");
     copyPresent(out, row, "synced_to_client");
+    copyPresent(out, row, "frames");
+    copyPresent(out, row, "frames_provider");
+    copyPresent(out, row, "movie");
+    copyPresent(out, row, "movie_provider");
+    copyPresent(out, row, "uploaded_movie");
+    copyPresent(out, row, "uploaded_movie_provider");
     return out;
 }
 

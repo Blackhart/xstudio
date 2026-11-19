@@ -20,6 +20,7 @@ set(SOURCES
 	viewModel/shot_browser.cpp
 	viewModel/shot_tree.cpp
 	viewModel/asset_list.cpp
+	viewModel/version_card.cpp
 	viewModel/version_list.cpp
 	viewModel/playlist_tree.cpp
 	view/resources/mikros_shotbrowser.qrc

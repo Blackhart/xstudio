@@ -30,7 +30,15 @@ ColumnLayout {
 
     signal resultChosen(string mode)
 
-    readonly property int count: names && names.length ? names.length : 0
+    readonly property int count: {
+        if (!names)
+            return 0
+        if (names.count !== undefined)
+            return names.count ///< QAbstractListModel / QAbstractItemModel.
+        if (names.length)
+            return names.length ///< JSON / JS array (playlists, legacy).
+        return 0
+    }
     readonly property int footerValue: footerCount >= 0 ? footerCount : count
     readonly property string footerLabel: customFooter
             ? footerText
@@ -39,6 +47,7 @@ ColumnLayout {
                : footerValue + " " + footerNoun + "s loaded")
 
     onNamesChanged: nameView.holdScroll() ///< A new page must not jump back to the top.
+    onCountChanged: nameView.holdScroll() ///< Model reset changes count without replacing `names`.
 
     spacing: XsStyleSheet.panelPadding
 

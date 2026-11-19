@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/version_list.cpp
- * @brief Version list: page load, combo labels, and the cards.
+ * @brief Version list: page load, JSON cards, and open media.
  */
 
 #include "viewModel/version_list.hpp"
@@ -21,9 +21,7 @@
 #include <caf/make_counted.hpp>
 #include <caf/unit.hpp>
 
-#include <QBuffer>
 #include <QEventLoop>
-#include <QImage>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -31,9 +29,9 @@
 
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <regex>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
@@ -44,79 +42,6 @@ using namespace xstudio::mikros_shotbrowser;
 namespace xstudio::mikros_shotbrowser {
 
 namespace {
-
-using VersionPage = std::function<void(
-    std::uint64_t,
-    std::int64_t,
-    bool,
-    std::int64_t,
-    bool,
-    std::int64_t,
-    bool,
-    std::int64_t,
-    bool,
-    const utility::JsonStore &)>;
-
-/**
- * @brief Applies a version page and declines every other catalog.
- *
- * `or_else` tries the next handler only when `invoke` returns false.
- */
-class VersionPageHandler : public caf::detail::behavior_impl {
-  public:
-    /**
-     * @brief Stores the lambda that applies one version page.
-     * @param apply Called on the panel actor for a current version page.
-     */
-    explicit VersionPageHandler(VersionPage apply) : apply_(std::move(apply)) {}
-
-    /**
-     * @brief Runs the version lambda, or declines the message.
-     * @param visitor Receives an empty result when the page was ours.
-     * @param message Worker page.
-     * @return False when this handler does not take the message.
-     */
-    bool invoke(caf::detail::invoke_result_visitor &visitor, caf::message &message) override {
-        using view_type = caf::const_typed_message_view<
-            data_source::put_data_atom,
-            std::uint64_t,
-            std::string,
-            std::int64_t,
-            bool,
-            std::int64_t,
-            bool,
-            std::int64_t,
-            bool,
-            std::int64_t,
-            bool,
-            std::int64_t,
-            bool,
-            utility::JsonStore>;
-        view_type view{message};
-        if (!view) {
-            return false;
-        }
-        if (caf::get<2>(view) != "version") {
-            return false; ///< Another catalog: the next handler continues.
-        }
-        apply_(
-            caf::get<1>(view),
-            caf::get<3>(view),
-            caf::get<4>(view),
-            caf::get<5>(view),
-            caf::get<6>(view),
-            caf::get<7>(view),
-            caf::get<8>(view),
-            caf::get<9>(view),
-            caf::get<12>(view),
-            caf::get<13>(view));
-        visitor(caf::unit);
-        return true;
-    }
-
-  private:
-    VersionPage apply_; ///< Lambda stored by `loadVersionsAsync`.
-};
 
 struct SourceChoice {
     bool frames = false;    ///< Image sequence is on disk.
@@ -392,60 +317,131 @@ void resolveOpen(caf::weak_actor_ptr panel, OpenRequest request) {
     }).detach();
 }
 
-using OpenPage = std::function<void(const utility::JsonStore &)>;
+} // namespace
+
+using CatalogView = caf::const_typed_message_view<
+    data_source::put_data_atom,
+    std::uint64_t,
+    std::string,
+    std::int64_t,
+    bool,
+    std::int64_t,
+    bool,
+    std::int64_t,
+    bool,
+    std::int64_t,
+    bool,
+    std::int64_t,
+    bool,
+    utility::JsonStore>;
 
 /**
- * @brief Applies an open-media result and declines every other catalog.
+ * @brief Routes a `version` catalog page to `VersionList::updateVersionList`.
+ *
+ * `or_else` tries the next handler only when `invoke` returns false.
+ */
+class VersionPageHandler : public caf::detail::behavior_impl {
+  public:
+    /**
+     * @brief Stores the list that owns the page update.
+     * @param list Version list on the panel actor.
+     */
+    explicit VersionPageHandler(VersionList *list) : list_(list) {}
+
+    /**
+     * @brief Forwards a version page, or declines the message.
+     * @param visitor Receives an empty result when the page was ours.
+     * @param message Worker page.
+     * @return False when this handler does not take the message.
+     */
+    bool invoke(caf::detail::invoke_result_visitor &visitor, caf::message &message) override {
+        CatalogView view{message};
+        if (!view) {
+            return false;
+        }
+        if (caf::get<2>(view) != "version") {
+            return false; ///< Another catalog: the next handler continues.
+        }
+        list_->updateVersionList(caf::get<1>(view), caf::get<12>(view), caf::get<13>(view));
+        visitor(caf::unit);
+        return true;
+    }
+
+  private:
+    VersionList *list_ = nullptr; ///< Receives version pages.
+};
+
+/**
+ * @brief Routes a ready thumb URL to `VersionList::applyCardImage`.
+ *
+ * `or_else` tries the next handler only when `invoke` returns false.
+ */
+class VersionThumbHandler : public caf::detail::behavior_impl {
+  public:
+    /**
+     * @brief Stores the list that owns the cards.
+     * @param list Version list on the panel actor.
+     */
+    explicit VersionThumbHandler(VersionList *list) : list_(list) {}
+
+    /**
+     * @brief Applies one thumb URL, or declines the message.
+     * @param visitor Receives an empty result when the page was ours.
+     * @param message Card thumb mail.
+     * @return False when this handler does not take the message.
+     */
+    bool invoke(caf::detail::invoke_result_visitor &visitor, caf::message &message) override {
+        CatalogView view{message};
+        if (!view) {
+            return false;
+        }
+        if (caf::get<2>(view) != "version_thumb") {
+            return false; ///< Another catalog: the next handler continues.
+        }
+        list_->applyCardImage(caf::get<13>(view));
+        visitor(caf::unit);
+        return true;
+    }
+
+  private:
+    VersionList *list_ = nullptr; ///< Receives ready thumb URLs.
+};
+
+/**
+ * @brief Routes an `open_media` result to `VersionList::openMedia`.
  *
  * `or_else` tries the next handler only when `invoke` returns false.
  */
 class OpenPageHandler : public caf::detail::behavior_impl {
   public:
     /**
-     * @brief Stores the lambda that places one opened version.
-     * @param apply Called on the panel actor when the disk check finishes.
+     * @brief Stores the list that opens media.
+     * @param list Version list on the panel actor.
      */
-    explicit OpenPageHandler(OpenPage apply) : apply_(std::move(apply)) {}
+    explicit OpenPageHandler(VersionList *list) : list_(list) {}
 
     /**
-     * @brief Runs the open lambda, or declines the message.
+     * @brief Forwards an open result, or declines the message.
      * @param visitor Receives an empty result when the page was ours.
      * @param message Worker page.
      * @return False when this handler does not take the message.
      */
     bool invoke(caf::detail::invoke_result_visitor &visitor, caf::message &message) override {
-        using view_type = caf::const_typed_message_view<
-            data_source::put_data_atom,
-            std::uint64_t,
-            std::string,
-            std::int64_t,
-            bool,
-            std::int64_t,
-            bool,
-            std::int64_t,
-            bool,
-            std::int64_t,
-            bool,
-            std::int64_t,
-            bool,
-            utility::JsonStore>;
-        view_type view{message};
+        CatalogView view{message};
         if (!view) {
             return false;
         }
         if (caf::get<2>(view) != "open_media") {
             return false; ///< Another catalog: the next handler continues.
         }
-        apply_(caf::get<13>(view));
+        list_->openMedia(caf::get<13>(view));
         visitor(caf::unit);
         return true;
     }
 
   private:
-    OpenPage apply_; ///< Lambda stored by `message_handler_extensions`.
+    VersionList *list_ = nullptr; ///< Receives open-media results.
 };
-
-} // namespace
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -456,13 +452,11 @@ VersionList::VersionList(plugin::StandardPlugin &panel) : QObject(nullptr), pane
 }
 
 void VersionList::initQmlAttributes(plugin::StandardPlugin &panel) {
-    version_ = panel.add_string_choice_attribute("Version", "Version", "", {}, {});
-    version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
-    versions_loaded_ = panel.add_boolean_attribute("VersionsLoaded", "VersionsLoaded", false);
-    versions_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     version_cards_ =
         panel.add_json_attribute("VersionCards", "VersionCards", nlohmann::json::array());
     version_cards_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    versions_loaded_ = panel.add_boolean_attribute("VersionsLoaded", "VersionsLoaded", false);
+    versions_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     open_version_ = panel.add_string_attribute("OpenVersion", "OpenVersion", "");
     open_version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     opened_media_ = panel.add_string_attribute("OpenedMedia", "OpenedMedia", "");
@@ -470,40 +464,14 @@ void VersionList::initQmlAttributes(plugin::StandardPlugin &panel) {
 }
 
 // ---------------------------------------------------------------------------
-// Version list. A load clears the catalog, then each page extends it.
+// Version list. The panel clears first; unknown rows become cards and publish JSON.
 // ---------------------------------------------------------------------------
 
 void VersionList::loadVersionsAsync() {
-    const std::uint64_t requestId = ++(*version_request_id_); ///< Stop the version fetch already running.
-    page_ = [this](
-                std::uint64_t id,
-                std::int64_t projectId,
-                bool hasSequence,
-                std::int64_t sequenceId,
-                bool hasShot,
-                std::int64_t shotId,
-                bool hasAsset,
-                std::int64_t assetId,
-                bool append,
-                const utility::JsonStore &payload) {
-        if (id != version_request_id_->load()) {
-            trace::drop("version", id);
-            return;
-        }
-        if (dal::selectedProject() != projectId) {
-            trace::drop("version", id); ///< The user picked another project.
-            return;
-        }
-        if (!parentsStillSelected(hasSequence, sequenceId, hasShot, shotId, hasAsset, assetId)) {
-            trace::drop("version", id); ///< The sequence, shot, or asset changed.
-            return;
-        }
-        updateVersionList(append, payload);
-    };
-    clearVersionList();
     if (dal::selectedProject() == -1) {
-        return; ///< No project: the list stays empty.
+        return; ///< No project: leave whatever clearVersions already emptied.
     }
+    const std::uint64_t requestId = ++(*version_request_id_); ///< Stop the version fetch already running.
     const VersionParents parents = readVersionParents();
     CatalogLoadRequest request = makeCatalogRequest(
         &panel_, CatalogKind::Version, requestId, dal::selectedProject());
@@ -514,58 +482,120 @@ void VersionList::loadVersionsAsync() {
     launchCatalogLoad(panel_.system(), std::move(request));
 }
 
-bool VersionList::parentsStillSelected(
-    bool hasSequence,
-    std::int64_t sequenceId,
-    bool hasShot,
-    std::int64_t shotId,
-    bool hasAsset,
-    std::int64_t assetId) const {
-    const bool sequenceOk =
-        hasSequence ? dal::selectedSequence() == sequenceId : dal::selectedSequence() == -1;
-    const bool shotOk = hasShot ? dal::selectedShot() == shotId : dal::selectedShot() == -1;
-    const bool assetOk = hasAsset ? dal::selectedAsset() == assetId : dal::selectedAsset() == -1;
-    return sequenceOk && shotOk && assetOk;
+void VersionList::clearVersions() {
+    ++(*version_request_id_); ///< Drop pages that still belong to the previous selection.
+    versions_.clear();
+    sendVersionCardsToQml();
+    clearVersionsLoadedFlag();
 }
 
-void VersionList::clearVersionList() {
-    versions_.clear();
+void VersionList::clearVersionsLoadedFlag() {
     if (versions_loaded_) {
-        versions_loaded_->set_value(false); ///< An empty combo is a load in progress, not a result.
+        versions_loaded_->set_value(false); ///< An empty list is a load in progress, not a result.
     }
-    if (version_cards_) {
-        version_cards_->set_value(nlohmann::json::array());
-    }
-    if (!version_) {
+}
+
+void VersionList::updateVersionList(
+    std::uint64_t requestId, bool /*append*/, const utility::JsonStore &payload) {
+    if (requestId != version_request_id_->load()) {
+        trace::drop("version", requestId); ///< clearVersions bumped the id on project/parents change.
         return;
     }
-    version_->set_role_data(module::Attribute::StringChoices, std::vector<std::string>{});
-    version_->set_value("");
+    const std::vector<poco::Version> rows = rowsFromJson<poco::Version>(payload);
+    const std::vector<poco::Version> newRows = findUnknownVersionRows(rows);
+    appendVersions(newRows);
+    sendVersionCardsToQml();
+    markVersionsLoaded();
 }
 
-void VersionList::updateVersionList(bool append, const utility::JsonStore &payload) {
-    applyCatalogPage(versions_, version_, rowsFromJson<poco::Version>(payload), append);
-    if (versions_loaded_) {
-        versions_loaded_->set_value(true); ///< Zero rows is a finished load.
+std::vector<poco::Version>
+VersionList::findUnknownVersionRows(const std::vector<poco::Version> &rows) const {
+    std::unordered_set<std::int64_t> knownIds;
+    knownIds.reserve(versions_.size());
+    for (const std::unique_ptr<VersionCard> &card : versions_) {
+        knownIds.insert(card->id());
     }
-    sendVersionCardsToQml();
+    std::vector<poco::Version> newRows;
+    newRows.reserve(rows.size());
+    for (const poco::Version &row : rows) {
+        if (knownIds.insert(row.id).second) {
+            newRows.push_back(row); ///< Skip a version already stored as a card.
+        }
+    }
+    return newRows;
+}
+
+void VersionList::appendVersions(const std::vector<poco::Version> &newRows) {
+    if (newRows.empty()) {
+        return;
+    }
+    const std::int64_t projectId = dal::selectedProject();
+    const VersionCard::ImageReady notify = makeImageReadyNotifier();
+    versions_.reserve(versions_.size() + newRows.size());
+    for (const poco::Version &row : newRows) {
+        versions_.push_back(std::make_unique<VersionCard>(row, row.name, projectId, notify));
+    }
 }
 
 void VersionList::sendVersionCardsToQml() {
     if (!version_cards_) {
         return;
     }
-    nlohmann::json cards = nlohmann::json::array();
-    if (dal::selectedProject() != -1) {
-        const std::vector<std::string> labels = buildUniqueLabels(versions_);
-        for (std::size_t index = 0; index < versions_.size(); ++index) {
-            cards.push_back(versionFacts(
-                versions_[index],
-                labels[index],
-                thumbFor(dal::selectedProject(), versions_[index].id)));
-        }
+    nlohmann::json rows = nlohmann::json::array();
+    for (const std::unique_ptr<VersionCard> &card : versions_) {
+        rows.push_back(card->toJson());
     }
-    version_cards_->set_value(std::move(cards));
+    version_cards_->set_value(rows); ///< The QML ListView reads this attribute.
+}
+
+VersionCard::ImageReady VersionList::makeImageReadyNotifier() {
+    const caf::weak_actor_ptr panel = caf::actor_cast<caf::weak_actor_ptr>(&panel_);
+    const std::int64_t projectId = dal::selectedProject();
+    return [panel, projectId](std::int64_t id, const std::string &fileUrl) {
+        if (fileUrl.empty()) {
+            return;
+        }
+        nlohmann::json body = {{"id", id}, {"image", fileUrl}};
+        sendCatalog(
+            panel,
+            0,
+            "version_thumb",
+            projectId,
+            {},
+            false,
+            utility::JsonStore(std::move(body)));
+    };
+}
+
+void VersionList::applyCardImage(const utility::JsonStore &payload) {
+    if (!payload.is_object() || !payload.contains("id") || !payload.contains("image")) {
+        return;
+    }
+    const std::int64_t id = payload["id"].get<std::int64_t>();
+    const std::string image = payload["image"].get<std::string>();
+    if (image.empty()) {
+        return;
+    }
+    const std::int64_t projectId = dal::selectedProject();
+    if (projectId != -1) {
+        nlohmann::json remembered = nlohmann::json::array();
+        remembered.push_back({{"versionId", id}, {"image", image}});
+        rememberThumbs(projectId, utility::JsonStore(std::move(remembered))); ///< Playlist rows can reuse this URL.
+    }
+    for (std::unique_ptr<VersionCard> &card : versions_) {
+        if (card->id() != id) {
+            continue;
+        }
+        card->setImage(image);
+        sendVersionCardsToQml();
+        return;
+    }
+}
+
+void VersionList::markVersionsLoaded() {
+    if (versions_loaded_) {
+        versions_loaded_->set_value(true); ///< Zero rows is still a finished load.
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -575,59 +605,16 @@ void VersionList::sendVersionCardsToQml() {
 OpenReady openReady(const utility::JsonStore &payload);
 
 caf::message_handler VersionList::message_handler_extensions() {
-    auto apply = [this](
-                     std::uint64_t requestId,
-                     std::int64_t projectId,
-                     bool hasSequence,
-                     std::int64_t sequenceId,
-                     bool hasShot,
-                     std::int64_t shotId,
-                     bool hasAsset,
-                     std::int64_t assetId,
-                     bool append,
-                     const utility::JsonStore &payload) {
-        if (page_) {
-            page_(
-                requestId,
-                projectId,
-                hasSequence,
-                sequenceId,
-                hasShot,
-                shotId,
-                hasAsset,
-                assetId,
-                append,
-                payload);
-        }
-    };
-    caf::detail::behavior_impl::pointer handler =
-        caf::make_counted<VersionPageHandler>(std::move(apply));
-    auto place = [this](const utility::JsonStore &payload) {
-        placeOpenedMedia(openReady(payload)); ///< Paths checked off the scheduler.
-    };
-    caf::detail::behavior_impl::pointer opened = caf::make_counted<OpenPageHandler>(std::move(place));
-    return caf::message_handler{std::move(handler)}.or_else(caf::message_handler{std::move(opened)});
+    caf::detail::behavior_impl::pointer pages = caf::make_counted<VersionPageHandler>(this);
+    caf::detail::behavior_impl::pointer thumbs = caf::make_counted<VersionThumbHandler>(this);
+    caf::detail::behavior_impl::pointer opened = caf::make_counted<OpenPageHandler>(this);
+    return caf::message_handler{std::move(pages)}
+        .or_else(caf::message_handler{std::move(thumbs)})
+        .or_else(caf::message_handler{std::move(opened)});
 }
 
-nlohmann::json versionFacts(
-    const poco::Version &row, const std::string &label, const std::string &image) {
-    return {
-        {"name", label},
-        {"id", row.id},
-        {"image", image},
-        {"author", row.author},
-        {"createdAt", row.created_at},
-        {"frameRange", row.frame_range},
-        {"description", row.description},
-        {"step", row.step},
-        {"status", row.status},
-        {"artisticStatus", row.artistic_status},
-        {"sites", row.sites},
-        {"hasNotes", row.has_notes},
-        {"syncedToClient", row.synced_to_client},
-        {"frames", row.frames},
-        {"movie", row.movie},
-        {"uploadedMovie", row.uploaded_movie}};
+void VersionList::openMedia(const utility::JsonStore &payload) {
+    placeOpenedMedia(openReady(payload));
 }
 
 OpenReady

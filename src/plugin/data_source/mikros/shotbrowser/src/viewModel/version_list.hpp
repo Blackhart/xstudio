@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/version_list.hpp
- * @brief Version combo and the cards built from the same rows.
+ * @brief Version list view model: catalog load, JSON cards, and open media.
  */
 #pragma once
 
 #include "utility/catalog.hpp"
+#include "viewModel/version_card.hpp"
 
 using namespace xstudio;
 
@@ -15,7 +16,6 @@ using namespace xstudio;
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -38,47 +38,40 @@ struct OpenReady {
 };
 
 /**
- * @brief Builds the JSON one version card reads.
- * @param row Version whose display fields are copied.
- * @param label Unique name shown in the title.
- * @param image Thumbnail path already resolved, or empty until the thumb arrives.
- * @return Object with the card keys. Empty strings stay empty so the card shows N/A.
- */
-nlohmann::json versionFacts(
-    const poco::Version &row, const std::string &label, const std::string &image);
-
-/**
- * @brief View model of the version list, its cards, and the open action.
+ * @brief View model of the version catalog load and open action.
  *
- * `loadVersionsAsync` returns immediately. The lambda it stores runs on the
- * panel actor when a version page arrives. The cards are the same rows.
+ * Holds plain `VersionCard` objects. The list is published as a `JsonAttribute`
+ * that QML reads as `VersionCards`.
  */
 class VersionList : public QObject {
     Q_OBJECT
 
   public:
     /**
-     * @brief Publishes the empty version combo and the empty cards.
+     * @brief Publishes the empty version cards and the open-media attributes.
      * @param panel Panel actor. Attributes are created on it, and loads are spawned through it.
      */
     explicit VersionList(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Stops the previous version fetch, clears the list, then loads when a project is selected.
+     * @brief Loads when a project is selected.
      *
+     * Does not clear the list; the panel calls `clearVersions` first when needed.
      * The request id always moves. Parents are the sequence, shot, and asset stored by the DAL.
      * Returns before the pages arrive.
      */
     void loadVersionsAsync();
 
     /**
-     * @brief Writes one card per loaded version, with the thumbnail already on disk.
+     * @brief Clears the cards and the JSON attribute.
+     *
+     * The panel calls this before a reload, when the project changes, or when the playlist tab is showing.
      */
-    void sendVersionCardsToQml();
+    void clearVersions();
 
     /**
-     * @brief Handles a `version` page and an `open_media` result, and declines every other catalog.
-     * @return The handlers for those two catalogs.
+     * @brief Handles a `version` page, a thumb ready mail, and an `open_media` result.
+     * @return The handlers for those catalogs.
      */
     caf::message_handler message_handler_extensions();
 
@@ -92,84 +85,83 @@ class VersionList : public QObject {
     void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
   private:
+    friend class VersionPageHandler;
+    friend class VersionThumbHandler;
+    friend class OpenPageHandler;
+
     /**
-     * @brief Publishes the version combo, the cards, and the open-media attributes.
+     * @brief Publishes the version cards and the open-media attributes.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
 
     /**
-     * @brief True when the panel is still on the parents of a reply.
-     * @param hasSequence True when the page was loaded for a sequence.
-     * @param sequenceId Sequence id carried by the page.
-     * @param hasShot True when the page was loaded for a shot.
-     * @param shotId Shot id carried by the page.
-     * @param hasAsset True when the page was loaded for an asset.
-     * @param assetId Asset id carried by the page.
-     * @return False when any of those three has changed.
-     */
-    bool parentsStillSelected(
-        bool hasSequence,
-        std::int64_t sequenceId,
-        bool hasShot,
-        std::int64_t shotId,
-        bool hasAsset,
-        std::int64_t assetId) const;
-
-    /**
-     * @brief Empties the version list and the cards.
-     */
-    void clearVersionList();
-
-    /**
-     * @brief Replaces or extends `versions_` with one page, then publishes the combo and the cards.
-     * @param append False for the first page of a request.
+     * @brief Drops a stale page, otherwise merges new versions by id and publishes JSON.
+     * @param requestId Generation carried by the catalog mail.
+     * @param append Unused; merge by id is the update path. Kept for the catalog mail shape.
      * @param payload Version rows from the worker.
      */
-    void updateVersionList(bool append, const utility::JsonStore &payload);
+    void updateVersionList(
+        std::uint64_t requestId, bool append, const utility::JsonStore &payload);
 
     /**
-     * @brief Parses one open request and checks its files off the actor thread.
-     * @param text JSON the panel wrote into `OpenVersion`. Empty does nothing.
+     * @brief Applies a local thumb URL on one card and republishes the JSON.
+     * @param payload `{id, image}` from the card's CAF mail.
      */
+    void applyCardImage(const utility::JsonStore &payload);
+
+    /**
+     * @brief Places media after the open-disk check finishes (double-click / menu).
+     * @param payload Paths checked off the actor thread.
+     */
+    void openMedia(const utility::JsonStore &payload);
+
+    /**
+     * @brief Keeps only rows whose version id is not already in `versions_`.
+     * @param rows Page rows from the worker.
+     * @return Rows that still need a card.
+     */
+    [[nodiscard]] std::vector<poco::Version>
+    findUnknownVersionRows(const std::vector<poco::Version> &rows) const;
+
+    /**
+     * @brief Builds a card for each new row and starts its thumb load.
+     * @param newRows Rows that are not yet in `versions_`.
+     */
+    void appendVersions(const std::vector<poco::Version> &newRows);
+
+    /**
+     * @brief Writes the cards array to the `VersionCards` attribute.
+     */
+    void sendVersionCardsToQml();
+
+    /**
+     * @brief Notifier that mails a ready thumb URL back to the panel actor.
+     * @return Callback passed to each new `VersionCard`.
+     */
+    [[nodiscard]] VersionCard::ImageReady makeImageReadyNotifier();
+
+    /**
+     * @brief Sets `VersionsLoaded` to false (loading / cleared).
+     */
+    void clearVersionsLoadedFlag();
+
+    /**
+     * @brief Sets `VersionsLoaded` to true (page applied, including zero rows).
+     */
+    void markVersionsLoaded();
+
     void startOpen(const std::string &text);
-
-    /**
-     * @brief Adds the checked version to its playlist.
-     *
-     * When the request asked to select the media, writes `OpenedMedia` so the panel can select it.
-     * @param ready Paths and the target playlist.
-     */
     void placeOpenedMedia(const OpenReady &ready);
-
-    /**
-     * @brief Creates the movie and frame sources and inserts the media into the playlist.
-     * @param ready Paths that survived the disk check.
-     * @param playlist Playlist actor that receives the media.
-     * @param rate Frame rate of that playlist.
-     */
     void addOpenedSources(
         const OpenReady &ready, caf::actor playlist, const utility::FrameRate &rate);
 
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
-    std::vector<poco::Version> versions_; ///< Pages received for this list.
+    std::vector<std::unique_ptr<VersionCard>> versions_; ///< Cards published as JSON.
+    module::JsonAttribute *version_cards_ = nullptr; ///< Array of card objects for QML.
     RequestGeneration version_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale version fetches and pages.
-    std::function<void(
-        std::uint64_t,
-        std::int64_t,
-        bool,
-        std::int64_t,
-        bool,
-        std::int64_t,
-        bool,
-        std::int64_t,
-        bool,
-        const utility::JsonStore &)>
-        page_; ///< Applies one page on the panel actor.
-    module::StringChoiceAttribute *version_ = nullptr; ///< Labels the combo displays.
     module::BooleanAttribute *versions_loaded_ = nullptr; ///< True once the current request has delivered a page.
-    module::JsonAttribute *version_cards_ = nullptr; ///< Visible versions: name and local image.
     module::StringAttribute *open_version_ = nullptr; ///< JSON request from a double-click or the menu.
     module::StringAttribute *opened_media_ = nullptr; ///< JSON result the panel selects when asked.
 };

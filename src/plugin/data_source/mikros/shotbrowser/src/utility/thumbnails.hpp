@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,24 @@ void scheduleThumbPage(
     const caf::weak_actor_ptr &weak,
     std::int64_t projectId,
     const std::vector<poco::Version> &rows);
+
+/**
+ * @brief Resolves one version thumbnail (cache, file, or download).
+ *
+ * Runs off the caller when a download is needed. `onReady` may run on a worker
+ * thread; the caller marshals to the UI thread.
+ * @param projectId Project id for the cache path.
+ * @param versionId Version id for the cache path.
+ * @param image Remote URL or local path from ShotGrid.
+ * @param provider `http`, `file`, or empty.
+ * @param onReady Called with a `file://` URL when an image is ready. Not called when none.
+ */
+void scheduleOneThumb(
+    std::int64_t projectId,
+    std::int64_t versionId,
+    const std::string &image,
+    const std::string &provider,
+    std::function<void(std::string fileUrl)> onReady);
 
 /**
  * @brief Thumbnail URL already stored for one version.

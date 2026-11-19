@@ -10,6 +10,7 @@
 #include <caf/allowed_unsafe_message_type.hpp>
 #include <caf/event_based_actor.hpp>
 
+#include <optional>
 #include <utility>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
@@ -208,22 +209,24 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
     }
     case CatalogKind::Version: {
         const VersionParents parents = versionParentsOf(request);
-        publishPages<poco::Version>(
+        if (request.generation && request.generation->load() != request.request_id) {
+            return; ///< A newer load started before this find.
+        }
+        const dal::RowPage<poco::Version> page = dal::findVersions(
+            request.project_id,
+            dal::readPageLimit(),
+            std::nullopt,
+            parents.sequenceId,
+            parents.shotId,
+            parents.assetId);
+        sendCatalog(
             request.panel,
             request.request_id,
             "version",
             request.project_id,
-            [projectId = request.project_id, parents](const std::optional<std::string> &cursor) {
-                return dal::findVersions(
-                    projectId,
-                    dal::readPageLimit(),
-                    cursor,
-                    parents.sequenceId,
-                    parents.shotId,
-                    parents.assetId);
-            },
             pageScope(parents),
-            request.generation); ///< Stops before the next findVersions when the id moves.
+            false,
+            rowsToJson(page.rows)); ///< First page only; further pages come later.
         return;
     }
     case CatalogKind::PlaylistTree:

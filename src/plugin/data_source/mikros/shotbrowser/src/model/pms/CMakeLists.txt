@@ -67,8 +67,10 @@ set(PMS_LIB_SOURCES
     shotgrid/backend.cpp
 )
 # Local-only FakeBackend (gitignored). Copy from model/pms/dev/ when needed.
+set(PMS_HAS_FAKE OFF)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fake/backend.cpp")
     list(APPEND PMS_LIB_SOURCES fake/backend.cpp)
+    set(PMS_HAS_FAKE ON)
 endif()
 
 add_library(pms STATIC ${PMS_LIB_SOURCES})
@@ -90,6 +92,10 @@ target_link_libraries(pms PUBLIC
     OpenSSL::SSL
     OpenSSL::Crypto
 )
+if(PMS_HAS_FAKE)
+    find_package(OpenImageIO REQUIRED)
+    target_link_libraries(pms PRIVATE OpenImageIO::OpenImageIO) #< Fake thumbs use ImageBufAlgo.
+endif()
 set_target_properties(pms PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(BUILD_TESTING)

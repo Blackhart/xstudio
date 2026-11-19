@@ -15,7 +15,6 @@ using namespace xstudio;
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <map>
 #include <memory>
 #include <vector>
@@ -26,7 +25,8 @@ namespace xstudio::mikros_shotbrowser {
  * @brief View model of the playlist tree.
  *
  * Names use one request id. Versions of an unfolded playlist do not stop.
- * `loadPlaylistListAsync` returns immediately.
+ * `loadPlaylistListAsync` returns immediately. Pages are applied in
+ * `message_handler_extensions`.
  */
 class PlaylistTree : public QObject {
     Q_OBJECT
@@ -48,21 +48,25 @@ class PlaylistTree : public QObject {
     void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
     /**
-     * @brief Stops the previous name fetch, clears the tree, then loads on the Playlist tab.
+     * @brief Clears the tree, then loads when the Playlist tab and a project are selected.
      *
-     * The request id always moves. The catalog starts only when a project is selected
-     * and `view` is Playlist. Returns before the pages arrive.
-     * @param view Right tab. Versions leaves the tree empty.
+     * The request id always moves. Reads `dal::resultView`. Returns before the pages arrive.
      */
-    void loadPlaylistListAsync(ResultView view);
+    void loadPlaylistListAsync();
+
+    /**
+     * @brief Clears the playlist tree and stops a name fetch that is still running.
+     *
+     * The panel calls this when the selected project changes or the versions tab is showing.
+     */
+    void clearPlaylists();
 
     /**
      * @brief Reloads the versions of the playlist that is already unfolded.
      *
-     * Versions does nothing. An empty unfold name does nothing.
-     * @param view Right tab.
+     * Reads `dal::resultView`. Versions does nothing. An empty unfold name does nothing.
      */
-    void reloadExpanded(ResultView view);
+    void reloadExpanded();
 
     /**
      * @brief Copies stored thumbnail URLs onto the version rows.
@@ -81,6 +85,17 @@ class PlaylistTree : public QObject {
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
+
+    /**
+     * @brief True when the right tab is the playlist tree.
+     * @return True when `dal::resultView` is `Playlist`.
+     */
+    bool checkResultViewIsPlaylist() const;
+
+    /**
+     * @brief Empties the playlist tree and the unfolded name.
+     */
+    void clearPlaylistUi();
 
     /**
      * @brief Loads the versions nested under one playlist. Does not move the request id.
@@ -148,8 +163,6 @@ class PlaylistTree : public QObject {
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
     RequestGeneration playlist_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale playlist-name fetches and pages.
-    std::function<void(std::uint64_t, bool, const utility::JsonStore &)> name_page_; ///< Applies one name page.
-    std::function<void(std::int64_t, bool, const utility::JsonStore &)> version_page_; ///< Applies one version page. It does not stop.
     std::map<std::int64_t, std::vector<poco::Version>> versions_by_playlist_; ///< Versions accumulated per playlist.
     module::JsonAttribute *tree_ = nullptr; ///< Playlists with their version rows.
     module::StringAttribute *expanded_ = nullptr; ///< Playlist the user unfolded.

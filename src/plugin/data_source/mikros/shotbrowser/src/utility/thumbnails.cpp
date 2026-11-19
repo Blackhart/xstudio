@@ -320,6 +320,44 @@ void scheduleThumbPage(
     }).detach();
 }
 
+void scheduleOneThumb(
+    std::int64_t projectId,
+    std::int64_t versionId,
+    const std::string &image,
+    const std::string &provider,
+    std::function<void(std::string fileUrl)> onReady) {
+    if (!onReady || image.empty()) {
+        return;
+    }
+    const std::filesystem::path root = thumb::thumbRoot();
+    const thumb::ThumbPlan plan = thumb::planThumb(root, image, provider, projectId, versionId);
+    if (plan.kind == thumb::ThumbKind::Ready) {
+        trace::info(
+            "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+            std::to_string(versionId) + " origin=" +
+            thumbOrigin(provider, plan.kind, false));
+        onReady(thumb::toFileUrl(plan.path));
+        return;
+    }
+    if (plan.kind != thumb::ThumbKind::Fetch) {
+        trace::info(
+            "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+            std::to_string(versionId) + " origin=none");
+        return;
+    }
+    std::thread([projectId, versionId, image, provider, path = plan.path, onReady = std::move(onReady)]() {
+        const bool stored = thumb::writeBytesIfMissing(path, thumb::fetchJpeg(image));
+        trace::info(
+            "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+            std::to_string(versionId) + " origin=" +
+            thumbOrigin(provider, thumb::ThumbKind::Fetch, stored));
+        if (!stored) {
+            return;
+        }
+        onReady(thumb::toFileUrl(path));
+    }).detach();
+}
+
 } // namespace xstudio::mikros_shotbrowser
 
 namespace xstudio::mikros_shotbrowser {

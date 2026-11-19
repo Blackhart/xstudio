@@ -16,7 +16,15 @@ Item {
     signal openRequested(var row)
     signal menuRequested(var row, var item, real x, real y)
 
-    function versionCards() {
+    function versionListPlaceholder() {
+        if (!project.value)
+            return "No project selected"
+        if (!versionsLoaded.value)
+            return "Loading…"
+        return "No results"
+    }
+
+    function versionCardRows() {
         let value = versionCardsAttr.value
         if (!value)
             return []
@@ -30,31 +38,22 @@ Item {
         return value.length ? value : []
     }
 
-    function versionListPlaceholder() {
-        if (!project.value)
-            return "No project selected"
-        if (!versionsLoaded.value)
-            return "Loading…"
-        return "No results"
-    }
-
     XsModuleData {
         id: attributes
         modelDataName: "mikros_shotbrowser_attributes"
     }
 
     CatalogValue { id: project; title: "Project"; source: attributes }
-    CatalogValue { id: version; title: "Version"; source: attributes }
-
-    XsAttributeValue {
-        id: versionsLoaded
-        attributeTitle: "VersionsLoaded"
-        model: attributes
-    }
 
     XsAttributeValue {
         id: versionCardsAttr
         attributeTitle: "VersionCards"
+        model: attributes
+    }
+
+    XsAttributeValue {
+        id: versionsLoaded
+        attributeTitle: "VersionsLoaded"
         model: attributes
     }
 
@@ -68,8 +67,12 @@ Item {
         loadedFooter: true
         footerNoun: "version"
         listColor: XsStyleSheet.panelBgColor
-        names: versions.versionCards()
-        placeholder: versions.versionListPlaceholder()
+        names: versions.versionCardRows()
+        placeholder: {
+            project.value
+            versionsLoaded.value
+            return versions.versionListPlaceholder()
+        }
         rowDelegate: versionRow
     }
 
@@ -78,7 +81,6 @@ Item {
 
         VersionCard {
             id: card
-            chosen: card.label === version.value
             onOpenCurrent: versions.openRequested(card.payload())
             onMenuRequested: function(x, y) {
                 versions.menuRequested(card.payload(), card, x, y)

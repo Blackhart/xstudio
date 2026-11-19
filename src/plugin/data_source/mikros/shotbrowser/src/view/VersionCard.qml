@@ -8,6 +8,7 @@ import xStudio 1.0
 Rectangle {
     id: card
 
+    // Version list and playlist: JSON object for one card (ListView injects it when required).
     required property var modelData
 
     property bool chosen: false
@@ -16,20 +17,24 @@ Rectangle {
     signal openCurrent()
     signal menuRequested(real x, real y)
 
+    function rowBag() {
+        if (modelData !== undefined && modelData !== null && typeof modelData === "object")
+            return modelData
+        return null
+    }
+
     function field(key) {
-        if (modelData === undefined || modelData === null)
+        const row = rowBag()
+        if (!row || row[key] === undefined || row[key] === null)
             return ""
-        if (modelData[key] === undefined || modelData[key] === null)
-            return ""
-        return String(modelData[key])
+        return String(row[key])
     }
 
     function flag(key) {
-        if (modelData === undefined || modelData === null)
+        const row = rowBag()
+        if (!row || row[key] === undefined || row[key] === null)
             return false
-        if (modelData[key] === undefined || modelData[key] === null)
-            return false
-        return modelData[key] === true || modelData[key] === 1 || modelData[key] === "1"
+        return row[key] === true || row[key] === 1 || row[key] === "1"
     }
 
     function shown(value) {
@@ -60,18 +65,10 @@ Rectangle {
         }
     }
 
-    readonly property string label: {
-        if (modelData === undefined || modelData === null)
-            return ""
-        if (modelData.name !== undefined)
-            return String(modelData.name)
-        return String(modelData)
-    }
+    readonly property string label: field("name")
     readonly property string imageSource: {
-        if (modelData === undefined || modelData === null
-                || modelData.image === undefined || !modelData.image)
-            return ""
-        return String(modelData.image)
+        const value = field("image")
+        return value
     }
     readonly property string author: field("author")
     readonly property string createdAt: field("createdAt")
@@ -84,9 +81,10 @@ Rectangle {
     readonly property bool hasNotes: flag("hasNotes")
     readonly property bool syncedToClient: flag("syncedToClient")
     readonly property int versionId: {
-        if (modelData === undefined || modelData === null || modelData.id === undefined)
+        const row = rowBag()
+        if (!row || row.id === undefined)
             return 0
-        return Number(modelData.id)
+        return Number(row.id)
     }
     readonly property string framesPath: field("frames")
     readonly property string moviePath: field("movie")

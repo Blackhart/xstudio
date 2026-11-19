@@ -6,7 +6,6 @@
 
 #include "viewModel/playlist_tree.hpp"
 #include "utility/thumbnails.hpp"
-#include "viewModel/version_list.hpp"
 
 #include <caf/const_typed_message_view.hpp>
 #include <caf/detail/behavior_impl.hpp>
@@ -17,6 +16,7 @@
 #include <QString>
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
@@ -27,6 +27,35 @@ using namespace xstudio::mikros_shotbrowser;
 namespace xstudio::mikros_shotbrowser {
 
 namespace {
+
+/**
+ * @brief Builds the JSON one playlist version row reads.
+ * @param row Version whose display fields are copied.
+ * @param label Unique name shown in the title.
+ * @param image Thumbnail path already resolved, or empty until the thumb arrives.
+ * @return Object with the card keys.
+ */
+nlohmann::json versionFacts(
+    const poco::Version &row, const std::string &label, const std::string &image) {
+    return {
+        {"name", label},
+        {"id", row.id},
+        {"image", image},
+        {"author", row.author},
+        {"createdAt", row.created_at},
+        {"frameRange", row.frame_range},
+        {"description", row.description},
+        {"step", row.step},
+        {"status", row.status},
+        {"artisticStatus", row.artistic_status},
+        {"sites", row.sites},
+        {"hasNotes", row.has_notes},
+        {"syncedToClient", row.synced_to_client},
+        {"frames", row.frames},
+        {"movie", row.movie},
+        {"uploadedMovie", row.uploaded_movie}};
+}
+
 
 using PlaylistPage = std::function<void(
     std::uint64_t,
@@ -229,19 +258,14 @@ bool PlaylistTree::versionsReady(std::int64_t playlistId) const {
 // Loads. Names stop. Versions of one playlist do not.
 // ---------------------------------------------------------------------------
 
-void PlaylistTree::loadPlaylistListAsync(ResultView view) {
+bool PlaylistTree::checkResultViewIsPlaylist() const {
+    return dal::resultView() == ResultView::Playlist;
+}
+
+void PlaylistTree::loadPlaylistListAsync() {
     const std::uint64_t requestId = ++(*playlist_request_id_); ///< Stop the name fetch already running.
-    name_page_ = [this](std::uint64_t id, bool append, const utility::JsonStore &payload) {
-        if (id != playlist_request_id_->load()) {
-            trace::drop("playlist_tree", id);
-            return;
-        }
-        updatePlaylistList(append, payload);
-    };
-    versions_by_playlist_.clear();
-    sendPlaylistTreeToQml(nlohmann::json::array());
-    clearExpanded();
-    if (view != ResultView::Playlist || dal::selectedProject() == -1) {
+    clearPlaylistUi();
+    if (!checkResultViewIsPlaylist() || dal::selectedProject() == -1) {
         return; ///< Versions is showing, or no project is selected.
     }
     CatalogLoadRequest request = makeCatalogRequest(
@@ -250,10 +274,18 @@ void PlaylistTree::loadPlaylistListAsync(ResultView view) {
     launchCatalogLoad(panel_.system(), std::move(request));
 }
 
+void PlaylistTree::clearPlaylists() {
+    ++(*playlist_request_id_); ///< Drop pages that still belong to the previous project.
+    clearPlaylistUi();
+}
+
+void PlaylistTree::clearPlaylistUi() {
+    versions_by_playlist_.clear();
+    sendPlaylistTreeToQml(nlohmann::json::array());
+    clearExpanded();
+}
+
 void PlaylistTree::loadVersionsForPlaylistAsync(std::int64_t playlistId) {
-    version_page_ = [this](std::int64_t id, bool append, const utility::JsonStore &payload) {
-        updateVersionsForPlaylist(id, append, payload); ///< A version fetch is not stopped by a newer one.
-    };
     const VersionParents parents = readVersionParents();
     CatalogLoadRequest request = makeCatalogRequest(
         &panel_,
@@ -267,8 +299,8 @@ void PlaylistTree::loadVersionsForPlaylistAsync(std::int64_t playlistId) {
     launchCatalogLoad(panel_.system(), std::move(request));
 }
 
-void PlaylistTree::reloadExpanded(ResultView view) {
-    if (view != ResultView::Playlist || dal::selectedProject() == -1 || !expanded_) {
+void PlaylistTree::reloadExpanded() {
+    if (!checkResultViewIsPlaylist() || dal::selectedProject() == -1 || !expanded_) {
         return; ///< Versions does not reload a playlist.
     }
     const std::string name = expanded_->value();
@@ -420,14 +452,15 @@ caf::message_handler PlaylistTree::message_handler_extensions() {
             return;
         }
         if (catalog == "playlist_tree") {
-            if (name_page_) {
-                name_page_(requestId, append, payload);
+            if (requestId != playlist_request_id_->load()) {
+                trace::drop("playlist_tree", requestId);
+                return;
             }
+            updatePlaylistList(append, payload);
             return;
         }
-        if (version_page_) {
-            version_page_(playlistId, append, payload); ///< Version pages are not dropped when the name id moves.
-        }
+        updateVersionsForPlaylist(
+            playlistId, append, payload); ///< Version pages are not dropped when the name id moves.
     };
     caf::detail::behavior_impl::pointer handler =
         caf::make_counted<PlaylistPageHandler>(std::move(apply));
