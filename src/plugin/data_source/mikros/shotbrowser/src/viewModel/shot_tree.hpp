@@ -166,9 +166,17 @@ class ShotTree : public QObject {
     /**
      * @brief Clears `sequences_` and stops a load that is still running.
      *
-     * The panel calls this when the selected project changes.
+     * The panel calls this when the selected project changes. Does not clear the
+     * selected sequence and shot pair.
      */
-    void clearSequenceShots();
+    void clearSequenceShotsTree();
+
+    /**
+     * @brief Clears the selected sequence and shot pair.
+     *
+     * The panel calls this when an asset is selected.
+     */
+    void clearSelectedSequenceAndShot();
 
     /**
      * @brief Stores the sequence and shot pair and emits `onSequenceAndShotSelected`.
@@ -247,7 +255,7 @@ class ShotTree : public QObject {
     bool checkBrowserModeIsShot() const;
 
     /**
-     * @brief Empties the rows the model shows and clears the selection.
+     * @brief Empties the rows the model shows.
      */
     void clearShotTree();
 

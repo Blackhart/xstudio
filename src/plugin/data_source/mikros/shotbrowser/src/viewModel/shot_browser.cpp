@@ -152,15 +152,15 @@ void ShotBrowser::loadProjects() {
 // ---------------------------------------------------------------------------
 
 void ShotBrowser::initSignals() {
-    // Project chosen: clear the open sequence, then reload sequences, assets, versions, and playlists.
+    // Project chosen: clear the catalogs, then reload sequences, assets, versions, and playlists.
     QObject::connect(
         project_selector_.get(),
         &ProjectSelector::onProjectSelected,
         this,
         [this](std::int64_t) {
-            shot_tree_->clearSequenceShots(); ///< The previous project's tree must not be reused.
+            shot_tree_->clearSequenceShotsTree(); ///< The previous project's tree must not be reused.
             shot_tree_->loadSequenceShotsAsync();
-            asset_list_->clearAssets(); ///< The previous project's assets must not be reused.
+            asset_list_->clearAssetsTree(); ///< The previous project's assets must not be reused.
             asset_list_->loadAssetsAsync();
             version_list_->clearVersions(); ///< The previous project's versions must not be reused.
             version_list_->loadVersionsAsync();
@@ -168,17 +168,15 @@ void ShotBrowser::initSignals() {
             playlist_tree_->loadPlaylistListAsync();
         },
         Qt::DirectConnection);
-    // Left tab: clear the other side's selection, then reload that tab's catalog.
+    // Left tab: reload that tab's catalog. Selection stays until the other side is chosen.
     QObject::connect(
         this,
         &ShotBrowser::onBrowserModeSelected,
         this,
         [this](dal::BrowserMode mode) {
             if (mode == dal::BrowserMode::Shot) {
-                asset_list_->setSelectedAsset(-1); ///< Shot and asset are mutually exclusive.
                 shot_tree_->loadSequenceShotsAsync(); ///< Loads only on the Shot tab, and keeps a tree already stored.
             } else {
-                shot_tree_->setSelectedSequenceAndShot(-1, -1);
                 asset_list_->loadAssetsAsync(); ///< Loads only on the Asset tab, and keeps a list already stored.
             }
         },
@@ -199,23 +197,25 @@ void ShotBrowser::initSignals() {
             }
         },
         Qt::DirectConnection);
-    // Sequence/shot pair chosen: reload versions and the open playlist.
+    // Sequence/shot pair chosen: drop the asset selection, then reload versions and the open playlist.
     QObject::connect(
         shot_tree_.get(),
         &ShotTree::onSequenceAndShotSelected,
         this,
         [this](std::int64_t, std::int64_t) {
+            asset_list_->clearSelectedAsset(); ///< Shot and asset are mutually exclusive.
             version_list_->clearVersions();
             version_list_->loadVersionsAsync();
             playlist_tree_->reloadExpanded();
         },
         Qt::DirectConnection);
-    // Asset chosen: reload versions and the open playlist.
+    // Asset chosen: drop the sequence/shot pair, then reload versions and the open playlist.
     QObject::connect(
         asset_list_.get(),
         &AssetList::onAssetSelected,
         this,
         [this](std::int64_t) {
+            shot_tree_->clearSelectedSequenceAndShot(); ///< Shot and asset are mutually exclusive.
             version_list_->clearVersions();
             version_list_->loadVersionsAsync();
             playlist_tree_->reloadExpanded();

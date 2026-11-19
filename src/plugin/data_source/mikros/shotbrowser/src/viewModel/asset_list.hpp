@@ -59,9 +59,17 @@ class AssetList : public QObject {
     /**
      * @brief Clears `assets_` and stops a load that is still running.
      *
-     * The panel calls this when the selected project changes.
+     * The panel calls this when the selected project changes. Does not clear the
+     * selected asset.
      */
-    void clearAssets();
+    void clearAssetsTree();
+
+    /**
+     * @brief Clears the selected asset.
+     *
+     * The panel calls this when a sequence or shot is selected.
+     */
+    void clearSelectedAsset();
 
     /**
      * @brief Stores the asset id and emits `onAssetSelected`.

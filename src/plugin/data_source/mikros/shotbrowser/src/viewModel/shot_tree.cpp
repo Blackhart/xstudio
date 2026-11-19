@@ -569,9 +569,13 @@ void ShotTree::loadSequenceShotsAsync() {
     launchCatalogLoad(panel_.system(), std::move(counts));
 }
 
-void ShotTree::clearSequenceShots() {
+void ShotTree::clearSequenceShotsTree() {
     ++(*sequence_request_id_); ///< Drop pages that still belong to the previous project.
     clearShotTree();
+}
+
+void ShotTree::clearSelectedSequenceAndShot() {
+    setSelectedSequenceAndShot(-1, -1);
 }
 
 void ShotTree::clearShotTree() {
@@ -579,7 +583,6 @@ void ShotTree::clearShotTree() {
     item_model_.resetFromSequences();
     clearFooterValue(); ///< Clear until the next count arrives.
     clearShotTreeLoadedFlag();
-    setSelectedSequenceAndShot(-1, -1); ///< Drop the pair with the previous project's tree.
 }
 
 namespace {

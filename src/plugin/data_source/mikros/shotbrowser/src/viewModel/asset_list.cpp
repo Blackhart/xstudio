@@ -164,12 +164,15 @@ void AssetList::loadAssetsAsync() {
     launchCatalogLoad(panel_.system(), std::move(counts));
 }
 
-void AssetList::clearAssets() {
+void AssetList::clearAssetsTree() {
     ++(*asset_request_id_); ///< Drop pages that still belong to the previous project.
     assets_.clear();
     clearFooterValue(); ///< Clear until the next count arrives.
     sendAssetsListToQml();
     clearAssetsLoadedFlag();
+}
+
+void AssetList::clearSelectedAsset() {
     setSelectedAsset(-1);
 }
 
