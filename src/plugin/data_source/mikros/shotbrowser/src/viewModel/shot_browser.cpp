@@ -156,6 +156,9 @@ void ShotBrowser::initSignals() {
         &ProjectSelector::onProjectSelected,
         this,
         [this](std::int64_t) {
+            // ShotGrid ids are global: keep filtering by the old shot/asset and the list never moves.
+            shot_tree_->clearSelectedSequenceAndShot();
+            asset_list_->clearSelectedAsset();
             shot_tree_->clearSequenceShotsTree(); ///< The previous project's tree must not be reused.
             shot_tree_->loadSequenceShotsAsync();
             asset_list_->clearAssetsTree(); ///< The previous project's assets must not be reused.
