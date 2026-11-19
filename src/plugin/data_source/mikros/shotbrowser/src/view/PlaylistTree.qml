@@ -31,7 +31,8 @@ Item {
     }
 
     function listPlaceholder() {
-        if (!project.value || project.value === "-1")
+        const projectId = String(selectedProject.value ?? "")
+        if (!projectId || projectId === "-1")
             return "No project selected"
         if (!playlistsLoaded.value)
             return "Loading…"
@@ -118,7 +119,11 @@ Item {
         modelDataName: "mikros_shotbrowser_attributes"
     }
 
-    CatalogValue { id: project; title: "SelectedProject"; source: attributes }
+    XsAttributeValue {
+        id: selectedProject
+        attributeTitle: "SelectedProject"
+        model: attributes
+    }
 
     XsAttributeValue {
         id: playlistTreeAttr
@@ -139,7 +144,7 @@ Item {
     }
 
     Connections {
-        target: project
+        target: selectedProject
         function onValueChanged() {
             playlists.openPlaylists = ({})
         }
@@ -160,7 +165,7 @@ Item {
         names: playlists.playlistTreeRows()
         footerCount: playlists.playlistTreeNodes().length
         placeholder: {
-            project.value
+            selectedProject.value
             playlistsLoaded.value
             return playlists.listPlaceholder()
         }

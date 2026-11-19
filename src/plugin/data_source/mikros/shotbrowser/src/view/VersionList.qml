@@ -17,7 +17,8 @@ Item {
     signal menuRequested(var row, var item, real x, real y)
 
     function versionListPlaceholder() {
-        if (!project.value || project.value === "-1")
+        const projectId = String(selectedProject.value ?? "")
+        if (!projectId || projectId === "-1")
             return "No project selected"
         if (!versionsLoaded.value)
             return "Loading…"
@@ -43,7 +44,11 @@ Item {
         modelDataName: "mikros_shotbrowser_attributes"
     }
 
-    CatalogValue { id: project; title: "SelectedProject"; source: attributes }
+    XsAttributeValue {
+        id: selectedProject
+        attributeTitle: "SelectedProject"
+        model: attributes
+    }
 
     XsAttributeValue {
         id: versionCardsAttr
@@ -69,7 +74,7 @@ Item {
         listColor: XsStyleSheet.panelBgColor
         names: versions.versionCardRows()
         placeholder: {
-            project.value
+            selectedProject.value
             versionsLoaded.value
             return versions.versionListPlaceholder()
         }

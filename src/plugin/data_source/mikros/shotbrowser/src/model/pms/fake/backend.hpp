@@ -22,8 +22,8 @@ namespace pms {
  * membership. Returned sequence, shot, asset, playlist, and version records
  * expose only `id` and `name`. When `ir.limit` is set, find() keysets on `id`.
  * count() uses the same filters and returns the match total. When
- * `simulate_latency` is true, find() and count() sleep 50–200 ms before
- * returning.
+ * `simulate_latency` is true, find() and count() sleep 1.5–2.5 s before
+ * returning (long enough to see Loading… in the UI).
  */
 class FakeBackend : public Backend {
   public:

@@ -20,7 +20,8 @@ Item {
     }
 
     function listPlaceholder() {
-        if (!project.value || project.value === "-1")
+        const projectId = String(selectedProject.value ?? "")
+        if (!projectId || projectId === "-1")
             return "No project selected"
         if (!shotTreeLoaded.value)
             return "Loading…"
@@ -61,7 +62,12 @@ Item {
         modelDataName: "mikros_shotbrowser_attributes"
     }
 
-    CatalogValue { id: project; title: "SelectedProject"; source: attributes }
+    XsAttributeValue {
+        id: selectedProject
+        attributeTitle: "SelectedProject"
+        model: attributes
+    }
+
     CatalogValue { id: sequence; title: "Sequence"; source: attributes }
     CatalogValue { id: shot; title: "Shot"; source: attributes }
     CatalogValue { id: footer; title: "ShotTreeFooter"; source: attributes }
@@ -98,7 +104,7 @@ Item {
                 anchors.centerIn: parent
                 visible: shotTree.rows === 0
                 text: {
-                    project.value
+                    selectedProject.value
                     shotTreeLoaded.value
                     return tree.listPlaceholder()
                 }
