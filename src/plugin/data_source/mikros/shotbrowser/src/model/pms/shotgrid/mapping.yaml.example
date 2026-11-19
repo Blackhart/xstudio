@@ -62,7 +62,7 @@ entities:
       movie:            { shotgrid: sg_path_to_movie, provider: file }
       uploaded_movie:   { shotgrid: sg_uploaded_movie_mp4, provider: signedurl }
     links:
-      project:  { shotgrid: entity, target: project }
+      project:  { shotgrid: project, target: project }
       shot:     { shotgrid: entity, target: shot }
       sequence: { shotgrid: entity, target: sequence }
       asset:    { shotgrid: entity, target: asset }

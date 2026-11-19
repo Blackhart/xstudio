@@ -45,7 +45,7 @@ delay; the context calls the DAL on a worker thread.
 
 ## ShotGrid backend
 
-1. Copy `src/model/pms/shotgrid/mapping.yaml.example` to the studio mapping. The example is not loaded on its own.
+1. Copy `src/model/pms/shotgrid/mapping.yaml.example` to the studio mapping. The example is not loaded on its own. Keep `version.links.project` on the ShotGrid field `project` (not `entity`) so project-scoped version finds stay a single filter.
 2. Start xSTUDIO with:
 
 ```bash

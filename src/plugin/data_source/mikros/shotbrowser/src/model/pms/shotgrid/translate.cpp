@@ -49,9 +49,27 @@ struct LinkHop {
 };
 
 /**
- * @brief Collects every ownership path from `from` to `parent`.
+ * @brief True when exactly one link on `schema` uses `shotgridField`.
+ * @param schema Entity whose links are counted.
+ * @param shotgridField ShotGrid field name on those links.
+ * @return True when that field is not shared with another parent link.
+ */
+bool linkFieldIsExclusive(const ShotGridSchema &schema, const std::string &shotgridField) {
+    std::size_t count = 0;
+    for (const ShotGridSchemaLink &link : schema.links) {
+        if (link.shotgrid == shotgridField) {
+            ++count;
+        }
+    }
+    return count == 1;
+}
+
+/**
+ * @brief Collects ownership paths from `from` to `parent`.
  *
- * A direct link and a longer link are both kept, so a version in a sequence
+ * When a one-hop path uses a ShotGrid field that no other link on `from`
+ * shares, only those exclusive direct paths are kept (version in project via
+ * `project`). Otherwise every path is kept, so a version in a sequence still
  * includes versions whose entity is that sequence and versions whose entity is
  * a shot of that sequence. Playlist membership is not an ownership bridge: the
  * playlist link is used only when the parent is the playlist itself.
@@ -64,7 +82,8 @@ struct LinkHop {
  */
 std::vector<std::vector<LinkHop>> linkPathsTo(
     const ShotGridMapping &mapping, const std::string &from, const std::string &parent) {
-    if (!mapping.findSchema(from)) {
+    const ShotGridSchema *fromSchema = mapping.findSchema(from);
+    if (!fromSchema) {
         throw Error("shotgrid: unknown entity \"" + from + "\"");
     }
 
@@ -114,6 +133,16 @@ std::vector<std::vector<LinkHop>> linkPathsTo(
     walk.visit(from);
     if (found.empty()) {
         throw Error("shotgrid: no link path from \"" + from + "\" to parent \"" + parent + "\"");
+    }
+
+    std::vector<std::vector<LinkHop>> exclusiveDirect;
+    for (const std::vector<LinkHop> &hops : found) {
+        if (hops.size() == 1 && linkFieldIsExclusive(*fromSchema, hops.front().field)) {
+            exclusiveDirect.push_back(hops); ///< Dedicated field: skip the multi-hop OR.
+        }
+    }
+    if (!exclusiveDirect.empty()) {
+        return exclusiveDirect;
     }
     return found;
 }

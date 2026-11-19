@@ -51,27 +51,17 @@ TEST_CASE("filters for sequence in project by id") {
     CHECK(filters[2]["id"] == 7);
 }
 
-TEST_CASE("filters for version in project follow every ownership path") {
+TEST_CASE("filters for version in project use the direct project field") {
     const ShotGridMapping mapping = filledMapping();
     Ir ir = Version().In(scope::project == std::int64_t{4}).ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
-    REQUIRE(filters.is_object());
-    CHECK(filters["logical_operator"] == "or");
-    REQUIRE(filters["conditions"].is_array());
-    REQUIRE(filters["conditions"].size() == 4);
-    CHECK(filters["conditions"][0][0] == "entity");
-    CHECK(filters["conditions"][0][2]["type"] == "Project");
-    CHECK(filters["conditions"][0][2]["id"] == 4);
-    CHECK(filters["conditions"][1][0] == "entity.Shot.sg_sequence.Sequence.project");
-    CHECK(filters["conditions"][1][2]["type"] == "Project");
-    CHECK(filters["conditions"][1][2]["id"] == 4);
-    CHECK(filters["conditions"][2][0] == "entity.Sequence.project");
-    CHECK(filters["conditions"][2][2]["type"] == "Project");
-    CHECK(filters["conditions"][2][2]["id"] == 4);
-    CHECK(filters["conditions"][3][0] == "entity.Asset.project");
-    CHECK(filters["conditions"][3][2]["type"] == "Project");
-    CHECK(filters["conditions"][3][2]["id"] == 4);
+    REQUIRE(filters.is_array());
+    REQUIRE(filters.size() == 3);
+    CHECK(filters[0] == "project");
+    CHECK(filters[1] == "is");
+    CHECK(filters[2]["type"] == "Project");
+    CHECK(filters[2]["id"] == 4);
 }
 
 TEST_CASE("filters for version in sequence include versions on its shots") {
