@@ -1013,7 +1013,29 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(playlist, *ir.where)) {
                 continue;
             }
-            rows.push_back(publicNamed(playlist));
+            Record row = publicNamed(playlist);
+            const auto playlistId = std::get<std::int64_t>(playlist.fields.at("id"));
+            std::vector<Link> versions;
+            for (const auto &[versionId, playlistIds] : version_playlists_) {
+                if (std::find(playlistIds.begin(), playlistIds.end(), playlistId) ==
+                    playlistIds.end()) {
+                    continue;
+                }
+                Link link;
+                link.id = versionId;
+                for (const Record &version : versions_) {
+                    if (std::get<std::int64_t>(version.fields.at("id")) != versionId) {
+                        continue;
+                    }
+                    link.name = std::get<std::string>(version.fields.at("name"));
+                    break;
+                }
+                versions.push_back(std::move(link));
+            }
+            if (!versions.empty()) {
+                row.fields["versions"] = std::move(versions); ///< Same shape as ShotGrid links.
+            }
+            rows.push_back(std::move(row));
         }
     } else if (ir.entity == "version") {
         for (const Record &version : versions_) {

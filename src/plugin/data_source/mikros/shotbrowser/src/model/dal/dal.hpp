@@ -164,7 +164,8 @@ RowPage<poco::Asset> findAssets(
 /**
  * @brief One page of playlists belonging to a project.
  *
- * A playlist depends only on its project. Pass next_cursor to the next call.
+ * A playlist depends only on its project. Each row carries `version_count` from
+ * the playlist's `versions` link list. Pass next_cursor to the next call.
  *
  * @param projectId Domain project `id`.
  * @param limit Maximum rows in the page. Must be greater than zero.

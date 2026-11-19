@@ -86,6 +86,11 @@ TEST_CASE("schema loads the playlist entity") {
     CHECK(playlist->scope[0] == "project");
     CHECK(playlist->field("id") != nullptr);
     CHECK(playlist->field("name") != nullptr);
+    const FieldSpec *versions = playlist->field("versions");
+    REQUIRE(versions != nullptr);
+    CHECK(versions->type == "links");
+    CHECK_FALSE(versions->filter);
+    CHECK(versions->ops.empty());
     CHECK(schema.allowsInParent(*playlist, "project"));
 }
 

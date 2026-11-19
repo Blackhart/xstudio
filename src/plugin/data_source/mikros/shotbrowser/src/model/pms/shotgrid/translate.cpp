@@ -325,7 +325,7 @@ std::string joinNames(const nlohmann::json &value) {
  * @brief Copies one ShotGrid attribute onto the domain record.
  *
  * Notes become `1` when the list is not empty. A true client flag becomes `1`.
- * Site lists keep the ShotGrid names. `shots` becomes a list of links.
+ * Site lists keep the ShotGrid names. `shots` and `versions` become lists of links.
  * An entity object keeps its `name`.
  *
  * @param out Record being filled.
@@ -364,7 +364,7 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
         }
         return;
     }
-    if (field.domain == "shots" && value.is_array()) {
+    if ((field.domain == "shots" || field.domain == "versions") && value.is_array()) {
         if (value.empty()) {
             return; ///< An empty list leaves the field absent, same as null.
         }
@@ -377,12 +377,12 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
             Link link;
             link.id = item["id"].get<std::int64_t>();
             if (item.contains("name") && item["name"].is_string()) {
-                link.name = item["name"].get<std::string>(); ///< ShotGrid link name is the shot code.
+                link.name = item["name"].get<std::string>(); ///< ShotGrid link name / code.
             }
             links.push_back(std::move(link));
         }
         if (!links.empty()) {
-            out.fields["shots"] = std::move(links);
+            out.fields[field.domain] = std::move(links);
         }
         return;
     }

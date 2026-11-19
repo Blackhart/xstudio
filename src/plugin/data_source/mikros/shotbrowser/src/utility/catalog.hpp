@@ -9,6 +9,7 @@
 #include "model/dal/dal.hpp"
 #include "model/log.hpp"
 #include "model/poco/asset.hpp"
+#include "model/poco/playlist.hpp"
 #include "model/poco/project.hpp"
 #include "model/poco/sequence.hpp"
 #include "model/poco/sequence_shots.hpp"
@@ -44,7 +45,7 @@ enum class CatalogKind {
     AssetCount,       ///< Asset total for the asset-list footer.
     Version,          ///< One version page for the current parents (cursor continues).
     VersionCount,     ///< Version total for the version-list footer.
-    PlaylistTree,     ///< Playlist names, without their versions.
+    PlaylistTree,     ///< Playlist names and version counts, without version cards.
     PlaylistVersions, ///< Versions of one unfolded playlist.
 };
 
@@ -292,6 +293,45 @@ std::vector<Row> rowsFromJson(const xstudio::utility::JsonStore &json) {
             entry.at("id").template get<std::int64_t>(),
             entry.at("name").template get<std::string>(),
         });
+    }
+    return rows;
+}
+
+/**
+ * @brief Writes playlist rows with their version counts.
+ * @param rows Playlists to send to the panel.
+ * @return JSON the panel message can carry.
+ */
+template <>
+inline xstudio::utility::JsonStore rowsToJson<poco::Playlist>(
+    const std::vector<poco::Playlist> &rows) {
+    nlohmann::json out = nlohmann::json::array();
+    for (const poco::Playlist &row : rows) {
+        out.push_back(
+            {{"id", row.id}, {"name", row.name}, {"version_count", row.version_count}});
+    }
+    return xstudio::utility::JsonStore(out);
+}
+
+/**
+ * @brief Reads playlist rows with their version counts.
+ * @param json Payload from `rowsToJson`.
+ * @return Playlists, or empty when `json` is not an array.
+ */
+template <>
+inline std::vector<poco::Playlist> rowsFromJson<poco::Playlist>(
+    const xstudio::utility::JsonStore &json) {
+    std::vector<poco::Playlist> rows;
+    if (!json.is_array()) {
+        return rows;
+    }
+    rows.reserve(json.size());
+    for (const auto &entry : json) {
+        poco::Playlist row;
+        row.id = entry.at("id").get<std::int64_t>();
+        row.name = entry.at("name").get<std::string>();
+        row.version_count = entry.value("version_count", static_cast<std::size_t>(0));
+        rows.push_back(std::move(row));
     }
     return rows;
 }

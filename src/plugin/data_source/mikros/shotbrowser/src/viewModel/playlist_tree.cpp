@@ -370,7 +370,10 @@ void PlaylistTree::updatePlaylistList(bool append, const utility::JsonStore &pay
             continue;
         }
         tree.push_back(
-            {{"name", row.name}, {"id", row.id}, {"versions", nlohmann::json::array()}});
+            {{"name", row.name},
+             {"id", row.id},
+             {"versionCount", row.version_count},
+             {"versions", nlohmann::json::array()}});
     }
     sortPlaylistsByName(tree);
     sendPlaylistTreeToQml(tree);

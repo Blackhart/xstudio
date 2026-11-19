@@ -231,6 +231,19 @@ TEST_CASE("the fake backend lists playlists in a project") {
     CHECK(rows[0].fields.count("project") == 0);
 }
 
+TEST_CASE("the fake backend attaches version links on each playlist") {
+    FakeBackend backend;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    const Records playlists = Playlist().In(scope::project == std::int64_t{1}).find(session).rows;
+    REQUIRE(playlists.size() == FakeBackend::playlistsPerProject);
+    const auto playlistId = std::get<std::int64_t>(playlists[0].at("id"));
+    const auto &links = std::get<std::vector<Link>>(playlists[0].at("versions"));
+    const Records members = Version().In(scope::playlist == playlistId).find(session).rows;
+    REQUIRE(links.size() == members.size());
+    REQUIRE_FALSE(links.empty());
+}
+
 TEST_CASE("the fake backend lists versions in a playlist via weak membership") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);

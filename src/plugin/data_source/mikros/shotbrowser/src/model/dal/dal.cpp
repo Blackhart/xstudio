@@ -483,6 +483,23 @@ std::vector<poco::Shot> retrieveShotListFromSequence(const pms::Record &record) 
     return shots;
 }
 
+/**
+ * @brief Counts the version links stored on one playlist record.
+ * @param record Playlist row from find().
+ * @return Size of the `versions` link list, or zero when the field is absent.
+ */
+std::size_t versionCountFromPlaylist(const pms::Record &record) {
+    const auto found = record.fields.find("versions");
+    if (found == record.fields.end()) {
+        return 0;
+    }
+    const auto *links = std::get_if<std::vector<pms::Link>>(&found->second);
+    if (!links) {
+        return 0;
+    }
+    return links->size();
+}
+
 } // namespace
 
 void initialize() {
@@ -575,8 +592,24 @@ RowPage<poco::Asset> findAssets(
 
 RowPage<poco::Playlist> findPlaylists(
     std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
-    return fetchPage<poco::Playlist>(
-        pms::Playlist().In(pms::scope::project == projectId), limit, cursor);
+    try {
+        const pms::Page page = findLimitedPage(
+            pms::Playlist().In(pms::scope::project == projectId), limit, cursor);
+        RowPage<poco::Playlist> out;
+        out.next_cursor = page.next_cursor;
+        out.rows.reserve(page.rows.size());
+        for (const pms::Record &record : page.rows) {
+            poco::Playlist row;
+            row.id = std::get<std::int64_t>(record.at("id"));
+            row.name = std::get<std::string>(record.at("name"));
+            row.version_count = versionCountFromPlaylist(record);
+            out.rows.push_back(std::move(row));
+        }
+        return out;
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return {};
+    }
 }
 
 RowPage<poco::VersionListElement> findVersionListElements(

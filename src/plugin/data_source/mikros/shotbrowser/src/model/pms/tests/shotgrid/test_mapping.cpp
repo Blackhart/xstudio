@@ -16,6 +16,7 @@ TEST_CASE("filled fixture parses and names are present") {
     CHECK(mapping.findSchema("version")->findField("image")->shotgrid == "image");
     CHECK(mapping.findSchema("shot")->findLink("sequence")->shotgrid == "sg_sequence");
     CHECK(mapping.findSchema("sequence")->findField("shots")->shotgrid == "shots");
+    CHECK(mapping.findSchema("playlist")->findField("versions")->shotgrid == "versions");
 }
 
 TEST_CASE("example mapping stores version images over http") {

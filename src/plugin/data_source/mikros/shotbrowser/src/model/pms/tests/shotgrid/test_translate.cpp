@@ -257,6 +257,27 @@ TEST_CASE("sequence shots are read from relationships data") {
     CHECK(shots[1].name == "sq010_sh020");
 }
 
+TEST_CASE("playlist versions become a list of links") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *playlist = mapping.findSchema("playlist");
+    REQUIRE(playlist != nullptr);
+    const nlohmann::json row = {
+        {"type", "Playlist"},
+        {"id", 3},
+        {"attributes",
+         {{"code", "pl01"},
+          {"versions",
+           nlohmann::json::array(
+               {{{"id", 701}, {"name", "v001"}, {"type", "Version"}},
+                {{"id", 702}, {"name", "v002"}, {"type", "Version"}}})}}}};
+    const Record record = shotgridRecordFromJson(row, *playlist);
+    CHECK(std::get<std::string>(record.at("name")) == "pl01");
+    const auto &versions = std::get<std::vector<Link>>(record.at("versions"));
+    REQUIRE(versions.size() == 2);
+    CHECK(versions[0].id == 701);
+    CHECK(versions[1].id == 702);
+}
+
 TEST_CASE("version author is read from relationships data") {
     const ShotGridMapping mapping = filledMapping();
     const ShotGridSchema *version = mapping.findSchema("version");

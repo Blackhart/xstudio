@@ -69,16 +69,17 @@ Item {
         const rows = []
         for (let i = 0; i < nodes.length; i++) {
             const name = String(nodes[i].name)
-            const versionsLoaded = !!nodes[i].versionsLoaded
+            const versionCount = nodes[i].versionCount !== undefined
+                    ? Number(nodes[i].versionCount) : 0
             const entries = nodes[i].versions && nodes[i].versions.length ? nodes[i].versions : []
             const expanded = !!openPlaylists[name]
             rows.push({
                 name: name,
                 depth: 0,
-                parent: !versionsLoaded || entries.length > 0,
+                parent: versionCount > 0,
                 open: expanded,
                 kind: "playlist",
-                childCount: entries.length
+                childCount: versionCount
             })
             if (!expanded)
                 continue
