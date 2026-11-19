@@ -202,8 +202,10 @@ void ShotBrowser::initSignals() {
         shot_tree_.get(),
         &ShotTree::onSequenceAndShotSelected,
         this,
-        [this](std::int64_t, std::int64_t) {
-            asset_list_->clearSelectedAsset(); ///< Shot and asset are mutually exclusive.
+        [this](std::int64_t sequenceId, std::int64_t shotId) {
+            if (sequenceId != -1 || shotId != -1) {
+                asset_list_->clearSelectedAsset(); ///< Shot and asset are mutually exclusive.
+            }
             version_list_->clearVersions();
             version_list_->loadVersionsAsync();
             playlist_tree_->reloadExpanded();
@@ -214,8 +216,10 @@ void ShotBrowser::initSignals() {
         asset_list_.get(),
         &AssetList::onAssetSelected,
         this,
-        [this](std::int64_t) {
-            shot_tree_->clearSelectedSequenceAndShot(); ///< Shot and asset are mutually exclusive.
+        [this](std::int64_t assetId) {
+            if (assetId != -1) {
+                shot_tree_->clearSelectedSequenceAndShot(); ///< Shot and asset are mutually exclusive.
+            }
             version_list_->clearVersions();
             version_list_->loadVersionsAsync();
             playlist_tree_->reloadExpanded();
