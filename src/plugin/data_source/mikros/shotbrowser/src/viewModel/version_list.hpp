@@ -17,6 +17,7 @@ using namespace xstudio;
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,13 +55,21 @@ class VersionList : public QObject {
     explicit VersionList(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Loads when a project is selected.
+     * @brief Loads the first version page when a project is selected.
      *
      * Does not clear the list; the panel calls `clearVersions` first when needed.
-     * The request id always moves. Parents are the sequence, shot, and asset stored by the DAL.
-     * Returns before the pages arrive.
+     * The request id always moves. Resets the continuation cursor. Parents are the
+     * sequence, shot, and asset stored by the DAL. Returns before the pages arrive.
      */
     void loadVersionsAsync();
+
+    /**
+     * @brief Loads the next version page when the list still has a continuation cursor.
+     *
+     * No-op when there is no cursor, a more-page is already incoming, or no project is
+     * selected. Keeps the current request id. Returns before the page arrives.
+     */
+    void loadMoreVersionsAsync();
 
     /**
      * @brief Clears the cards and the JSON attribute.
@@ -76,9 +85,10 @@ class VersionList : public QObject {
     caf::message_handler message_handler_extensions();
 
     /**
-     * @brief Starts the disk check when the QML writes `OpenVersion`.
+     * @brief Starts an open or a load-more when QML writes the matching attribute.
      *
-     * Other attributes are ignored. An empty value does nothing.
+     * `OpenVersion` starts the disk check. `LoadMoreVersions` starts the next page.
+     * Other attributes are ignored. An empty open value does nothing.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed. Only Value is a request.
      */
@@ -105,7 +115,7 @@ class VersionList : public QObject {
      * @brief Drops a stale page, otherwise merges new versions by id and publishes JSON.
      * @param requestId Generation carried by the catalog mail.
      * @param append Unused; merge by id is the update path. Kept for the catalog mail shape.
-     * @param payload Version rows from the worker.
+     * @param payload Object with `rows` and optional `next_cursor` from the worker.
      */
     void updateVersionList(
         std::uint64_t requestId, bool append, const utility::JsonStore &payload);
@@ -143,14 +153,19 @@ class VersionList : public QObject {
     void scheduleVersionThumbs(std::int64_t projectId, std::vector<std::int64_t> versionIds);
 
     /**
-     * @brief Drops a stale count, otherwise writes the version total into the footer.
+     * @brief Drops a stale count, otherwise stores the total and refreshes the footer.
      * @param requestId Generation carried by the catalog mail.
      * @param payload JSON with a `versions` integer.
      */
     void updateVersionFooter(std::uint64_t requestId, const utility::JsonStore &payload);
 
     /**
-     * @brief Clears the footer attribute text.
+     * @brief Writes `loaded / total versions` into the footer (debug load progress).
+     */
+    void refreshFooterValue();
+
+    /**
+     * @brief Clears the footer attribute text and the stored total.
      */
     void clearFooterValue();
 
@@ -174,8 +189,12 @@ class VersionList : public QObject {
     module::JsonAttribute *version_cards_ = nullptr; ///< Array of card objects for QML.
     RequestGeneration version_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale version fetches and pages.
+    std::optional<std::string> next_cursor_; ///< Continuation for the next page. Empty when finished.
+    bool more_incoming_ = false; ///< True while a load-more page is still on the way.
     module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
+    int version_total_ = -1; ///< Server match count for the footer. -1 until the count arrives.
     module::BooleanAttribute *versions_loaded_ = nullptr; ///< True once the current request has delivered a page.
+    module::StringAttribute *load_more_versions_ = nullptr; ///< QML bump that requests the next page.
     module::StringAttribute *open_version_ = nullptr; ///< JSON request from a double-click or the menu.
     module::StringAttribute *opened_media_ = nullptr; ///< JSON result the panel selects when asked.
 };

@@ -453,6 +453,9 @@ void VersionList::initQmlAttributes(plugin::StandardPlugin &panel) {
     footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     versions_loaded_ = panel.add_boolean_attribute("VersionsLoaded", "VersionsLoaded", false);
     versions_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    load_more_versions_ =
+        panel.add_string_attribute("LoadMoreVersions", "LoadMoreVersions", "");
+    load_more_versions_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     open_version_ = panel.add_string_attribute("OpenVersion", "OpenVersion", "");
     open_version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     opened_media_ = panel.add_string_attribute("OpenedMedia", "OpenedMedia", "");
@@ -467,6 +470,8 @@ void VersionList::loadVersionsAsync() {
     if (dal::selectedProject() == -1) {
         return; ///< No project: leave whatever clearVersions already emptied.
     }
+    next_cursor_.reset(); ///< A new first page replaces any pending continuation.
+    more_incoming_ = false;
     const std::uint64_t requestId = ++(*version_request_id_); ///< Stop the version fetch already running.
     const std::int64_t projectId = dal::selectedProject();
     const VersionParents parents = readVersionParents();
@@ -486,8 +491,28 @@ void VersionList::loadVersionsAsync() {
     launchCatalogLoad(panel_.system(), std::move(counts));
 }
 
+void VersionList::loadMoreVersionsAsync() {
+    if (dal::selectedProject() == -1 || !next_cursor_ || more_incoming_) {
+        return; ///< Nothing left to fetch, or a more-page is already on the way.
+    }
+    more_incoming_ = true;
+    const std::uint64_t requestId = version_request_id_->load(); ///< Same generation as the first page.
+    const std::int64_t projectId = dal::selectedProject();
+    const VersionParents parents = readVersionParents();
+    CatalogLoadRequest request =
+        makeCatalogRequest(&panel_, CatalogKind::Version, requestId, projectId);
+    request.sequence = parents.sequenceId;
+    request.shot = parents.shotId;
+    request.asset = parents.assetId;
+    request.cursor = next_cursor_;
+    request.generation = version_request_id_; ///< Drop the page when clearVersions moves the id.
+    launchCatalogLoad(panel_.system(), std::move(request));
+}
+
 void VersionList::clearVersions() {
     ++(*version_request_id_); ///< Drop pages that still belong to the previous selection.
+    next_cursor_.reset();
+    more_incoming_ = false;
     versions_.clear();
     clearFooterValue(); ///< Clear until the next count arrives.
     sendVersionCardsToQml();
@@ -497,18 +522,19 @@ void VersionList::clearVersions() {
 namespace {
 
 /**
- * @brief Formats the version-list footer from a total.
- * @param total Match count.
- * @return `No versions`, `1 version`, or `N versions`.
+ * @brief Formats the version-list footer as loaded cards over the server total.
+ * @param loaded Cards currently held by the list.
+ * @param total Match count from the server, or -1 when the count has not arrived.
+ * @return Footer text for debug (`N / T versions`), or `No versions` when total is zero.
  */
-std::string formatVersionFooter(int total) {
-    if (total <= 0) {
+std::string formatVersionFooter(std::size_t loaded, int total) {
+    if (total == 0) {
         return "No versions";
     }
-    if (total == 1) {
-        return "1 version";
+    if (total < 0) {
+        return std::to_string(loaded) + " loaded";
     }
-    return std::to_string(total) + " versions";
+    return std::to_string(loaded) + " / " + std::to_string(total) + " versions";
 }
 
 } // namespace
@@ -519,13 +545,19 @@ void VersionList::updateVersionFooter(
         trace::drop("version_count", requestId); ///< clearVersions bumped the id on selection change.
         return;
     }
+    version_total_ = payload.value("versions", 0);
+    refreshFooterValue();
+}
+
+void VersionList::refreshFooterValue() {
     if (!footer_) {
         return;
     }
-    footer_->set_value(formatVersionFooter(payload.value("versions", 0)));
+    footer_->set_value(formatVersionFooter(versions_.size(), version_total_));
 }
 
 void VersionList::clearFooterValue() {
+    version_total_ = -1;
     if (footer_) {
         footer_->set_value("");
     }
@@ -543,11 +575,20 @@ void VersionList::updateVersionList(
         trace::drop("version", requestId); ///< clearVersions bumped the id on project/parents change.
         return;
     }
+    more_incoming_ = false; ///< This page arrived; another more-request may start.
+    const utility::JsonStore rowsJson =
+        payload.contains("rows") ? utility::JsonStore(payload.at("rows")) : payload;
+    if (payload.contains("next_cursor") && payload.at("next_cursor").is_string()) {
+        next_cursor_ = payload.at("next_cursor").get<std::string>();
+    } else {
+        next_cursor_.reset(); ///< Last page, or a payload without a continuation.
+    }
     const std::vector<poco::VersionListElement> rows =
-        rowsFromJson<poco::VersionListElement>(payload);
+        rowsFromJson<poco::VersionListElement>(rowsJson);
     const std::vector<poco::VersionListElement> newRows = findUnknownVersionRows(rows);
     appendVersions(newRows);
     sendVersionCardsToQml();
+    refreshFooterValue(); ///< Show how many cards are loaded versus the server total.
     markVersionsLoaded();
 }
 
@@ -820,7 +861,14 @@ void VersionList::addOpenedSources(
 }
 
 void VersionList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
-    if (role != module::Attribute::Value || !open_version_ || attr_uuid != open_version_->uuid()) {
+    if (role != module::Attribute::Value) {
+        return;
+    }
+    if (load_more_versions_ && attr_uuid == load_more_versions_->uuid()) {
+        loadMoreVersionsAsync(); ///< QML bumped the attribute near the bottom of the list.
+        return;
+    }
+    if (!open_version_ || attr_uuid != open_version_->uuid()) {
         return; ///< Only a new open request starts a check.
     }
     startOpen(open_version_->value());

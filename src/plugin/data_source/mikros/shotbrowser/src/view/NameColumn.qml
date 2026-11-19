@@ -6,6 +6,7 @@ import QtQuick.Layouts
 import xStudio 1.0
 
 // The list, its scroll, its placeholder and its footer. The row comes from the screen.
+// With infiniteScroll, loadMoreRequested fires near the bottom (and when the view is not full).
 ColumnLayout {
     id: column
 
@@ -27,8 +28,10 @@ ColumnLayout {
     property bool playlistTree: false
     property int footerCount: -1
     property Component rowDelegate
+    property bool infiniteScroll: false
 
     signal resultChosen(string mode)
+    signal loadMoreRequested()
 
     readonly property int count: {
         if (!names)
@@ -48,6 +51,20 @@ ColumnLayout {
 
     onNamesChanged: nameView.holdScroll() ///< A new page must not jump back to the top.
     onCountChanged: nameView.holdScroll() ///< Model reset changes count without replacing `names`.
+
+    // Call holdScrollAt with contentYForHold() before assigning a new `names` array.
+    function contentYForHold() {
+        return nameView.contentY
+    }
+
+    function holdScrollAt(y) {
+        nameView.holdScrollAt(y)
+    }
+
+    // Selection change / first page: jump to the top, even if a hold is pending.
+    function resetScrollToTop() {
+        nameView.resetScrollToTop()
+    }
 
     spacing: XsStyleSheet.panelPadding
 
@@ -160,13 +177,54 @@ ColumnLayout {
             model: column.names
             delegate: column.rowDelegate
 
+            property real heldContentY: 0
+            property bool holdPending: false
+
             function holdScroll() {
-                const y = contentY
+                holdScrollAt(contentY)
+            }
+
+            function holdScrollAt(y) {
+                if (!holdPending) {
+                    heldContentY = y ///< Keep the first capture; a later count change may already see 0.
+                    holdPending = true
+                }
+                scheduleScrollRestore()
+            }
+
+            function resetScrollToTop() {
+                heldContentY = 0
+                holdPending = true
+                scheduleScrollRestore()
+            }
+
+            function scheduleScrollRestore() {
                 Qt.callLater(function() {
-                    const limit = Math.max(0, contentHeight - height)
-                    contentY = Math.max(0, Math.min(y, limit))
+                    Qt.callLater(function() {
+                        if (!holdPending)
+                            return
+                        const limit = Math.max(0, contentHeight - height)
+                        contentY = Math.max(0, Math.min(heldContentY, limit))
+                        holdPending = false
+                        maybeRequestMore()
+                    })
                 })
             }
+
+            function maybeRequestMore() {
+                if (!column.infiniteScroll || column.count === 0 || holdPending)
+                    return
+                const scrollable = contentHeight - height
+                const nearEnd = scrollable <= 0
+                        || (contentY / scrollable >= 0.70) ///< About 70% down the list.
+                if (nearEnd)
+                    column.loadMoreRequested()
+            }
+
+            onContentYChanged: maybeRequestMore()
+            onContentHeightChanged: maybeRequestMore()
+            onHeightChanged: maybeRequestMore()
+
             // One row per wheel notch, and the flick stops at once.
             flickDeceleration: 100000
             maximumFlickVelocity: 800

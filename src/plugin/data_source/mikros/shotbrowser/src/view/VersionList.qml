@@ -4,7 +4,7 @@ import QtQuick
 import xStudio 1.0
 import xstudio.qml.models 1.0
 
-// Which version cards to show, the server total footer, and the flag that the load is done.
+// Which version cards to show, the server total footer, load-more bumps, and the loaded flag.
 Item {
     id: versions
 
@@ -64,7 +64,33 @@ Item {
         model: attributes
     }
 
+    XsAttributeValue {
+        id: loadMoreVersions
+        attributeTitle: "LoadMoreVersions"
+        model: attributes
+    }
+
+    property int loadMoreToken: 0
+    property var cardRows: []
+
+    // Watch the attribute without putting contentY in the `names:` binding (binding loop).
+    property var cardsSource: versionCardsAttr.value
+    onCardsSourceChanged: reloadCardRows()
+
+    // Hold scroll on append / thumbs; reset to top on clear or first page.
+    function reloadCardRows() {
+        const rows = versionCardRows()
+        const previousCount = Array.isArray(cardRows) ? cardRows.length : 0
+        const nextCount = rows.length
+        if (nextCount === 0 || previousCount === 0)
+            versionColumn.resetScrollToTop()
+        else
+            versionColumn.holdScrollAt(versionColumn.contentYForHold())
+        cardRows = rows
+    }
+
     NameColumn {
+        id: versionColumn
         anchors.fill: parent
         resultSwitcher: true
         switcherHeight: versions.switcherHeight
@@ -75,7 +101,12 @@ Item {
         customFooter: true
         footerText: footer.value
         listColor: XsStyleSheet.panelBgColor
-        names: versions.versionCardRows()
+        names: versions.cardRows
+        infiniteScroll: true
+        onLoadMoreRequested: {
+            versions.loadMoreToken += 1
+            loadMoreVersions.value = String(versions.loadMoreToken)
+        }
         placeholder: {
             selectedProject.value
             versionsLoaded.value

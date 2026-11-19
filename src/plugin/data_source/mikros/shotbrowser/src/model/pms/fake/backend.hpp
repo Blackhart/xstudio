@@ -19,11 +19,12 @@ namespace pms {
  * Sequence, asset, and playlist rows use In(project). Shot rows use In(sequence)
  * or In(project). Version rows keep a strong parent (shot, sequence, or asset)
  * and may also belong to one or more playlists. In(playlist) uses that weak
- * membership. Returned sequence, shot, asset, playlist, and version records
- * expose only `id` and `name`. When `ir.limit` is set, find() keysets on `id`.
- * count() uses the same filters and returns the match total. When
- * `simulate_latency` is true, find() and count() sleep 1.5–2.5 s before
- * returning (long enough to see Loading… in the UI).
+ * membership. Shot version counts are sized so one project spans about four
+ * pages at the default page size. Returned sequence, shot,
+ * asset, playlist, and version records expose only `id` and `name`. When
+ * `ir.limit` is set, find() keysets on `id`. count() uses the same filters and
+ * returns the match total. When `simulate_latency` is true, find() and count()
+ * sleep 1.5–2.5 s before returning (long enough to see Loading… in the UI).
  */
 class FakeBackend : public Backend {
   public:
@@ -39,7 +40,7 @@ class FakeBackend : public Backend {
     static constexpr std::size_t versionsPerSequence =
         2; ///< Versions linked directly to each sequence.
     static constexpr std::size_t versionsPerShot =
-        2; ///< Versions linked to each shot.
+        50; ///< Versions per shot (~4 project pages at the default page size of 50).
     static constexpr std::size_t versionsPerAsset =
         2; ///< Versions linked to each asset.
 

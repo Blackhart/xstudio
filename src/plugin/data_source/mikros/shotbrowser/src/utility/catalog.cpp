@@ -215,18 +215,25 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         const dal::RowPage<poco::VersionListElement> page = dal::findVersionListElements(
             request.project_id,
             dal::readPageLimit(),
-            std::nullopt,
+            request.cursor,
             parents.sequenceId,
             parents.shotId,
             parents.assetId);
+        nlohmann::json body;
+        body["rows"] = static_cast<nlohmann::json>(rowsToJson(page.rows));
+        if (page.next_cursor) {
+            body["next_cursor"] = *page.next_cursor; ///< Opaque token for loadMoreVersionsAsync.
+        } else {
+            body["next_cursor"] = nullptr; ///< No further page.
+        }
         sendCatalog(
             request.panel,
             request.request_id,
             "version",
             request.project_id,
             pageScope(parents),
-            false,
-            rowsToJson(page.rows)); ///< First page only; further pages come later.
+            request.cursor.has_value(), ///< First page replaces; a cursor page appends.
+            utility::JsonStore(std::move(body)));
         return;
     }
     case CatalogKind::VersionCount: {
