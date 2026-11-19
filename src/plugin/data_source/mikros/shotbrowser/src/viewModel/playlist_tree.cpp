@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/playlist_tree.cpp
- * @brief Playlist tree: name pages, unfolded versions, and the thumbnail stamp.
+ * @brief Playlist tree: paged names, unfolded versions, footer, and thumbnail stamp.
  */
 
 #include "viewModel/playlist_tree.hpp"
@@ -103,8 +103,8 @@ class PlaylistPageHandler : public caf::detail::behavior_impl {
             return false;
         }
         const std::string catalog = caf::get<2>(view);
-        if (catalog != "playlist_tree" && catalog != "playlist_versions" &&
-            catalog != "playlist_version_thumbs") {
+        if (catalog != "playlist_tree" && catalog != "playlist_count" &&
+            catalog != "playlist_versions" && catalog != "playlist_version_thumbs") {
             return false; ///< Another catalog: the next handler continues.
         }
         apply_(
@@ -183,6 +183,22 @@ std::optional<nlohmann::json> shownPlaylist(const nlohmann::json &tree, std::int
     return std::nullopt;
 }
 
+/**
+ * @brief Formats the playlist-tree footer as loaded names over the server total.
+ * @param loaded Playlist nodes currently held by the tree.
+ * @param total Match count from the server, or -1 when the count has not arrived.
+ * @return Footer text for debug (`N / T playlists`), or `No playlists` when total is zero.
+ */
+std::string formatPlaylistFooter(std::size_t loaded, int total) {
+    if (total == 0) {
+        return "No playlists";
+    }
+    if (total < 0) {
+        return std::to_string(loaded) + " loaded";
+    }
+    return std::to_string(loaded) + " / " + std::to_string(total) + " playlists";
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -200,6 +216,11 @@ void PlaylistTree::initQmlAttributes(plugin::StandardPlugin &panel) {
     expanded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     playlists_loaded_ = panel.add_boolean_attribute("PlaylistsLoaded", "PlaylistsLoaded", false);
     playlists_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    load_more_playlists_ =
+        panel.add_string_attribute("LoadMorePlaylists", "LoadMorePlaylists", "");
+    load_more_playlists_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    footer_ = panel.add_string_attribute("PlaylistTreeFooter", "PlaylistTreeFooter", "");
+    footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +228,14 @@ void PlaylistTree::initQmlAttributes(plugin::StandardPlugin &panel) {
 // ---------------------------------------------------------------------------
 
 void PlaylistTree::attribute_changed(const utility::Uuid &attr_uuid, int role) {
-    if (role != module::Attribute::Value || !expanded_ || attr_uuid != expanded_->uuid()) {
+    if (role != module::Attribute::Value) {
+        return;
+    }
+    if (load_more_playlists_ && attr_uuid == load_more_playlists_->uuid()) {
+        loadMorePlaylistsAsync(); ///< QML bumped the attribute near the bottom of the list.
+        return;
+    }
+    if (!expanded_ || attr_uuid != expanded_->uuid()) {
         return; ///< Only an unfold loads versions.
     }
     expandPlaylist();
@@ -265,23 +293,46 @@ bool PlaylistTree::checkResultViewIsPlaylist() const {
 
 void PlaylistTree::loadPlaylistListAsync() {
     const std::uint64_t requestId = ++(*playlist_request_id_); ///< Stop the name fetch already running.
+    next_cursor_.reset(); ///< A new first page replaces any pending continuation.
+    more_incoming_ = false;
     clearPlaylistUi();
     if (!checkResultViewIsPlaylist() || dal::selectedProject() == -1) {
         return; ///< Versions is showing, or no project is selected.
     }
+    const std::int64_t projectId = dal::selectedProject();
+    CatalogLoadRequest request =
+        makeCatalogRequest(&panel_, CatalogKind::PlaylistTree, requestId, projectId);
+    request.generation = playlist_request_id_; ///< The worker stops before the next find when this moves.
+    launchCatalogLoad(panel_.system(), std::move(request));
+    CatalogLoadRequest counts =
+        makeCatalogRequest(&panel_, CatalogKind::PlaylistCount, requestId, projectId);
+    counts.generation = playlist_request_id_; ///< Drop a stale footer with the pages.
+    launchCatalogLoad(panel_.system(), std::move(counts));
+}
+
+void PlaylistTree::loadMorePlaylistsAsync() {
+    if (dal::selectedProject() == -1 || !next_cursor_ || more_incoming_) {
+        return; ///< Nothing left to fetch, or a more-page is already on the way.
+    }
+    more_incoming_ = true;
+    const std::uint64_t requestId = playlist_request_id_->load(); ///< Same generation as the first page.
     CatalogLoadRequest request = makeCatalogRequest(
         &panel_, CatalogKind::PlaylistTree, requestId, dal::selectedProject());
-    request.generation = playlist_request_id_; ///< The worker stops before the next find when this moves.
+    request.cursor = next_cursor_;
+    request.generation = playlist_request_id_; ///< Drop the page when clearPlaylists moves the id.
     launchCatalogLoad(panel_.system(), std::move(request));
 }
 
 void PlaylistTree::clearPlaylists() {
     ++(*playlist_request_id_); ///< Drop pages that still belong to the previous project.
+    next_cursor_.reset();
+    more_incoming_ = false;
     clearPlaylistUi();
 }
 
 void PlaylistTree::clearPlaylistUi() {
     versions_by_playlist_.clear();
+    clearFooterValue();
     sendPlaylistTreeToQml(nlohmann::json::array());
     clearPlaylistsLoadedFlag();
     clearExpanded();
@@ -349,6 +400,11 @@ nlohmann::json PlaylistTree::treeValue() const {
     return tree.is_array() ? tree : nlohmann::json::array();
 }
 
+std::size_t PlaylistTree::playlistNodeCount() const {
+    const nlohmann::json tree = treeValue();
+    return tree.is_array() ? tree.size() : 0;
+}
+
 void PlaylistTree::sendPlaylistTreeToQml(const nlohmann::json &tree) {
     if (!tree_) {
         return;
@@ -356,8 +412,45 @@ void PlaylistTree::sendPlaylistTreeToQml(const nlohmann::json &tree) {
     tree_->set_value(tree); ///< The QML reads this attribute.
 }
 
-void PlaylistTree::updatePlaylistList(bool append, const utility::JsonStore &payload) {
-    const std::vector<poco::Playlist> rows = rowsFromJson<poco::Playlist>(payload);
+void PlaylistTree::updatePlaylistFooter(
+    std::uint64_t requestId, const utility::JsonStore &payload) {
+    if (requestId != playlist_request_id_->load()) {
+        trace::drop("playlist_count", requestId); ///< clearPlaylists bumped the id on selection change.
+        return;
+    }
+    playlist_total_ = payload.value("playlists", 0);
+    refreshFooterValue();
+}
+
+void PlaylistTree::refreshFooterValue() {
+    if (!footer_) {
+        return;
+    }
+    footer_->set_value(formatPlaylistFooter(playlistNodeCount(), playlist_total_));
+}
+
+void PlaylistTree::clearFooterValue() {
+    playlist_total_ = -1;
+    if (footer_) {
+        footer_->set_value("");
+    }
+}
+
+void PlaylistTree::updatePlaylistList(
+    std::uint64_t requestId, bool append, const utility::JsonStore &payload) {
+    if (requestId != playlist_request_id_->load()) {
+        trace::drop("playlist_tree", requestId);
+        return;
+    }
+    more_incoming_ = false; ///< This page arrived; another more-request may start.
+    const utility::JsonStore rowsJson =
+        payload.contains("rows") ? utility::JsonStore(payload.at("rows")) : payload;
+    if (payload.contains("next_cursor") && payload.at("next_cursor").is_string()) {
+        next_cursor_ = payload.at("next_cursor").get<std::string>();
+    } else {
+        next_cursor_.reset(); ///< Last page, or a payload without a continuation.
+    }
+    const std::vector<poco::Playlist> rows = rowsFromJson<poco::Playlist>(rowsJson);
     const nlohmann::json previous = treeValue();
     nlohmann::json tree = append ? previous : nlohmann::json::array();
     for (const poco::Playlist &row : rows) {
@@ -377,6 +470,7 @@ void PlaylistTree::updatePlaylistList(bool append, const utility::JsonStore &pay
     }
     sortPlaylistsByName(tree);
     sendPlaylistTreeToQml(tree);
+    refreshFooterValue(); ///< Show how many names are loaded versus the server total.
     markPlaylistsLoaded();
 }
 
@@ -504,12 +598,12 @@ caf::message_handler PlaylistTree::message_handler_extensions() {
             trace::drop(catalog.c_str(), requestId); ///< The user picked another project.
             return;
         }
+        if (catalog == "playlist_count") {
+            updatePlaylistFooter(requestId, payload);
+            return;
+        }
         if (catalog == "playlist_tree") {
-            if (requestId != playlist_request_id_->load()) {
-                trace::drop("playlist_tree", requestId);
-                return;
-            }
-            updatePlaylistList(append, payload);
+            updatePlaylistList(requestId, append, payload);
             return;
         }
         if (catalog == "playlist_version_thumbs") {

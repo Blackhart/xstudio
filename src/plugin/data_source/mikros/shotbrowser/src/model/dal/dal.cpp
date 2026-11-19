@@ -737,6 +737,10 @@ int getNumberOfAssets(std::int64_t projectId) {
     return fetchCount(pms::Asset().In(pms::scope::project == projectId));
 }
 
+int getNumberOfPlaylists(std::int64_t projectId) {
+    return fetchCount(pms::Playlist().In(pms::scope::project == projectId));
+}
+
 int getNumberOfVersions(
     std::int64_t projectId,
     std::optional<std::int64_t> sequenceId,

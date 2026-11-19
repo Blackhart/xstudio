@@ -45,7 +45,8 @@ enum class CatalogKind {
     AssetCount,       ///< Asset total for the asset-list footer.
     Version,          ///< One version page for the current parents (cursor continues).
     VersionCount,     ///< Version total for the version-list footer.
-    PlaylistTree,     ///< Playlist names and version counts, without version cards.
+    PlaylistTree,     ///< One playlist-name page (cursor continues), with version counts.
+    PlaylistCount,    ///< Playlist total for the playlist-tree footer.
     PlaylistVersions, ///< Versions of one unfolded playlist.
 };
 
@@ -72,7 +73,7 @@ struct CatalogLoadRequest {
     std::optional<std::int64_t> sequence;    ///< Version filter: selected sequence.
     std::optional<std::int64_t> shot;        ///< Version filter: selected shot.
     std::optional<std::int64_t> asset;       ///< Version filter: selected asset.
-    std::optional<std::string> cursor;       ///< Continuation for Version pages. Empty for the first page.
+    std::optional<std::string> cursor; ///< Continuation for Version / PlaylistTree pages. Empty for the first page.
 };
 
 /**

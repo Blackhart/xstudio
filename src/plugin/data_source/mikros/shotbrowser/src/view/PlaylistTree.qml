@@ -141,6 +141,14 @@ Item {
         model: attributes
     }
 
+    XsAttributeValue {
+        id: loadMorePlaylists
+        attributeTitle: "LoadMorePlaylists"
+        model: attributes
+    }
+
+    CatalogValue { id: footer; title: "PlaylistTreeFooter"; source: attributes }
+
     Connections {
         target: selectedProject
         function onValueChanged() {
@@ -148,7 +156,28 @@ Item {
         }
     }
 
+    property int loadMoreToken: 0
+    property var treeRows: []
+
+    // Watch the attribute without putting contentY in the `names:` binding (binding loop).
+    property var treeSource: playlistTreeAttr.value
+    onTreeSourceChanged: reloadTreeRows()
+    onOpenPlaylistsChanged: reloadTreeRows()
+
+    // Hold scroll on append / thumbs; reset to top on clear or first page.
+    function reloadTreeRows() {
+        const rows = playlistTreeRows()
+        const previousCount = Array.isArray(treeRows) ? treeRows.length : 0
+        const nextCount = rows.length
+        if (nextCount === 0 || previousCount === 0)
+            playlistColumn.resetScrollToTop()
+        else
+            playlistColumn.holdScrollAt(playlistColumn.contentYForHold())
+        treeRows = rows
+    }
+
     NameColumn {
+        id: playlistColumn
         anchors.fill: parent
         resultSwitcher: true
         switcherHeight: playlists.switcherHeight
@@ -156,12 +185,17 @@ Item {
         resultMode: playlists.resultMode
         onResultChosen: function(mode) { playlists.resultChosen(mode) }
         loadedFooter: true
-        footerNoun: "playlist"
+        customFooter: true
+        footerText: footer.value
         listColor: XsStyleSheet.panelBgColor
         tree: true
         playlistTree: true
-        names: playlists.playlistTreeRows()
-        footerCount: playlists.playlistTreeNodes().length
+        names: playlists.treeRows
+        infiniteScroll: true
+        onLoadMoreRequested: {
+            playlists.loadMoreToken += 1
+            loadMorePlaylists.value = String(playlists.loadMoreToken)
+        }
         placeholder: {
             selectedProject.value
             playlistsLoaded.value

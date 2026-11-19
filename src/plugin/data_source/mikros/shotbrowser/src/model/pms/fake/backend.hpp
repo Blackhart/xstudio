@@ -36,7 +36,7 @@ class FakeBackend : public Backend {
     static constexpr std::size_t assetsPerProject =
         2; ///< Assets generated for each project.
     static constexpr std::size_t playlistsPerProject =
-        2; ///< Playlists generated for each project.
+        200; ///< Playlists per project (~4 pages at the default page size of 50).
     static constexpr std::size_t versionsPerSequence =
         2; ///< Versions linked directly to each sequence.
     static constexpr std::size_t versionsPerShot =

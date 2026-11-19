@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/playlist_tree.hpp
- * @brief Playlist tree: names, and the versions of the playlist the user unfolded.
+ * @brief Playlist tree: paged names, and the versions of the playlist the user unfolded.
  */
 #pragma once
 
@@ -17,6 +17,8 @@ using namespace xstudio;
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace xstudio::mikros_shotbrowser {
@@ -24,9 +26,9 @@ namespace xstudio::mikros_shotbrowser {
 /**
  * @brief View model of the playlist tree.
  *
- * Names use one request id. Versions of an unfolded playlist do not stop.
- * `loadPlaylistListAsync` returns immediately. Pages are applied in
- * `message_handler_extensions`.
+ * Names use one request id and continue with `loadMorePlaylistsAsync`. Versions
+ * of an unfolded playlist do not stop. `loadPlaylistListAsync` returns immediately.
+ * Pages are applied in `message_handler_extensions`.
  */
 class PlaylistTree : public QObject {
     Q_OBJECT
@@ -39,20 +41,29 @@ class PlaylistTree : public QObject {
     explicit PlaylistTree(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Loads the versions of the playlist the user unfolded.
+     * @brief Loads more playlist names, or the versions of the playlist the user unfolded.
      *
+     * `LoadMorePlaylists` starts the next name page. `ExpandedPlaylist` starts a version load.
      * Other attributes are ignored.
      * @param attr_uuid Attribute the panel changed.
-     * @param role Role that changed. Only Value is an unfold.
+     * @param role Role that changed. Only Value is a request.
      */
     void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
     /**
-     * @brief Clears the tree, then loads when the Playlist tab and a project are selected.
+     * @brief Clears the tree, then loads the first name page when Playlist tab and project are set.
      *
      * The request id always moves. Reads `dal::resultView`. Returns before the pages arrive.
      */
     void loadPlaylistListAsync();
+
+    /**
+     * @brief Loads the next playlist-name page when a continuation cursor remains.
+     *
+     * No-op when there is no cursor, a more-page is already incoming, or no project is
+     * selected. Keeps the current request id. Returns before the page arrives.
+     */
+    void loadMorePlaylistsAsync();
 
     /**
      * @brief Clears the playlist tree and stops a name fetch that is still running.
@@ -80,7 +91,7 @@ class PlaylistTree : public QObject {
     void schedulePlaylistThumbs(const std::vector<poco::VersionListElement> &rows);
 
     /**
-     * @brief Handles `playlist_tree`, `playlist_versions`, and `playlist_version_thumbs`.
+     * @brief Handles `playlist_tree`, `playlist_count`, `playlist_versions`, and thumbs.
      * @return The playlist catalog handler.
      */
     caf::message_handler message_handler_extensions();
@@ -138,10 +149,29 @@ class PlaylistTree : public QObject {
 
     /**
      * @brief Replaces or extends the playlist nodes from one page, then sorts them.
+     * @param requestId Generation carried by the catalog mail.
      * @param append False for the first page, which replaces the playlist list.
-     * @param payload `{id, name}` rows from the worker.
+     * @param payload Object with `rows` and optional `next_cursor` from the worker.
      */
-    void updatePlaylistList(bool append, const utility::JsonStore &payload);
+    void updatePlaylistList(
+        std::uint64_t requestId, bool append, const utility::JsonStore &payload);
+
+    /**
+     * @brief Drops a stale count, otherwise stores the total and refreshes the footer.
+     * @param requestId Generation carried by the catalog mail.
+     * @param payload JSON with a `playlists` integer.
+     */
+    void updatePlaylistFooter(std::uint64_t requestId, const utility::JsonStore &payload);
+
+    /**
+     * @brief Writes `loaded / total playlists` into the footer.
+     */
+    void refreshFooterValue();
+
+    /**
+     * @brief Clears the footer attribute text and the stored total.
+     */
+    void clearFooterValue();
 
     /**
      * @brief Adds one page of versions into that playlist, then sorts those versions.
@@ -176,14 +206,25 @@ class PlaylistTree : public QObject {
      */
     nlohmann::json treeValue() const;
 
+    /**
+     * @brief How many playlist nodes are currently in the tree.
+     * @return Node count.
+     */
+    std::size_t playlistNodeCount() const;
+
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
     RequestGeneration playlist_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale playlist-name fetches and pages.
+    std::optional<std::string> next_cursor_; ///< Continuation for the next name page. Empty when finished.
+    bool more_incoming_ = false; ///< True while a load-more name page is still on the way.
+    int playlist_total_ = -1; ///< Server match count for the footer. -1 until the count arrives.
     std::map<std::int64_t, std::vector<poco::VersionListElement>>
         versions_by_playlist_; ///< List elements accumulated per playlist.
     module::JsonAttribute *tree_ = nullptr; ///< Playlists with their version rows.
     module::StringAttribute *expanded_ = nullptr; ///< Playlist the user unfolded.
     module::BooleanAttribute *playlists_loaded_ = nullptr; ///< True once the current request has delivered a page.
+    module::StringAttribute *load_more_playlists_ = nullptr; ///< QML bump that requests the next name page.
+    module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
 };
 
 } // namespace xstudio::mikros_shotbrowser

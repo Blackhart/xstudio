@@ -252,6 +252,13 @@ int getNumberOfShots(
 int getNumberOfAssets(std::int64_t projectId);
 
 /**
+ * @brief How many playlists belong to a project.
+ * @param projectId Domain project `id`.
+ * @return Match count, or `0` when the lookup fails.
+ */
+int getNumberOfPlaylists(std::int64_t projectId);
+
+/**
  * @brief How many versions match the same parents as `findVersionListElements`.
  *
  * Strong parent (at most one): shot, else sequence, else asset, else project.
