@@ -4,6 +4,8 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+
 using namespace pms;
 using namespace pms::project;
 
@@ -188,4 +190,29 @@ in:
 where:
 )";
     CHECK(dump(Version().In(scope::playlist == std::int64_t{5}).ir()) == expected);
+}
+
+TEST_CASE("fields dumps the projection and always keeps id and name") {
+    using namespace pms::version;
+    const Ir ir = Version().Fields(author, image).ir();
+    REQUIRE(ir.fields.has_value());
+    CHECK(ir.fields->size() == 4);
+    CHECK(std::find(ir.fields->begin(), ir.fields->end(), "author") != ir.fields->end());
+    CHECK(std::find(ir.fields->begin(), ir.fields->end(), "image") != ir.fields->end());
+    CHECK(std::find(ir.fields->begin(), ir.fields->end(), "id") != ir.fields->end());
+    CHECK(std::find(ir.fields->begin(), ir.fields->end(), "name") != ir.fields->end());
+
+    const char *expected = R"(op:
+entity: version
+in:
+where:
+fields: author image id name
+)";
+    CHECK(dump(ir) == expected);
+}
+
+TEST_CASE("without fields the dump omits the projection line") {
+    const Ir ir = Version().ir();
+    CHECK_FALSE(ir.fields.has_value());
+    CHECK(dump(ir).find("fields:") == std::string::npos);
 }

@@ -7,6 +7,8 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+
 using namespace pms;
 using namespace pms::project;
 
@@ -294,4 +296,53 @@ TEST_CASE("an empty shot list leaves the field absent") {
         {"relationships", {{"shots", {{"data", nlohmann::json::array()}}}}}};
     const Record record = shotgridRecordFromJson(row, *sequence);
     CHECK(record.fields.count("shots") == 0);
+}
+
+TEST_CASE("shotgrid field names keep every mapped column without a projection") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const std::vector<std::string> all = shotgridFieldNames(*version);
+    CHECK(std::find(all.begin(), all.end(), "image") != all.end());
+    CHECK(std::find(all.begin(), all.end(), "sg_path_to_frames") != all.end());
+    CHECK(std::find(all.begin(), all.end(), "sg_uploaded_movie_mp4") != all.end());
+}
+
+TEST_CASE("shotgrid field names honour a list-element projection") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const std::vector<std::string> domain = {
+        "id",
+        "name",
+        "author",
+        "created_at",
+        "frame_range",
+        "description",
+        "step",
+        "status",
+        "artistic_status",
+        "sites",
+        "has_notes",
+        "synced_to_client"};
+    const std::vector<std::string> names = shotgridFieldNames(*version, &domain);
+    CHECK(std::find(names.begin(), names.end(), "image") == names.end());
+    CHECK(std::find(names.begin(), names.end(), "sg_path_to_frames") == names.end());
+    CHECK(std::find(names.begin(), names.end(), "sg_path_to_movie") == names.end());
+    CHECK(std::find(names.begin(), names.end(), "sg_uploaded_movie_mp4") == names.end());
+    CHECK(std::find(names.begin(), names.end(), "code") != names.end());
+    CHECK(std::find(names.begin(), names.end(), "created_by") != names.end());
+}
+
+TEST_CASE("shotgrid field names honour a media projection") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const std::vector<std::string> domain = {
+        "id", "name", "frames", "movie", "uploaded_movie"};
+    const std::vector<std::string> names = shotgridFieldNames(*version, &domain);
+    CHECK(std::find(names.begin(), names.end(), "image") == names.end());
+    CHECK(std::find(names.begin(), names.end(), "sg_path_to_frames") != names.end());
+    CHECK(std::find(names.begin(), names.end(), "sg_path_to_movie") != names.end());
+    CHECK(std::find(names.begin(), names.end(), "sg_uploaded_movie_mp4") != names.end());
 }

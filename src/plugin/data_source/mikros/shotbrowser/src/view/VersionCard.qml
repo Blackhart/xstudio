@@ -58,10 +58,7 @@ Rectangle {
         return {
             versionId: versionId,
             label: label,
-            framesPath: framesPath,
-            frameRange: frameRange,
-            moviePath: moviePath,
-            uploadedMovie: uploadedMovie
+            frameRange: frameRange
         }
     }
 
@@ -86,9 +83,6 @@ Rectangle {
             return 0
         return Number(row.id)
     }
-    readonly property string framesPath: field("frames")
-    readonly property string moviePath: field("movie")
-    readonly property string uploadedMovie: field("uploadedMovie")
 
     x: indent
     width: (ListView.view ? ListView.view.width : parent.width) - x

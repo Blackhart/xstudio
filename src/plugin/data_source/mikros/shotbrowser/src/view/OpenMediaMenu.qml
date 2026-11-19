@@ -74,10 +74,7 @@ Item {
             versionId: row.versionId,
             name: row.label,
             playlistUuid: uuid,
-            frames: row.framesPath,
-            frameRange: row.frameRange,
-            movie: row.moviePath,
-            uploadedMovie: row.uploadedMovie
+            frameRange: row.frameRange
         })
     }
 

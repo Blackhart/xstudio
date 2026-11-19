@@ -295,20 +295,18 @@ std::vector<Row> rowsFromJson(const xstudio::utility::JsonStore &json) {
 }
 
 /**
- * @brief Writes one version page, including the image the card and the open action need.
- * @param rows Versions to send to the panel.
+ * @brief Writes one version list page (metadata only).
+ * @param rows List elements to send to the panel.
  * @return JSON the panel message can carry.
  */
 template <>
-inline
-xstudio::utility::JsonStore rowsToJson<poco::Version>(const std::vector<poco::Version> &rows) {
+inline xstudio::utility::JsonStore rowsToJson<poco::VersionListElement>(
+    const std::vector<poco::VersionListElement> &rows) {
     nlohmann::json out = nlohmann::json::array();
-    for (const poco::Version &row : rows) {
+    for (const poco::VersionListElement &row : rows) {
         out.push_back(
             {{"id", row.id},
              {"name", row.name},
-             {"image", row.image},
-             {"image_provider", row.image_provider},
              {"author", row.author},
              {"created_at", row.created_at},
              {"frame_range", row.frame_range},
@@ -318,33 +316,28 @@ xstudio::utility::JsonStore rowsToJson<poco::Version>(const std::vector<poco::Ve
              {"artistic_status", row.artistic_status},
              {"sites", row.sites},
              {"has_notes", row.has_notes},
-             {"synced_to_client", row.synced_to_client},
-             {"frames", row.frames},
-             {"movie", row.movie},
-             {"uploaded_movie", row.uploaded_movie}});
+             {"synced_to_client", row.synced_to_client}});
     }
     return xstudio::utility::JsonStore(out);
 }
 
 /**
- * @brief Reads one version page back into rows the panel can show and open.
+ * @brief Reads one version list page.
  * @param json Payload from `rowsToJson`.
- * @return Versions, or empty when `json` is not an array.
+ * @return List elements, or empty when `json` is not an array.
  */
 template <>
-inline
-std::vector<poco::Version> rowsFromJson<poco::Version>(const xstudio::utility::JsonStore &json) {
-    std::vector<poco::Version> rows;
+inline std::vector<poco::VersionListElement> rowsFromJson<poco::VersionListElement>(
+    const xstudio::utility::JsonStore &json) {
+    std::vector<poco::VersionListElement> rows;
     if (!json.is_array()) {
         return rows;
     }
     rows.reserve(json.size());
     for (const auto &entry : json) {
-        poco::Version row;
+        poco::VersionListElement row;
         row.id = entry.at("id").get<std::int64_t>();
         row.name = entry.at("name").get<std::string>();
-        row.image = entry.value("image", std::string());
-        row.image_provider = entry.value("image_provider", std::string());
         row.author = entry.value("author", std::string());
         row.created_at = entry.value("created_at", std::string());
         row.frame_range = entry.value("frame_range", std::string());
@@ -355,9 +348,6 @@ std::vector<poco::Version> rowsFromJson<poco::Version>(const xstudio::utility::J
         row.sites = entry.value("sites", std::string());
         row.has_notes = entry.value("has_notes", false);
         row.synced_to_client = entry.value("synced_to_client", false);
-        row.frames = entry.value("frames", std::string());
-        row.movie = entry.value("movie", std::string());
-        row.uploaded_movie = entry.value("uploaded_movie", std::string());
         rows.push_back(std::move(row));
     }
     return rows;
@@ -475,9 +465,6 @@ void publishPages(
         }
         const dal::RowPage<Row> page = fetch(cursor);
         sendCatalog(weak, requestId, catalog, projectId, scope, append, rowsToJson(page.rows));
-        if constexpr (std::is_same_v<Row, poco::Version>) {
-            scheduleThumbPage(weak, projectId, page.rows); ///< Names are already on the way.
-        }
         if (!page.next_cursor) {
             break;
         }

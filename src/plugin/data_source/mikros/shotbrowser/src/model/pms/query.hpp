@@ -10,10 +10,12 @@
 #include "pms/session.hpp"
 #include "pms/validate.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace pms {
 
@@ -116,6 +118,33 @@ template <typename Entity> class Query {
     }
 
     /**
+     * @brief Restricts which domain fields find() loads.
+     *
+     * Without this call, every mapped field is requested. `id` and `name` are
+     * always kept so a returned row still passes checkRecord. Count ignores
+     * the list.
+     *
+     * @tparam Ts Value types of the field proxies.
+     * @param fields Proxies such as `version::author`.
+     * @return A new query. This query is unchanged.
+     */
+    template <typename... Ts> Query Fields(const Field<Entity, Ts> &... fields) const {
+        Query copy = *this;
+        std::vector<std::string> keys;
+        keys.reserve(sizeof...(Ts) + 2);
+        (keys.push_back(fields.key), ...);
+        auto ensure = [&keys](const char *key) {
+            if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
+                keys.push_back(key);
+            }
+        };
+        ensure("id");
+        ensure("name");
+        copy.fields_ = std::move(keys);
+        return copy;
+    }
+
+    /**
      * @brief Returns the trees without a verb and without validation.
      * @return Intermediate representation with an empty `op`.
      */
@@ -126,6 +155,7 @@ template <typename Entity> class Query {
         out.where = where_;
         out.limit = limit_;
         out.cursor = cursor_;
+        out.fields = fields_;
         return out;
     }
 
@@ -174,6 +204,7 @@ template <typename Entity> class Query {
     std::shared_ptr<const ExprNode> where_; ///< Filter tree, null until Where().
     std::optional<std::size_t> limit_;      ///< Page size when set.
     std::optional<std::string> cursor_;     ///< Continuation cursor when set.
+    std::optional<std::vector<std::string>> fields_; ///< Find projection. Empty means all fields.
 };
 
 } // namespace pms

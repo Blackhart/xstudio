@@ -121,14 +121,14 @@ class VersionList : public QObject {
      * @param rows Page rows from the worker.
      * @return Rows that still need a card.
      */
-    [[nodiscard]] std::vector<poco::Version>
-    findUnknownVersionRows(const std::vector<poco::Version> &rows) const;
+    [[nodiscard]] std::vector<poco::VersionListElement>
+    findUnknownVersionRows(const std::vector<poco::VersionListElement> &rows) const;
 
     /**
      * @brief Builds a card for each new row and starts its thumb load.
      * @param newRows Rows that are not yet in `versions_`.
      */
-    void appendVersions(const std::vector<poco::Version> &newRows);
+    void appendVersions(const std::vector<poco::VersionListElement> &newRows);
 
     /**
      * @brief Writes the cards array to the `VersionCards` attribute.

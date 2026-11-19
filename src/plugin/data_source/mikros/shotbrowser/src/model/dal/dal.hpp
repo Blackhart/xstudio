@@ -177,10 +177,11 @@ RowPage<poco::Playlist> findPlaylists(
     std::optional<std::string> cursor = std::nullopt);
 
 /**
- * @brief One page of versions for a project.
+ * @brief One page of version list rows for a project.
  *
  * Strong parent (at most one): In(shot), else In(sequence), else In(asset),
  * else In(project). Playlist is an optional weak AND on that parent.
+ * Omits image and media fields so ShotGrid does not mint signed URLs.
  * Pass next_cursor to the next call.
  *
  * @param projectId Domain project `id`.
@@ -190,9 +191,9 @@ RowPage<poco::Playlist> findPlaylists(
  * @param shotId Optional shot `id`.
  * @param assetId Optional asset `id`.
  * @param playlistId Optional playlist `id`.
- * @return Page of versions. Empty when none match or the lookup fails.
+ * @return Page of list elements. Empty when none match or the lookup fails.
  */
-RowPage<poco::Version> findVersions(
+RowPage<poco::VersionListElement> findVersionListElements(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor = std::nullopt,
@@ -200,6 +201,20 @@ RowPage<poco::Version> findVersions(
     std::optional<std::int64_t> shotId = std::nullopt,
     std::optional<std::int64_t> assetId = std::nullopt,
     std::optional<std::int64_t> playlistId = std::nullopt);
+
+/**
+ * @brief Image URL or path for one version (`Fields(image)` only).
+ * @param versionId Domain version `id`.
+ * @return Thumb row, or empty id when missing or the lookup fails.
+ */
+poco::VersionThumb findVersionThumb(std::int64_t versionId);
+
+/**
+ * @brief Frames and movie paths for opening one version.
+ * @param versionId Domain version `id`.
+ * @return Media row, or empty id when missing.
+ */
+poco::VersionMedia findVersionMedia(std::int64_t versionId);
 
 /**
  * @brief How many sequences belong to a project.

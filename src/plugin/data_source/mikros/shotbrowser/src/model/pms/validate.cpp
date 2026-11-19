@@ -182,6 +182,16 @@ void validate(const Ir &ir, const Schema &schema) {
     if (ir.cursor && !ir.limit) {
         throw Error("cursor requires a limit");
     }
+    if (ir.fields) {
+        if (ir.fields->empty()) {
+            throw Error("fields must list at least one key");
+        }
+        for (const std::string &key : *ir.fields) {
+            if (!entity->field(key)) {
+                throw Error("fields: unknown field \"" + key + "\"");
+            }
+        }
+    }
 }
 
 void checkRecord(const Record &record) {

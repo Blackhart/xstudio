@@ -212,7 +212,7 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         if (request.generation && request.generation->load() != request.request_id) {
             return; ///< A newer load started before this find.
         }
-        const dal::RowPage<poco::Version> page = dal::findVersions(
+        const dal::RowPage<poco::VersionListElement> page = dal::findVersionListElements(
             request.project_id,
             dal::readPageLimit(),
             std::nullopt,
@@ -246,14 +246,14 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         PageScope scope = pageScope(parents);
         scope.has_playlist = true;
         scope.playlist_id = request.playlist_id; ///< The panel writes these versions into that node.
-        publishPages<poco::Version>(
+        publishPages<poco::VersionListElement>(
             request.panel,
             request.request_id,
             "playlist_versions",
             request.project_id,
             [projectId = request.project_id, parents, playlistId = request.playlist_id](
                 const std::optional<std::string> &cursor) {
-                return dal::findVersions(
+                return dal::findVersionListElements(
                     projectId,
                     dal::readPageLimit(),
                     cursor,

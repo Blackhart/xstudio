@@ -12,7 +12,7 @@
 namespace xstudio::mikros_shotbrowser {
 
 VersionCard::VersionCard(
-    const poco::Version &row,
+    const poco::VersionListElement &row,
     const std::string &label,
     std::int64_t projectId,
     ImageReady onImageReady)
@@ -28,11 +28,8 @@ VersionCard::VersionCard(
       sites_(row.sites),
       has_notes_(row.has_notes),
       synced_to_client_(row.synced_to_client),
-      frames_(row.frames),
-      movie_(row.movie),
-      uploaded_movie_(row.uploaded_movie),
       on_image_ready_(std::move(onImageReady)) {
-    startThumbnailLoad(projectId, row.image, row.image_provider);
+    startThumbnailLoad(projectId);
 }
 
 void VersionCard::setImage(const std::string &path) { image_ = path; }
@@ -51,19 +48,13 @@ nlohmann::json VersionCard::toJson() const {
         {"artisticStatus", artistic_status_},
         {"sites", sites_},
         {"hasNotes", has_notes_},
-        {"syncedToClient", synced_to_client_},
-        {"frames", frames_},
-        {"movie", movie_},
-        {"uploadedMovie", uploaded_movie_}};
+        {"syncedToClient", synced_to_client_}};
 }
 
-void VersionCard::startThumbnailLoad(
-    std::int64_t projectId, const std::string &remoteImage, const std::string &provider) {
+void VersionCard::startThumbnailLoad(std::int64_t projectId) {
     scheduleOneThumb(
         projectId,
         id_,
-        remoteImage,
-        provider,
         [id = id_, onReady = on_image_ready_](std::string fileUrl) {
             if (onReady) {
                 onReady(id, fileUrl); ///< Owner applies the URL on the actor thread.

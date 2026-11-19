@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file utility/thumbnails.hpp
- * @brief Disk cache and JPEG download. Cards read the stored URL and do not download.
+ * @brief Disk cache and JPEG download by version id. Cards read the stored URL.
  */
 #pragma once
 
 #include "utility/home.hpp"
-#include "model/poco/version.hpp"
 
 #include "xstudio/utility/json_store.hpp"
-
-#include <caf/actor.hpp>
 
 #include <cstdint>
 #include <filesystem>
@@ -31,32 +28,17 @@ std::filesystem::path thumbRoot();
 } // namespace thumb
 
 /**
- * @brief Stores one page of images without blocking the actor.
- * @param weak Actor that receives the local file URLs.
- * @param projectId Project the page belongs to.
- * @param rows Versions of this page, with their image source.
- */
-void scheduleThumbPage(
-    const caf::weak_actor_ptr &weak,
-    std::int64_t projectId,
-    const std::vector<poco::Version> &rows);
-
-/**
- * @brief Resolves one version thumbnail (cache, file, or download).
+ * @brief Resolves one version thumbnail (cache or download by id).
  *
  * Runs off the caller when a download is needed. `onReady` may run on a worker
  * thread; the caller marshals to the UI thread.
  * @param projectId Project id for the cache path.
- * @param versionId Version id for the cache path.
- * @param image Remote URL or local path from ShotGrid.
- * @param provider `http`, `file`, or empty.
+ * @param versionId Version id for the cache path and the image fetch.
  * @param onReady Called with a `file://` URL when an image is ready. Not called when none.
  */
 void scheduleOneThumb(
     std::int64_t projectId,
     std::int64_t versionId,
-    const std::string &image,
-    const std::string &provider,
     std::function<void(std::string fileUrl)> onReady);
 
 /**

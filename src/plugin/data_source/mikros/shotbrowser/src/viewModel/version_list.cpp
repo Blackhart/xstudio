@@ -5,6 +5,8 @@
  */
 
 #include "viewModel/version_list.hpp"
+
+#include "model/dal/dal.hpp"
 #include "utility/home.hpp"
 #include "utility/thumbnails.hpp"
 
@@ -279,6 +281,10 @@ void logOpen(const CheckedMedia &ready) {
 void resolveOpen(caf::weak_actor_ptr panel, OpenRequest request) {
     std::thread([panel = std::move(panel), request = std::move(request)]() mutable {
         try {
+            const poco::VersionMedia media = dal::findVersionMedia(request.version_id);
+            request.frames = media.frames; ///< Media paths stay off the list find.
+            request.movie = media.movie;
+            request.uploaded_movie = media.uploaded_movie;
             const CheckedMedia ready = resolveMedia(request);
             logOpen(ready); ///< Say why nothing was opened, or which sources remain.
             if (ready.frames_spec.empty() && ready.movie_path.empty()) {
@@ -502,23 +508,24 @@ void VersionList::updateVersionList(
         trace::drop("version", requestId); ///< clearVersions bumped the id on project/parents change.
         return;
     }
-    const std::vector<poco::Version> rows = rowsFromJson<poco::Version>(payload);
-    const std::vector<poco::Version> newRows = findUnknownVersionRows(rows);
+    const std::vector<poco::VersionListElement> rows =
+        rowsFromJson<poco::VersionListElement>(payload);
+    const std::vector<poco::VersionListElement> newRows = findUnknownVersionRows(rows);
     appendVersions(newRows);
     sendVersionCardsToQml();
     markVersionsLoaded();
 }
 
-std::vector<poco::Version>
-VersionList::findUnknownVersionRows(const std::vector<poco::Version> &rows) const {
+std::vector<poco::VersionListElement> VersionList::findUnknownVersionRows(
+    const std::vector<poco::VersionListElement> &rows) const {
     std::unordered_set<std::int64_t> knownIds;
     knownIds.reserve(versions_.size());
     for (const std::unique_ptr<VersionCard> &card : versions_) {
         knownIds.insert(card->id());
     }
-    std::vector<poco::Version> newRows;
+    std::vector<poco::VersionListElement> newRows;
     newRows.reserve(rows.size());
-    for (const poco::Version &row : rows) {
+    for (const poco::VersionListElement &row : rows) {
         if (knownIds.insert(row.id).second) {
             newRows.push_back(row); ///< Skip a version already stored as a card.
         }
@@ -526,14 +533,14 @@ VersionList::findUnknownVersionRows(const std::vector<poco::Version> &rows) cons
     return newRows;
 }
 
-void VersionList::appendVersions(const std::vector<poco::Version> &newRows) {
+void VersionList::appendVersions(const std::vector<poco::VersionListElement> &newRows) {
     if (newRows.empty()) {
         return;
     }
     const std::int64_t projectId = dal::selectedProject();
     const VersionCard::ImageReady notify = makeImageReadyNotifier();
     versions_.reserve(versions_.size() + newRows.size());
-    for (const poco::Version &row : newRows) {
+    for (const poco::VersionListElement &row : newRows) {
         versions_.push_back(std::make_unique<VersionCard>(row, row.name, projectId, notify));
     }
 }
@@ -581,7 +588,16 @@ void VersionList::applyCardImage(const utility::JsonStore &payload) {
     if (projectId != -1) {
         nlohmann::json remembered = nlohmann::json::array();
         remembered.push_back({{"versionId", id}, {"image", image}});
-        rememberThumbs(projectId, utility::JsonStore(std::move(remembered))); ///< Playlist rows can reuse this URL.
+        const utility::JsonStore thumbsPayload(remembered);
+        rememberThumbs(projectId, thumbsPayload); ///< Playlist rows can reuse this URL.
+        sendCatalog(
+            caf::actor_cast<caf::weak_actor_ptr>(&panel_),
+            0,
+            "version_thumbs",
+            projectId,
+            {},
+            false,
+            thumbsPayload); ///< Stamp playlist rows that share this id.
     }
     for (std::unique_ptr<VersionCard> &card : versions_) {
         if (card->id() != id) {
@@ -653,10 +669,7 @@ void VersionList::startOpen(const std::string &text) {
     request.select = body.value("select", false);
     request.name = body.value("name", std::string());
     request.playlist_uuid = body.value("playlistUuid", std::string());
-    request.frames = body.value("frames", std::string());
     request.frame_range = body.value("frameRange", std::string());
-    request.movie = body.value("movie", std::string());
-    request.uploaded_movie = body.value("uploadedMovie", std::string());
     if (request.playlist_uuid.empty()) {
         log::info("open versionId=" + std::to_string(request.version_id) + " playlist=none");
         return;

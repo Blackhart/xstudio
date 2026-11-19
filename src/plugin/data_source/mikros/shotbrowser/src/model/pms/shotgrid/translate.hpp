@@ -36,9 +36,12 @@ nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mappin
 /**
  * @brief Lists ShotGrid attribute names to request for an entity.
  * @param schema ShotGrid schema for the queried entity.
+ * @param domainFields Domain keys to keep, or null for every mapped field.
  * @return Field shotgrid names in mapping order.
  */
-std::vector<std::string> shotgridFieldNames(const ShotGridSchema &schema);
+std::vector<std::string> shotgridFieldNames(
+    const ShotGridSchema &schema,
+    const std::vector<std::string> *domainFields = nullptr);
 
 /**
  * @brief Maps one ShotGrid data row into a domain Record.

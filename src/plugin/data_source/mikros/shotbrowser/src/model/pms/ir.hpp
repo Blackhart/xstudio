@@ -72,6 +72,13 @@ struct Ir {
     std::shared_ptr<const ExprNode> where; ///< Field filter tree, or null.
     std::optional<std::size_t> limit;      ///< Page size when set. Empty means every match.
     std::optional<std::string> cursor;     ///< Keyset cursor from a prior Page::next_cursor.
+    /**
+     * @brief Domain field keys to load on find. Empty means every mapped field.
+     *
+     * Validation ensures each key exists on the entity. Query::Fields always
+     * includes `id` and `name` so checkRecord still passes.
+     */
+    std::optional<std::vector<std::string>> fields;
 };
 
 /**

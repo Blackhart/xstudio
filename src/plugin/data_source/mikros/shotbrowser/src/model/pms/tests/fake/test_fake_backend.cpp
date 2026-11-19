@@ -115,6 +115,27 @@ TEST_CASE("the fake backend lists assets in a project") {
     CHECK(rows[0].fields.count("project") == 0);
 }
 
+TEST_CASE("the fake backend accepts a fields projection on versions") {
+    FakeBackend backend;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    const Records sequences = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    REQUIRE_FALSE(sequences.empty());
+    const auto sequenceId = std::get<std::int64_t>(sequences[0].at("id"));
+
+    const Records rows =
+        Version()
+            .In(scope::sequence == sequenceId)
+            .Fields(version::id, version::name, version::author)
+            .Limit(1)
+            .find(session)
+            .rows;
+    REQUIRE_FALSE(rows.empty());
+    CHECK(rows[0].fields.count("id") == 1);
+    CHECK(rows[0].fields.count("name") == 1);
+    CHECK(rows[0].fields.count("author") == 1);
+}
+
 TEST_CASE("the fake backend lists versions in a sequence including shot versions") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);

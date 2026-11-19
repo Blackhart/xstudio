@@ -74,6 +74,12 @@ class PlaylistTree : public QObject {
     void stampPlaylistThumbs();
 
     /**
+     * @brief Downloads missing thumbs for one playlist page (by version id).
+     * @param rows Versions that just arrived for an unfolded playlist.
+     */
+    void schedulePlaylistThumbs(const std::vector<poco::VersionListElement> &rows);
+
+    /**
      * @brief Handles a playlist page and declines every other catalog.
      * @return The playlist-page handler.
      */
@@ -173,7 +179,8 @@ class PlaylistTree : public QObject {
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
     RequestGeneration playlist_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale playlist-name fetches and pages.
-    std::map<std::int64_t, std::vector<poco::Version>> versions_by_playlist_; ///< Versions accumulated per playlist.
+    std::map<std::int64_t, std::vector<poco::VersionListElement>>
+        versions_by_playlist_; ///< List elements accumulated per playlist.
     module::JsonAttribute *tree_ = nullptr; ///< Playlists with their version rows.
     module::StringAttribute *expanded_ = nullptr; ///< Playlist the user unfolded.
     module::BooleanAttribute *playlists_loaded_ = nullptr; ///< True once the current request has delivered a page.

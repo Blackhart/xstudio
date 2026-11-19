@@ -5,7 +5,11 @@
  */
 
 #include "utility/thumbnails.hpp"
+
+#include "model/dal/dal.hpp"
+#include "model/log.hpp"
 #include "utility/catalog.hpp"
+
 #include <QBuffer>
 #include <QEventLoop>
 #include <QImage>
@@ -238,123 +242,57 @@ std::string toFileUrl(const std::filesystem::path &path) {
 
 } // namespace xstudio::mikros_shotbrowser
 
-namespace {
-
-/**
- * @brief Names where one version image came from.
- *
- * `Ready` covers both a cache hit and a direct file. The provider splits them.
- * `planThumb` itself is unchanged.
- *
- * @param provider `http`, `file`, or anything else.
- * @param kind Decision from `planThumb`.
- * @param stored True when a download wrote the cache file.
- * @return `cache`, `download`, `file`, or `none`.
- */
-const char *thumbOrigin(const std::string &provider, thumb::ThumbKind kind, bool stored) {
-    if (kind == thumb::ThumbKind::Ready && provider == "http") {
-        return "cache";
-    }
-    if (kind == thumb::ThumbKind::Ready && provider == "file") {
-        return "file";
-    }
-    if (kind == thumb::ThumbKind::Fetch && stored) {
-        return "download";
-    }
-    return "none"; ///< No image, inaccessible file, unknown provider, or a failed download.
-}
-
-} // namespace
-
 namespace xstudio::mikros_shotbrowser {
-
-/**
- * @brief Stores one page of images without blocking the actor.
- * @param weak Actor that receives the local file URLs.
- * @param projectId Project the page belongs to.
- * @param rows Versions of this page, with their image source.
- */
-void scheduleThumbPage(
-    const caf::weak_actor_ptr &weak,
-    std::int64_t projectId,
-    const std::vector<poco::Version> &rows) {
-    if (rows.empty()) {
-        return;
-    }
-    std::thread([weak, projectId, rows]() {
-        const std::filesystem::path root = thumb::thumbRoot();
-        nlohmann::json found = nlohmann::json::array();
-        for (const poco::Version &row : rows) {
-            const thumb::ThumbPlan plan =
-                thumb::planThumb(root, row.image, row.image_provider, projectId, row.id);
-            bool stored = false;
-            std::filesystem::path ready;
-            if (plan.kind == thumb::ThumbKind::Ready) {
-                ready = plan.path; ///< Cache hit or a file the card can open directly.
-            } else if (plan.kind == thumb::ThumbKind::Fetch) {
-                stored = thumb::writeBytesIfMissing(plan.path, thumb::fetchJpeg(row.image));
-                if (stored) {
-                    ready = plan.path;
-                }
-            }
-            trace::info(
-                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-                std::to_string(row.id) + " origin=" +
-                thumbOrigin(row.image_provider, plan.kind, stored));
-            if (ready.empty()) {
-                continue;
-            }
-            found.push_back({{"versionId", row.id}, {"image", thumb::toFileUrl(ready)}});
-        }
-        if (found.empty()) {
-            return;
-        }
-        sendCatalog(
-            weak,
-            0,
-            "version_thumbs",
-            projectId,
-            {},
-            false,
-            utility::JsonStore(std::move(found)));
-    }).detach();
-}
 
 void scheduleOneThumb(
     std::int64_t projectId,
     std::int64_t versionId,
-    const std::string &image,
-    const std::string &provider,
     std::function<void(std::string fileUrl)> onReady) {
-    if (!onReady || image.empty()) {
+    if (!onReady) {
         return;
     }
     const std::filesystem::path root = thumb::thumbRoot();
-    const thumb::ThumbPlan plan = thumb::planThumb(root, image, provider, projectId, versionId);
-    if (plan.kind == thumb::ThumbKind::Ready) {
+    const thumb::ThumbPlan cached =
+        thumb::planHttp(root, projectId, versionId); ///< Skip the find when the cache already has it.
+    if (cached.kind == thumb::ThumbKind::Ready) {
         trace::info(
             "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-            std::to_string(versionId) + " origin=" +
-            thumbOrigin(provider, plan.kind, false));
-        onReady(thumb::toFileUrl(plan.path));
+            std::to_string(versionId) + " origin=cache");
+        onReady(thumb::toFileUrl(cached.path));
         return;
     }
-    if (plan.kind != thumb::ThumbKind::Fetch) {
+    std::thread([projectId, versionId, root, onReady = std::move(onReady)]() {
+        const poco::VersionThumb row = dal::findVersionThumb(versionId);
+        if (row.image.empty()) {
+            trace::info(
+                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+                std::to_string(versionId) + " origin=none");
+            return;
+        }
+        const thumb::ThumbPlan plan =
+            thumb::planThumb(root, row.image, row.image_provider, projectId, versionId);
+        if (plan.kind == thumb::ThumbKind::Ready) {
+            const char *origin = row.image_provider == "file" ? "file" : "cache";
+            trace::info(
+                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+                std::to_string(versionId) + " origin=" + origin);
+            onReady(thumb::toFileUrl(plan.path));
+            return;
+        }
+        if (plan.kind != thumb::ThumbKind::Fetch) {
+            trace::info(
+                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+                std::to_string(versionId) + " origin=none");
+            return;
+        }
+        const bool stored = thumb::writeBytesIfMissing(plan.path, thumb::fetchJpeg(row.image));
         trace::info(
             "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-            std::to_string(versionId) + " origin=none");
-        return;
-    }
-    std::thread([projectId, versionId, image, provider, path = plan.path, onReady = std::move(onReady)]() {
-        const bool stored = thumb::writeBytesIfMissing(path, thumb::fetchJpeg(image));
-        trace::info(
-            "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-            std::to_string(versionId) + " origin=" +
-            thumbOrigin(provider, thumb::ThumbKind::Fetch, stored));
+            std::to_string(versionId) + " origin=" + (stored ? "download" : "none"));
         if (!stored) {
             return;
         }
-        onReady(thumb::toFileUrl(path));
+        onReady(thumb::toFileUrl(plan.path));
     }).detach();
 }
 

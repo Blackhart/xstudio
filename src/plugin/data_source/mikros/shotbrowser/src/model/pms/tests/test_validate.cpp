@@ -198,6 +198,28 @@ TEST_CASE("validate accepts count and rejects its pagination") {
     CHECK_THROWS_WITH_AS(validate(ir, loaded), "count does not accept a cursor", Error);
 }
 
+TEST_CASE("validate accepts a known fields projection") {
+    const Schema loaded = schema();
+    Ir ir;
+    ir.op = Op::Find;
+    ir.entity = "version";
+    ir.fields = std::vector<std::string>{"id", "name", "author", "image"};
+    CHECK_NOTHROW(validate(ir, loaded));
+}
+
+TEST_CASE("validate rejects an empty or unknown fields projection") {
+    const Schema loaded = schema();
+    Ir ir;
+    ir.op = Op::Find;
+    ir.entity = "version";
+    ir.fields = std::vector<std::string>{};
+    CHECK_THROWS_WITH_AS(validate(ir, loaded), "fields must list at least one key", Error);
+
+    ir.fields = std::vector<std::string>{"id", "not_a_field"};
+    CHECK_THROWS_WITH_AS(
+        validate(ir, loaded), "fields: unknown field \"not_a_field\"", Error);
+}
+
 TEST_CASE("a returned record must carry id and name") {
     Record good;
     good.fields["id"] = std::int64_t{12};

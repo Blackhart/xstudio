@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/version_card.hpp
- * @brief One version row: display fields and thumbnail load (no QObject).
+ * @brief One version row: list metadata and thumbnail load (no QObject).
  */
 #pragma once
 
-#include "model/poco/version.hpp"
+#include "model/poco/version_list_element.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -18,8 +18,9 @@ namespace xstudio::mikros_shotbrowser {
 /**
  * @brief Display state of one version. Reusable by the version list and playlists.
  *
- * The constructor copies ShotGrid fields and starts the thumbnail resolve. When the
- * local image is ready, `ImageReady` is called so the owner can republish JSON to QML.
+ * The constructor copies list fields and starts the thumbnail resolve by id.
+ * When the local image is ready, `ImageReady` is called so the owner can
+ * republish JSON to QML.
  */
 class VersionCard {
   public:
@@ -32,13 +33,13 @@ class VersionCard {
 
     /**
      * @brief Stores display fields and starts the thumbnail load.
-     * @param row Version row from the catalog.
+     * @param row List row from the catalog.
      * @param label Name shown in the title.
      * @param projectId Project used for the thumb cache path.
      * @param onImageReady Notified when the thumb file URL is ready. May run off the actor.
      */
     VersionCard(
-        const poco::Version &row,
+        const poco::VersionListElement &row,
         const std::string &label,
         std::int64_t projectId,
         ImageReady onImageReady);
@@ -59,13 +60,10 @@ class VersionCard {
 
   private:
     /**
-     * @brief Resolves the thumbnail from cache or starts a download.
+     * @brief Resolves the thumbnail from cache or downloads by version id.
      * @param projectId Project for the cache path.
-     * @param remoteImage ShotGrid image URL or path.
-     * @param provider `http`, `file`, or empty.
      */
-    void startThumbnailLoad(
-        std::int64_t projectId, const std::string &remoteImage, const std::string &provider);
+    void startThumbnailLoad(std::int64_t projectId);
 
     std::int64_t id_ = 0;
     std::string name_;
@@ -80,9 +78,6 @@ class VersionCard {
     std::string sites_;
     bool has_notes_ = false;
     bool synced_to_client_ = false;
-    std::string frames_;
-    std::string movie_;
-    std::string uploaded_movie_;
     ImageReady on_image_ready_; ///< Owner republishes JSON when the thumb arrives.
 };
 

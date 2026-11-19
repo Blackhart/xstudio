@@ -20,6 +20,7 @@
 #include <sstream>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace xstudio::mikros_shotbrowser::dal {
 namespace {
@@ -304,6 +305,14 @@ class SharedPms {
 };
 
 /**
+ * @brief Reads one optional string field.
+ * @param record Domain row.
+ * @param key Field name, such as `"image"`.
+ * @return The string, or empty when the field is absent or not a string.
+ */
+std::string optionalString(const pms::Record &record, const std::string &key);
+
+/**
  * @brief Maps `id`/`name` records to a POCO vector.
  * @tparam Row POCO type with `id` and `name` members.
  * @param records Domain rows.
@@ -350,20 +359,19 @@ bool optionalFlag(const pms::Record &record, const std::string &key) {
 }
 
 /**
- * @brief Maps version records, including the image source and its provider.
+ * @brief Maps version list records (no image or media).
  * @param records Domain rows.
- * @return Version rows in the same order. Image fields stay empty when absent.
+ * @return List elements in the same order.
  */
 template <>
-std::vector<poco::Version> mapRecordsToRows<poco::Version>(const pms::Records &records) {
-    std::vector<poco::Version> rows;
+std::vector<poco::VersionListElement> mapRecordsToRows<poco::VersionListElement>(
+    const pms::Records &records) {
+    std::vector<poco::VersionListElement> rows;
     rows.reserve(records.size());
     for (const pms::Record &record : records) {
-        poco::Version row;
+        poco::VersionListElement row;
         row.id = std::get<std::int64_t>(record.at("id"));
         row.name = std::get<std::string>(record.at("name"));
-        row.image = optionalString(record, "image");
-        row.image_provider = optionalString(record, "image_provider");
         row.author = optionalString(record, "author");
         row.created_at = optionalString(record, "created_at");
         row.frame_range = optionalString(record, "frame_range");
@@ -374,15 +382,34 @@ std::vector<poco::Version> mapRecordsToRows<poco::Version>(const pms::Records &r
         row.sites = optionalString(record, "sites");
         row.has_notes = optionalFlag(record, "has_notes");
         row.synced_to_client = optionalFlag(record, "synced_to_client");
-        row.frames = optionalString(record, "frames");
-        row.frames_provider = optionalString(record, "frames_provider");
-        row.movie = optionalString(record, "movie");
-        row.movie_provider = optionalString(record, "movie_provider");
-        row.uploaded_movie = optionalString(record, "uploaded_movie");
-        row.uploaded_movie_provider = optionalString(record, "uploaded_movie_provider");
         rows.push_back(std::move(row));
     }
     return rows;
+}
+
+/**
+ * @brief Builds the strong/weak parent scope for a version find.
+ */
+decltype(pms::Version()) versionScopeQuery(
+    std::int64_t projectId,
+    std::optional<std::int64_t> sequenceId,
+    std::optional<std::int64_t> shotId,
+    std::optional<std::int64_t> assetId,
+    std::optional<std::int64_t> playlistId) {
+    auto query = pms::Version();
+    if (shotId) {
+        query = query.In(pms::scope::shot == *shotId);
+    } else if (sequenceId) {
+        query = query.In(pms::scope::sequence == *sequenceId);
+    } else if (assetId) {
+        query = query.In(pms::scope::asset == *assetId);
+    } else {
+        query = query.In(pms::scope::project == projectId);
+    }
+    if (playlistId) {
+        query = query.In(pms::scope::playlist == *playlistId);
+    }
+    return query;
 }
 
 /**
@@ -552,7 +579,7 @@ RowPage<poco::Playlist> findPlaylists(
         pms::Playlist().In(pms::scope::project == projectId), limit, cursor);
 }
 
-RowPage<poco::Version> findVersions(
+RowPage<poco::VersionListElement> findVersionListElements(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor,
@@ -560,20 +587,74 @@ RowPage<poco::Version> findVersions(
     std::optional<std::int64_t> shotId,
     std::optional<std::int64_t> assetId,
     std::optional<std::int64_t> playlistId) {
-    auto query = pms::Version();
-    if (shotId) {
-        query = query.In(pms::scope::shot == *shotId); ///< Narrowest strong parent.
-    } else if (sequenceId) {
-        query = query.In(pms::scope::sequence == *sequenceId); ///< Sequence when no shot is set.
-    } else if (assetId) {
-        query = query.In(pms::scope::asset == *assetId); ///< Asset excludes the sequence branch.
-    } else {
-        query = query.In(pms::scope::project == projectId); ///< Whole project.
+    using namespace pms::version;
+    auto query = versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId)
+                     .Fields(
+                         id,
+                         name,
+                         author,
+                         createdAt,
+                         frameRange,
+                         description,
+                         step,
+                         status,
+                         artisticStatus,
+                         sites,
+                         hasNotes,
+                         syncedToClient);
+    return fetchPage<poco::VersionListElement>(std::move(query), limit, cursor);
+}
+
+poco::VersionThumb findVersionThumb(std::int64_t versionId) {
+    try {
+        using namespace pms::version;
+        const pms::Page page =
+            pms::Version()
+                .Where(id == versionId)
+                .Fields(id, name, image)
+                .Limit(1)
+                .find(SharedPms::getInstance().getSession());
+        if (page.rows.empty()) {
+            return {};
+        }
+        const pms::Record &record = page.rows.front();
+        poco::VersionThumb row;
+        row.id = std::get<std::int64_t>(record.at("id"));
+        row.image = optionalString(record, "image");
+        row.image_provider = optionalString(record, "image_provider");
+        return row;
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return {};
     }
-    if (playlistId) {
-        query = query.In(pms::scope::playlist == *playlistId); ///< Weak parent, combined with AND.
+}
+
+poco::VersionMedia findVersionMedia(std::int64_t versionId) {
+    try {
+        using namespace pms::version;
+        const pms::Page page =
+            pms::Version()
+                .Where(id == versionId)
+                .Fields(id, name, frames, movie, uploadedMovie)
+                .Limit(1)
+                .find(SharedPms::getInstance().getSession());
+        if (page.rows.empty()) {
+            return {};
+        }
+        const pms::Record &record = page.rows.front();
+        poco::VersionMedia row;
+        row.id = std::get<std::int64_t>(record.at("id"));
+        row.frames = optionalString(record, "frames");
+        row.frames_provider = optionalString(record, "frames_provider");
+        row.movie = optionalString(record, "movie");
+        row.movie_provider = optionalString(record, "movie_provider");
+        row.uploaded_movie = optionalString(record, "uploaded_movie");
+        row.uploaded_movie_provider = optionalString(record, "uploaded_movie_provider");
+        return row;
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return {};
     }
-    return fetchPage<poco::Version>(std::move(query), limit, cursor);
 }
 
 /**

@@ -7,6 +7,7 @@
 #include "viewModel/playlist_tree.hpp"
 #include "utility/thumbnails.hpp"
 
+#include <caf/actor_cast.hpp>
 #include <caf/const_typed_message_view.hpp>
 #include <caf/detail/behavior_impl.hpp>
 #include <caf/make_counted.hpp>
@@ -36,7 +37,7 @@ namespace {
  * @return Object with the card keys.
  */
 nlohmann::json versionFacts(
-    const poco::Version &row, const std::string &label, const std::string &image) {
+    const poco::VersionListElement &row, const std::string &label, const std::string &image) {
     return {
         {"name", label},
         {"id", row.id},
@@ -50,10 +51,7 @@ nlohmann::json versionFacts(
         {"artisticStatus", row.artistic_status},
         {"sites", row.sites},
         {"hasNotes", row.has_notes},
-        {"syncedToClient", row.synced_to_client},
-        {"frames", row.frames},
-        {"movie", row.movie},
-        {"uploadedMovie", row.uploaded_movie}};
+        {"syncedToClient", row.synced_to_client}};
 }
 
 
@@ -380,8 +378,9 @@ void PlaylistTree::updatePlaylistList(bool append, const utility::JsonStore &pay
 
 void PlaylistTree::updateVersionsForPlaylist(
     std::int64_t playlistId, bool append, const utility::JsonStore &payload) {
-    const std::vector<poco::Version> rows = rowsFromJson<poco::Version>(payload);
-    std::vector<poco::Version> &stored = versions_by_playlist_[playlistId];
+    const std::vector<poco::VersionListElement> rows =
+        rowsFromJson<poco::VersionListElement>(payload);
+    std::vector<poco::VersionListElement> &stored = versions_by_playlist_[playlistId];
     if (!append) {
         stored.clear(); ///< The first page replaces this playlist's versions.
     }
@@ -391,6 +390,7 @@ void PlaylistTree::updateVersionsForPlaylist(
     for (std::size_t index = 0; index < stored.size(); ++index) {
         entries.push_back(versionFacts(stored[index], labels[index], std::string()));
     }
+    schedulePlaylistThumbs(rows);
     nlohmann::json tree = treeValue();
     for (auto &node : tree) {
         if (!node.is_object() || !node.contains("id") || node["id"].get<std::int64_t>() != playlistId) {
@@ -448,6 +448,34 @@ void PlaylistTree::stampPlaylistThumbs() {
     }
     if (changed) {
         sendPlaylistTreeToQml(tree);
+    }
+}
+
+void PlaylistTree::schedulePlaylistThumbs(const std::vector<poco::VersionListElement> &rows) {
+    const std::int64_t projectId = dal::selectedProject();
+    if (projectId == -1 || rows.empty()) {
+        return;
+    }
+    const caf::weak_actor_ptr panel = caf::actor_cast<caf::weak_actor_ptr>(&panel_);
+    for (const poco::VersionListElement &row : rows) {
+        scheduleOneThumb(
+            projectId,
+            row.id,
+            [panel, projectId, versionId = row.id](std::string fileUrl) {
+                if (fileUrl.empty()) {
+                    return;
+                }
+                nlohmann::json body = nlohmann::json::array();
+                body.push_back({{"versionId", versionId}, {"image", fileUrl}});
+                sendCatalog(
+                    panel,
+                    0,
+                    "version_thumbs",
+                    projectId,
+                    {},
+                    false,
+                    utility::JsonStore(std::move(body)));
+            });
     }
 }
 

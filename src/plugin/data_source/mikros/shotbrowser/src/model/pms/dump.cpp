@@ -129,6 +129,13 @@ std::string dump(const Ir &ir) {
     if (ir.cursor) {
         out << "cursor: \"" << escape(*ir.cursor) << "\"\n";
     }
+    if (ir.fields) {
+        out << "fields:";
+        for (const std::string &key : *ir.fields) {
+            out << ' ' << key;
+        }
+        out << '\n';
+    }
     return out.str();
 }
 

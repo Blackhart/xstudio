@@ -8,6 +8,7 @@
 
 #include "pms/error.hpp"
 
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include <unordered_set>
@@ -448,13 +449,23 @@ nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mappin
     return filters;
 }
 
-std::vector<std::string> shotgridFieldNames(const ShotGridSchema &schema) {
+std::vector<std::string> shotgridFieldNames(
+    const ShotGridSchema &schema, const std::vector<std::string> *domainFields) {
     std::vector<std::string> names;
     names.reserve(schema.fields.size());
     for (const ShotGridSchemaField &field : schema.fields) {
-        if (!field.shotgrid.empty()) {
-            names.push_back(field.shotgrid);
+        if (field.shotgrid.empty()) {
+            continue;
         }
+        if (domainFields) {
+            const bool wanted =
+                std::find(domainFields->begin(), domainFields->end(), field.domain) !=
+                domainFields->end();
+            if (!wanted) {
+                continue; ///< Projection omits this mapped field from `?fields=`.
+            }
+        }
+        names.push_back(field.shotgrid);
     }
     return names;
 }

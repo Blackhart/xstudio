@@ -12,10 +12,12 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace pms {
 
@@ -204,9 +206,11 @@ class ShotGridBackend : public Backend {
      * @brief Appends the `fields` query parameter.
      * @param url Path so far.
      * @param schema ShotGrid schema for the queried entity.
+     * @param ir Incoming query. Uses `ir.fields` when set.
      * @return URL including `?fields=`.
      */
-    std::string appendFields(std::string url, const ShotGridSchema &schema) const;
+    std::string appendFields(
+        std::string url, const ShotGridSchema &schema, const Ir &ir) const;
 
     /**
      * @brief Appends the `sort` query parameter. Sort is the mapped id field.

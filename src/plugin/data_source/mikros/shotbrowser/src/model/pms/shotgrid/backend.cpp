@@ -228,8 +228,11 @@ std::size_t ShotGridBackend::readSummarizeCount(const httplib::Result &response)
     throw Error("shotgrid: summarize summaries.id is not an int");
 }
 
-std::string ShotGridBackend::appendFields(std::string url, const ShotGridSchema &schema) const {
-    const std::vector<std::string> fields = shotgridFieldNames(schema);
+std::string ShotGridBackend::appendFields(
+    std::string url, const ShotGridSchema &schema, const Ir &ir) const {
+    const std::vector<std::string> *domainFields =
+        ir.fields ? &(*ir.fields) : nullptr;
+    const std::vector<std::string> fields = shotgridFieldNames(schema, domainFields);
     url += "?fields=";
     for (std::size_t i = 0; i < fields.size(); ++i) {
         if (i != 0) {
@@ -320,7 +323,7 @@ Page ShotGridBackend::find(const Ir &ir) {
     const ShotGridSchema &schema = extractSchemaFromIR(ir);
     connectIfNeeded();
     std::string url = buildEntityUrl(schema);
-    url = appendFields(url, schema);
+    url = appendFields(url, schema, ir);
     url = appendSort(url, schema);
     url = appendPage(url, ir);
     const nlohmann::json body = buildRequestBody(ir);
