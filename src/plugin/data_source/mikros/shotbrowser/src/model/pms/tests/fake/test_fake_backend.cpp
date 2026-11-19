@@ -136,6 +136,10 @@ TEST_CASE("the fake backend lists versions in a sequence including shot versions
     CHECK(rows[0].fields.count("frames") == 1);
     CHECK(rows[0].fields.count("movie") == 1);
     CHECK(rows[0].fields.count("uploaded_movie") == 1);
+    CHECK(std::get<std::string>(rows[0].at("frame_range")) == "1001-1005");
+    CHECK(
+        std::get<std::string>(rows[0].at("frames")).find("fake_media/") != std::string::npos);
+    CHECK(std::get<std::string>(rows[0].at("frames")).find("####.jpg") != std::string::npos);
     CHECK(rows[1].fields.count("author") == 1);
     CHECK(rows[1].fields.count("sites") == 1);
     CHECK(rows[1].fields.count("image") == 1);

@@ -16,9 +16,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <iomanip>
 #include <map>
 #include <optional>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -334,62 +336,182 @@ void drawCenteredLabel(
 }
 
 /**
- * @brief Writes a JPEG thumb with the version name centered, via OpenImageIO.
- *
- * OIIO fills and writes the file. Text uses a bitmap font because this OIIO
- * build has no FreeType (`render_text` aborts the thumb otherwise).
- * @param name Version name drawn on the image.
- * @param projectId Project id for the cache folder.
- * @param versionId Version id for the cache folder.
- * @return Absolute path of the JPEG, or empty when home is missing or the write fails.
+ * @brief True when `path` is a non-empty regular file.
+ * @param path File to test.
+ * @return False when missing, empty, or not a file.
  */
-std::string writeVersionThumb(
-    const std::string &name, std::int64_t projectId, std::int64_t versionId) {
-    const char *home = std::getenv("HOME");
-    if (home == nullptr || *home == '\0') {
-        return {};
-    }
-    const std::filesystem::path path = std::filesystem::path(home) / "xStudio" /
-                                       "mikros_shotbrowser" / "fake_thumbs" /
-                                       std::to_string(projectId) / std::to_string(versionId) /
-                                       "thumbnail.jpg";
+bool fileHasBytes(const std::filesystem::path &path) {
     std::error_code error;
-    if (std::filesystem::is_regular_file(path, error) && !error &&
-        std::filesystem::file_size(path, error) > 0 && !error) {
-        return path.string(); ///< Keep a thumb written by an earlier FakeBackend.
+    if (!std::filesystem::is_regular_file(path, error) || error) {
+        return false;
     }
-    std::filesystem::create_directories(path.parent_path(), error);
-    if (error) {
-        return {};
-    }
+    return std::filesystem::file_size(path, error) > 0 && !error;
+}
 
+/**
+ * @brief Writes one RGB JPEG with a centered label via OpenImageIO.
+ * @param path Destination file.
+ * @param label Text drawn on the image.
+ * @param bgR Background red in 0..1.
+ * @param bgG Background green in 0..1.
+ * @param bgB Background blue in 0..1.
+ * @return True when the file was written.
+ */
+bool writeLabeledJpeg(
+    const std::filesystem::path &path,
+    const std::string &label,
+    float bgR,
+    float bgG,
+    float bgB) {
     constexpr int width = 320;
     constexpr int height = 180;
     OIIO::ImageSpec spec(width, height, 3, OIIO::TypeDesc::UINT8);
     OIIO::ImageBuf image(spec);
-    const float background[3] = {
-        static_cast<float>(32 + (versionId % 40)) / 255.0f,
-        36.0f / 255.0f,
-        48.0f / 255.0f};
+    const float background[3] = {bgR, bgG, bgB};
     if (!OIIO::ImageBufAlgo::fill(image, background)) {
-        return {};
+        return false;
     }
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width * height * 3));
     if (!image.get_pixels(OIIO::ROI(), OIIO::TypeDesc::UINT8, pixels.data())) {
-        return {};
+        return false;
     }
-    drawCenteredLabel(pixels, width, height, name);
+    drawCenteredLabel(pixels, width, height, label);
     if (!image.set_pixels(OIIO::ROI(), OIIO::TypeDesc::UINT8, pixels.data())) {
-        return {};
+        return false;
     }
-    if (!image.write(path.string())) {
-        return {};
-    }
-    return path.string();
+    return image.write(path.string());
+}
+
+constexpr int kFirstFrame = 1001; ///< Inclusive start of the fake sequence.
+constexpr int kLastFrame = 1005;  ///< Inclusive end of the fake sequence.
+
+/**
+ * @brief File name for one padded frame of a version.
+ * @param name Version name prefix.
+ * @param frame Frame number, for example 1001.
+ * @return `name.1001.jpg`.
+ */
+std::string frameFileName(const std::string &name, int frame) {
+    std::ostringstream fileName;
+    fileName << name << '.' << std::setw(4) << std::setfill('0') << frame << ".jpg";
+    return fileName.str();
 }
 
 /**
- * @brief Fills every VersionCard field, including a local thumb path.
+ * @brief True when every frame file of the fake sequence is on disk.
+ * @param dir Version media folder.
+ * @param name Version name prefix.
+ * @return False when any frame is missing.
+ */
+bool sequenceReady(const std::filesystem::path &dir, const std::string &name) {
+    for (int frame = kFirstFrame; frame <= kLastFrame; ++frame) {
+        if (!fileHasBytes(dir / frameFileName(name, frame))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Paths for the thumb, the sequence pattern, and the movie of one version.
+ */
+struct VersionAssetPaths {
+    std::string thumb;  ///< Local thumbnail JPEG. Empty when missing.
+    std::string frames; ///< Sequence pattern `name.####.jpg`. Empty when incomplete.
+    std::string movie;  ///< Local `movie.mov`. Empty when ffmpeg did not write it.
+};
+
+/**
+ * @brief Ensures thumb, sequence, and movie exist; creates only what is missing.
+ *
+ * When all three are already on disk, returns their paths with no write and no
+ * ffmpeg. Frames stay usable when ffmpeg fails.
+ * @param name Version name used as the media folder and frame prefix.
+ * @param projectId Project id for the thumb cache folder.
+ * @param versionId Version id for the thumb cache folder.
+ * @return Absolute paths under `~/xStudio/mikros_shotbrowser/`, or empty fields when home is missing.
+ */
+VersionAssetPaths ensureVersionAssets(
+    const std::string &name, std::int64_t projectId, std::int64_t versionId) {
+    VersionAssetPaths paths;
+    const char *home = std::getenv("HOME");
+    if (home == nullptr || *home == '\0') {
+        return paths;
+    }
+    const std::filesystem::path root =
+        std::filesystem::path(home) / "xStudio" / "mikros_shotbrowser";
+    const std::filesystem::path thumbPath =
+        root / "fake_thumbs" / std::to_string(projectId) / std::to_string(versionId) /
+        "thumbnail.jpg";
+    const std::filesystem::path mediaDir = root / "fake_media" / name;
+    const std::filesystem::path moviePath = mediaDir / "movie.mov";
+    const std::string framesPattern = (mediaDir / (name + ".####.jpg")).string();
+
+    const bool thumbOk = fileHasBytes(thumbPath);
+    const bool sequenceOk = sequenceReady(mediaDir, name);
+    const bool movieOk = fileHasBytes(moviePath);
+    if (thumbOk) {
+        paths.thumb = thumbPath.string();
+    }
+    if (sequenceOk) {
+        paths.frames = framesPattern;
+    }
+    if (movieOk) {
+        paths.movie = moviePath.string();
+    }
+    if (thumbOk && sequenceOk && movieOk) {
+        return paths; ///< Nothing to generate for this version.
+    }
+
+    std::error_code error;
+    if (!thumbOk) {
+        std::filesystem::create_directories(thumbPath.parent_path(), error);
+        if (!error) {
+            const float bgR = static_cast<float>(32 + (versionId % 40)) / 255.0f;
+            if (writeLabeledJpeg(thumbPath, name, bgR, 36.0f / 255.0f, 48.0f / 255.0f)) {
+                paths.thumb = thumbPath.string();
+            }
+        }
+    }
+
+    if (!sequenceOk) {
+        error.clear();
+        std::filesystem::create_directories(mediaDir, error);
+        if (!error) {
+            for (int frame = kFirstFrame; frame <= kLastFrame; ++frame) {
+                const std::filesystem::path framePath = mediaDir / frameFileName(name, frame);
+                if (fileHasBytes(framePath)) {
+                    continue;
+                }
+                const std::string label = name + " " + std::to_string(frame);
+                const float bgR = static_cast<float>(32 + (frame % 40)) / 255.0f;
+                writeLabeledJpeg(framePath, label, bgR, 40.0f / 255.0f, 52.0f / 255.0f);
+            }
+            if (sequenceReady(mediaDir, name)) {
+                paths.frames = framesPattern;
+            }
+        }
+    }
+
+    if (!movieOk && !paths.frames.empty()) {
+        const std::string pattern = (mediaDir / (name + ".%04d.jpg")).string();
+        // Drop xstudio/vcpkg LD_LIBRARY_PATH: system ffmpeg then loads a mismatched FreeType.
+        const std::string cmd =
+            "env -u LD_LIBRARY_PATH -u LD_PRELOAD /usr/bin/ffmpeg -y -loglevel error "
+            "-framerate 24 -start_number " +
+            std::to_string(kFirstFrame) + " -i '" + pattern + "' -frames:v " +
+            std::to_string(kLastFrame - kFirstFrame + 1) +
+            " -c:v libx264 -pix_fmt yuv420p '" + moviePath.string() + "'";
+        const int ffmpegStatus = std::system(cmd.c_str());
+        if (ffmpegStatus == 0 && fileHasBytes(moviePath)) {
+            paths.movie = moviePath.string();
+        }
+    }
+    return paths;
+}
+
+/**
+ * @brief Fills every VersionCard field, including local thumb and open-media paths.
  * @param row Version row that already has id, name, and project.
  * @param index 1-based index among the parent's versions (varies the sample).
  */
@@ -415,14 +537,12 @@ void fillVersionCard(Record &row, std::size_t index) {
         "Anim blocking",
         "FX polish",
         "Paint fix"};
-    static const char *ranges[] = {
-        "1001-1100", "1001-1050", "1001-1200x2", "1010-1090", "1001-1001"};
 
     row.fields["author"] = std::string(authors[pick]);
     row.fields["created_at"] =
         std::string("2024-0") + std::to_string(1 + static_cast<int>(pick)) + "-0" +
         std::to_string(1 + static_cast<int>(index));
-    row.fields["frame_range"] = std::string(ranges[pick]);
+    row.fields["frame_range"] = std::string("1001-1005");
     row.fields["description"] = std::string(descriptions[pick]);
     row.fields["step"] = std::string(steps[pick]);
     row.fields["status"] = std::string(statuses[pick]);
@@ -430,16 +550,20 @@ void fillVersionCard(Record &row, std::size_t index) {
     row.fields["sites"] = std::string(sites[pick]);
     row.fields["has_notes"] = std::int64_t{(id % 2) == 0 ? 1 : 0};
     row.fields["synced_to_client"] = std::int64_t{(id % 3) == 0 ? 1 : 0};
-    row.fields["frames"] = "/tmp/fake_media/" + name + "/.####.exr";
-    row.fields["frames_provider"] = std::string("fileSeq");
-    row.fields["movie"] = "/tmp/fake_media/" + name + "/movie.mov";
-    row.fields["movie_provider"] = std::string("file");
     row.fields["uploaded_movie"] = "https://example.test/movies/" + name + ".mp4";
     row.fields["uploaded_movie_provider"] = std::string("url");
 
-    const std::string thumb = writeVersionThumb(name, projectId, id);
-    if (!thumb.empty()) {
-        row.fields["image"] = thumb;
+    const VersionAssetPaths assets = ensureVersionAssets(name, projectId, id);
+    if (!assets.frames.empty()) {
+        row.fields["frames"] = assets.frames;
+        row.fields["frames_provider"] = std::string("fileSeq");
+    }
+    if (!assets.movie.empty()) {
+        row.fields["movie"] = assets.movie;
+        row.fields["movie_provider"] = std::string("file");
+    }
+    if (!assets.thumb.empty()) {
+        row.fields["image"] = assets.thumb;
         row.fields["image_provider"] = std::string("file");
     }
 }
@@ -450,7 +574,7 @@ void fillVersionCard(Record &row, std::size_t index) {
  * Sequence versions omit `shot` and `asset`. Shot versions set `shot`,
  * `sequence`, and `project`. Asset versions set `asset` and `project`.
  * Playlist membership is stored separately (weak many-to-many).
- * Every version carries a full VersionCard payload and a local thumb.
+ * Every version carries a full VersionCard payload, a local thumb, and open-media files.
  */
 Records makeVersions(
     const Records &sequences, const Records &shots, const Records &assets) {
