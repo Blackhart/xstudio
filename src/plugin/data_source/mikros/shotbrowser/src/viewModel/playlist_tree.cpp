@@ -199,6 +199,8 @@ void PlaylistTree::initQmlAttributes(plugin::StandardPlugin &panel) {
     tree_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     expanded_ = panel.add_string_attribute("ExpandedPlaylist", "ExpandedPlaylist", "");
     expanded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    playlists_loaded_ = panel.add_boolean_attribute("PlaylistsLoaded", "PlaylistsLoaded", false);
+    playlists_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 // ---------------------------------------------------------------------------
@@ -282,7 +284,20 @@ void PlaylistTree::clearPlaylists() {
 void PlaylistTree::clearPlaylistUi() {
     versions_by_playlist_.clear();
     sendPlaylistTreeToQml(nlohmann::json::array());
+    clearPlaylistsLoadedFlag();
     clearExpanded();
+}
+
+void PlaylistTree::clearPlaylistsLoadedFlag() {
+    if (playlists_loaded_) {
+        playlists_loaded_->set_value(false); ///< An empty tree is a load in progress, not a result.
+    }
+}
+
+void PlaylistTree::markPlaylistsLoaded() {
+    if (playlists_loaded_) {
+        playlists_loaded_->set_value(true); ///< Zero rows is still a finished load.
+    }
 }
 
 void PlaylistTree::loadVersionsForPlaylistAsync(std::int64_t playlistId) {
@@ -360,6 +375,7 @@ void PlaylistTree::updatePlaylistList(bool append, const utility::JsonStore &pay
     }
     sortPlaylistsByName(tree);
     sendPlaylistTreeToQml(tree);
+    markPlaylistsLoaded();
 }
 
 void PlaylistTree::updateVersionsForPlaylist(

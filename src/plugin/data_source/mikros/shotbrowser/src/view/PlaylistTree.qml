@@ -31,9 +31,9 @@ Item {
     }
 
     function listPlaceholder() {
-        if (!project.value)
+        if (!project.value || project.value === "-1")
             return "No project selected"
-        if (!playlistTreeNodes().length)
+        if (!playlistsLoaded.value)
             return "Loading…"
         return "No results"
     }
@@ -118,11 +118,17 @@ Item {
         modelDataName: "mikros_shotbrowser_attributes"
     }
 
-    CatalogValue { id: project; title: "Project"; source: attributes }
+    CatalogValue { id: project; title: "SelectedProject"; source: attributes }
 
     XsAttributeValue {
         id: playlistTreeAttr
         attributeTitle: "PlaylistTree"
+        model: attributes
+    }
+
+    XsAttributeValue {
+        id: playlistsLoaded
+        attributeTitle: "PlaylistsLoaded"
         model: attributes
     }
 
@@ -153,7 +159,11 @@ Item {
         playlistTree: true
         names: playlists.playlistTreeRows()
         footerCount: playlists.playlistTreeNodes().length
-        placeholder: playlists.listPlaceholder()
+        placeholder: {
+            project.value
+            playlistsLoaded.value
+            return playlists.listPlaceholder()
+        }
         rowDelegate: playlistRow
     }
 

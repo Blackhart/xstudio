@@ -17,7 +17,7 @@ Item {
     signal menuRequested(var row, var item, real x, real y)
 
     function versionListPlaceholder() {
-        if (!project.value)
+        if (!project.value || project.value === "-1")
             return "No project selected"
         if (!versionsLoaded.value)
             return "Loading…"
@@ -43,7 +43,7 @@ Item {
         modelDataName: "mikros_shotbrowser_attributes"
     }
 
-    CatalogValue { id: project; title: "Project"; source: attributes }
+    CatalogValue { id: project; title: "SelectedProject"; source: attributes }
 
     XsAttributeValue {
         id: versionCardsAttr

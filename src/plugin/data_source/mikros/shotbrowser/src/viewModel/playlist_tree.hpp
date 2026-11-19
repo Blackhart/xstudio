@@ -98,6 +98,16 @@ class PlaylistTree : public QObject {
     void clearPlaylistUi();
 
     /**
+     * @brief Sets `PlaylistsLoaded` to false (loading / cleared).
+     */
+    void clearPlaylistsLoadedFlag();
+
+    /**
+     * @brief Sets `PlaylistsLoaded` to true (page applied, including zero rows).
+     */
+    void markPlaylistsLoaded();
+
+    /**
      * @brief Loads the versions nested under one playlist. Does not move the request id.
      * @param playlistId Playlist the user unfolded.
      */
@@ -166,6 +176,7 @@ class PlaylistTree : public QObject {
     std::map<std::int64_t, std::vector<poco::Version>> versions_by_playlist_; ///< Versions accumulated per playlist.
     module::JsonAttribute *tree_ = nullptr; ///< Playlists with their version rows.
     module::StringAttribute *expanded_ = nullptr; ///< Playlist the user unfolded.
+    module::BooleanAttribute *playlists_loaded_ = nullptr; ///< True once the current request has delivered a page.
 };
 
 } // namespace xstudio::mikros_shotbrowser

@@ -383,6 +383,8 @@ void ShotTree::initQmlAttributes(plugin::StandardPlugin &panel) {
     shot_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     footer_ = panel.add_string_attribute("ShotTreeFooter", "ShotTreeFooter", "");
     footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    shot_tree_loaded_ = panel.add_boolean_attribute("ShotTreeLoaded", "ShotTreeLoaded", false);
+    shot_tree_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 void ShotTree::registerQmlSingleton() {
@@ -576,6 +578,7 @@ void ShotTree::clearShotTree() {
     sequences_.clear();
     item_model_.resetFromSequences();
     clearFooterValue(); ///< Clear until the next count arrives.
+    clearShotTreeLoadedFlag();
     setSelectedSequenceAndShot(-1, -1); ///< Drop the pair with the previous project's tree.
 }
 
@@ -616,6 +619,18 @@ void ShotTree::clearFooterValue() {
     }
 }
 
+void ShotTree::clearShotTreeLoadedFlag() {
+    if (shot_tree_loaded_) {
+        shot_tree_loaded_->set_value(false); ///< An empty tree is a load in progress, not a result.
+    }
+}
+
+void ShotTree::markShotTreeLoaded() {
+    if (shot_tree_loaded_) {
+        shot_tree_loaded_->set_value(true); ///< Zero rows is still a finished load.
+    }
+}
+
 void ShotTree::updateSequenceShots(bool append, const utility::JsonStore &payload) {
     const std::vector<poco::SequenceShots> rows = rowsFromJson<poco::SequenceShots>(payload);
     if (!append) {
@@ -630,6 +645,7 @@ void ShotTree::updateSequenceShots(bool append, const utility::JsonStore &payloa
     sortShotsByName();
     sortSequencesByName();
     item_model_.resetFromSequences(); ///< Sort reorders roots; a full reset is the simple path.
+    markShotTreeLoaded();
 }
 
 void ShotTree::sortShotsByName() {

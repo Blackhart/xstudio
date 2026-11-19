@@ -125,6 +125,16 @@ class AssetList : public QObject {
     void clearFooterValue();
 
     /**
+     * @brief Sets `AssetsLoaded` to false (loading / cleared).
+     */
+    void clearAssetsLoadedFlag();
+
+    /**
+     * @brief Sets `AssetsLoaded` to true (page applied, including zero rows).
+     */
+    void markAssetsLoaded();
+
+    /**
      * @brief Writes the asset labels to the attribute the combo displays.
      */
     void sendAssetsListToQml();
@@ -135,6 +145,7 @@ class AssetList : public QObject {
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale asset fetches and pages.
     module::StringChoiceAttribute *asset_ = nullptr; ///< Labels the combo displays.
     module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
+    module::BooleanAttribute *assets_loaded_ = nullptr; ///< True once the current request has delivered a page.
 };
 
 } // namespace xstudio::mikros_shotbrowser

@@ -12,9 +12,9 @@ Item {
     property string query: ""
 
     function listPlaceholder() {
-        if (!project.value)
+        if (!project.value || project.value === "-1")
             return "No project selected"
-        if (!asset.names.length)
+        if (!assetsLoaded.value)
             return "Loading…"
         return "No results"
     }
@@ -56,9 +56,15 @@ Item {
         modelDataName: "mikros_shotbrowser_attributes"
     }
 
-    CatalogValue { id: project; title: "Project"; source: attributes }
+    CatalogValue { id: project; title: "SelectedProject"; source: attributes }
     CatalogValue { id: asset; title: "Asset"; source: attributes }
     CatalogValue { id: footer; title: "AssetListFooter"; source: attributes }
+
+    XsAttributeValue {
+        id: assetsLoaded
+        attributeTitle: "AssetsLoaded"
+        model: attributes
+    }
 
     NameColumn {
         anchors.fill: parent
@@ -66,7 +72,11 @@ Item {
         tree: true
         listColor: XsStyleSheet.panelBgColor
         names: assets.assetTreeRows()
-        placeholder: assets.listPlaceholder()
+        placeholder: {
+            project.value
+            assetsLoaded.value
+            return assets.listPlaceholder()
+        }
         loadedFooter: true
         customFooter: true
         footerText: footer.value

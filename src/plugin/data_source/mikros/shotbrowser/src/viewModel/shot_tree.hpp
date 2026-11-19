@@ -303,6 +303,16 @@ class ShotTree : public QObject {
     void clearFooterValue();
 
     /**
+     * @brief Sets `ShotTreeLoaded` to false (loading / cleared).
+     */
+    void clearShotTreeLoadedFlag();
+
+    /**
+     * @brief Sets `ShotTreeLoaded` to true (page applied, including zero rows).
+     */
+    void markShotTreeLoaded();
+
+    /**
      * @brief Sorts the shots inside every sequence by name.
      */
     void sortShotsByName();
@@ -321,6 +331,7 @@ class ShotTree : public QObject {
     module::StringAttribute *sequence_ = nullptr; ///< Selected sequence id, or `-1`.
     module::StringAttribute *shot_ = nullptr;     ///< Selected shot id, or `-1`.
     module::StringAttribute *footer_ = nullptr;   ///< Footer text for the QML tree.
+    module::BooleanAttribute *shot_tree_loaded_ = nullptr; ///< True once the current request has delivered a page.
 };
 
 } // namespace xstudio::mikros_shotbrowser

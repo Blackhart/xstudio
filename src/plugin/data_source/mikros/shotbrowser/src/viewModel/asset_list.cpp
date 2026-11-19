@@ -93,6 +93,8 @@ void AssetList::initQmlAttributes(plugin::StandardPlugin &panel) {
     asset_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     footer_ = panel.add_string_attribute("AssetListFooter", "AssetListFooter", "");
     footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    assets_loaded_ = panel.add_boolean_attribute("AssetsLoaded", "AssetsLoaded", false);
+    assets_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 // ---------------------------------------------------------------------------
@@ -167,11 +169,13 @@ void AssetList::clearAssets() {
     assets_.clear();
     clearFooterValue(); ///< Clear until the next count arrives.
     sendAssetsListToQml();
+    clearAssetsLoadedFlag();
     setSelectedAsset(-1);
 }
 
 void AssetList::updateAssetList(bool append, const utility::JsonStore &payload) {
     applyCatalogPage(assets_, asset_, rowsFromJson<poco::Asset>(payload), append);
+    markAssetsLoaded();
 }
 
 namespace {
@@ -203,6 +207,18 @@ void AssetList::updateAssetFooter(const utility::JsonStore &payload) {
 void AssetList::clearFooterValue() {
     if (footer_) {
         footer_->set_value("");
+    }
+}
+
+void AssetList::clearAssetsLoadedFlag() {
+    if (assets_loaded_) {
+        assets_loaded_->set_value(false); ///< An empty list is a load in progress, not a result.
+    }
+}
+
+void AssetList::markAssetsLoaded() {
+    if (assets_loaded_) {
+        assets_loaded_->set_value(true); ///< Zero rows is still a finished load.
     }
 }
 

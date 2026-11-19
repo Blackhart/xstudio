@@ -22,9 +22,7 @@ Item {
     function listPlaceholder() {
         if (!project.value || project.value === "-1")
             return "No project selected"
-        if (query)
-            return "No results" // Filter active and the tree shows nothing.
-        if (!shotTree.rows)
+        if (!shotTreeLoaded.value)
             return "Loading…"
         return "No results"
     }
@@ -68,6 +66,12 @@ Item {
     CatalogValue { id: shot; title: "Shot"; source: attributes }
     CatalogValue { id: footer; title: "ShotTreeFooter"; source: attributes }
 
+    XsAttributeValue {
+        id: shotTreeLoaded
+        attributeTitle: "ShotTreeLoaded"
+        model: attributes
+    }
+
     // Shots arriving while a search is active: reopen parents so matches stay visible.
     Connections {
         target: ShotTreeBridge.treeModel
@@ -93,7 +97,11 @@ Item {
             XsText {
                 anchors.centerIn: parent
                 visible: shotTree.rows === 0
-                text: tree.listPlaceholder()
+                text: {
+                    project.value
+                    shotTreeLoaded.value
+                    return tree.listPlaceholder()
+                }
                 color: XsStyleSheet.secondaryTextColor
             }
 
