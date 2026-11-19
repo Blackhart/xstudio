@@ -240,6 +240,49 @@ TEST_CASE("sequence shots become a list of links") {
     CHECK(shots[1].name == "sq010_sh020");
 }
 
+TEST_CASE("sequence shots are read from relationships data") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *sequence = mapping.findSchema("sequence");
+    REQUIRE(sequence != nullptr);
+    // REST keeps multi-entity fields under relationships.<field>.data.
+    const nlohmann::json row = {
+        {"type", "Sequence"},
+        {"id", 8},
+        {"attributes", {{"code", "sq010"}}},
+        {"relationships",
+         {{"shots",
+           {{"data",
+             nlohmann::json::array(
+                 {{{"id", 501}, {"name", "sq010_sh010"}, {"type", "Shot"}},
+                  {{"id", 502}, {"name", "sq010_sh020"}, {"type", "Shot"}}})}}}}}};
+    const Record record = shotgridRecordFromJson(row, *sequence);
+    CHECK(std::get<std::string>(record.at("name")) == "sq010");
+    const auto &shots = std::get<std::vector<Link>>(record.at("shots"));
+    REQUIRE(shots.size() == 2);
+    CHECK(shots[0].id == 501);
+    CHECK(shots[0].name == "sq010_sh010");
+    CHECK(shots[1].id == 502);
+    CHECK(shots[1].name == "sq010_sh020");
+}
+
+TEST_CASE("version author is read from relationships data") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const nlohmann::json row = {
+        {"type", "Version"},
+        {"id", 4},
+        {"attributes", {{"code", "v001"}}},
+        {"relationships",
+         {{"created_by",
+           {{"data", {{"type", "HumanUser"}, {"id", 7}, {"name", "Ada"}}}}},
+          {"notes",
+           {{"data", nlohmann::json::array({{{"id", 9}, {"name", "note"}, {"type", "Note"}}})}}}}}};
+    const Record record = shotgridRecordFromJson(row, *version);
+    CHECK(std::get<std::string>(record.at("author")) == "Ada");
+    CHECK(std::get<std::int64_t>(record.at("has_notes")) == 1);
+}
+
 TEST_CASE("an empty shot list leaves the field absent") {
     const ShotGridMapping mapping = filledMapping();
     const ShotGridSchema *sequence = mapping.findSchema("sequence");
@@ -247,7 +290,8 @@ TEST_CASE("an empty shot list leaves the field absent") {
     const nlohmann::json row = {
         {"type", "Sequence"},
         {"id", 8},
-        {"attributes", {{"code", "sq010"}, {"shots", nlohmann::json::array()}}}};
+        {"attributes", {{"code", "sq010"}}},
+        {"relationships", {{"shots", {{"data", nlohmann::json::array()}}}}}};
     const Record record = shotgridRecordFromJson(row, *sequence);
     CHECK(record.fields.count("shots") == 0);
 }

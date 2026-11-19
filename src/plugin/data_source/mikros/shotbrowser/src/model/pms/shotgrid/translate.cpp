@@ -377,6 +377,35 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
     }
 }
 
+/**
+ * @brief Picks the JSON value for one mapped ShotGrid field.
+ *
+ * Scalars live under `attributes`. Entity and multi-entity fields live under
+ * `relationships.<field>.data` in the REST response. A value already present in
+ * attributes wins, so unit fixtures that flatten links stay valid.
+ *
+ * @param attributes Row attributes object, or the row itself.
+ * @param relationships Row relationships object, or null when absent.
+ * @param shotgridField ShotGrid field name from the mapping.
+ * @return Pointer to the value, or null when the field is missing or null.
+ */
+const nlohmann::json *findFieldValue(
+    const nlohmann::json &attributes,
+    const nlohmann::json *relationships,
+    const std::string &shotgridField) {
+    if (attributes.contains(shotgridField) && !attributes[shotgridField].is_null()) {
+        return &attributes[shotgridField];
+    }
+    if (!relationships || !relationships->contains(shotgridField)) {
+        return nullptr;
+    }
+    const nlohmann::json &link = (*relationships)[shotgridField];
+    if (!link.is_object() || !link.contains("data") || link["data"].is_null()) {
+        return nullptr; ///< REST wraps entity and multi-entity values in `data`.
+    }
+    return &link["data"];
+}
+
 } // namespace
 
 nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mapping) {
@@ -435,6 +464,10 @@ Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridSchema &s
     if (row.contains("attributes") && row["attributes"].is_object()) {
         attributes = &row["attributes"];
     }
+    const nlohmann::json *relationships = nullptr;
+    if (row.contains("relationships") && row["relationships"].is_object()) {
+        relationships = &row["relationships"];
+    }
     Record out;
     for (const ShotGridSchemaField &field : schema.fields) {
         if (field.shotgrid.empty()) {
@@ -453,11 +486,11 @@ Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridSchema &s
             out.fields["id"] = id;
             continue;
         }
-        if (!attributes->contains(field.shotgrid) || (*attributes)[field.shotgrid].is_null()) {
+        const nlohmann::json *value = findFieldValue(*attributes, relationships, field.shotgrid);
+        if (!value) {
             continue;
         }
-        const nlohmann::json &value = (*attributes)[field.shotgrid];
-        assignField(out, field, value);
+        assignField(out, field, *value);
     }
     for (const ShotGridSchemaField &field : schema.fields) {
         if (!field.provider.empty()) {

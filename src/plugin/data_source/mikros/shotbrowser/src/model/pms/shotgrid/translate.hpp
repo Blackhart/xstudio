@@ -42,6 +42,11 @@ std::vector<std::string> shotgridFieldNames(const ShotGridSchema &schema);
 
 /**
  * @brief Maps one ShotGrid data row into a domain Record.
+ *
+ * Scalar fields are read from `attributes`. Entity and multi-entity fields are
+ * read from `relationships.<field>.data`, which is where the REST `_search`
+ * response stores them.
+ *
  * @param row One element of the `_search` `data` array.
  * @param schema ShotGrid schema for the queried entity.
  * @return Domain record with only mapped fields.
