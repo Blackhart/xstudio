@@ -59,7 +59,7 @@ entities:
       sites:            { shotgrid: sg_published_file.PublishedFile.sg_sites }
       frames:           { shotgrid: sg_path_to_frames, provider: fileSeq }
       movie:            { shotgrid: sg_path_to_movie, provider: file }
-      uploaded_movie:   { shotgrid: sg_uploaded_movie_mp4, provider: url }
+      uploaded_movie:   { shotgrid: sg_uploaded_movie_mp4, provider: signedurl }
     links:
       project:  { shotgrid: entity, target: project }
       shot:     { shotgrid: entity, target: shot }

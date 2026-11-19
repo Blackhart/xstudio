@@ -259,8 +259,9 @@ CheckedMedia resolveMedia(const OpenRequest &request) {
 void logOpen(const CheckedMedia &ready) {
     const char *movie = "none";
     if (!ready.movie_path.empty()) {
-        movie = ready.movie_path.find("mikros_shotbrowser/movies") == std::string::npos ? "file"
-                                                                                          : "url";
+        movie = ready.movie_path.find("mikros_shotbrowser/movies") == std::string::npos
+                    ? "file"
+                    : "signedurl";
     }
     trace::info(
         "open versionId=" + std::to_string(ready.version_id) +

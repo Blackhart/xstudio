@@ -61,5 +61,5 @@ entities:
       synced_to_client: { type: int,    filter: false, set: false }
       frames:           { type: string, filter: false, set: false, providers: [fileSeq] }
       movie:            { type: string, filter: false, set: false, providers: [file] }
-      uploaded_movie:   { type: string, filter: false, set: false, providers: [url] }
+      uploaded_movie:   { type: string, filter: false, set: false, providers: [signedurl] }
     scope: [shot, sequence, asset, playlist]

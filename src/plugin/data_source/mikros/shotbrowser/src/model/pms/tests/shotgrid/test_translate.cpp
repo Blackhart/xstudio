@@ -214,7 +214,7 @@ TEST_CASE("uploaded movie keeps a signed url from a string or an object") {
     CHECK(std::get<std::string>(record.at("movie")) == "/shows/paw/sh010.mov");
     CHECK(std::get<std::string>(record.at("movie_provider")) == "file");
     CHECK(std::get<std::string>(record.at("uploaded_movie")) == "https://example.test/signed.mp4");
-    CHECK(std::get<std::string>(record.at("uploaded_movie_provider")) == "url");
+    CHECK(std::get<std::string>(record.at("uploaded_movie_provider")) == "signedurl");
 }
 
 TEST_CASE("sequence shots become a list of links") {

@@ -35,7 +35,7 @@ struct Version {
     std::string movie;             ///< On-disk movie path. Empty when ShotGrid has none.
     std::string movie_provider;    ///< `file`, or empty.
     std::string uploaded_movie;    ///< Signed movie URL. Empty when ShotGrid has none.
-    std::string uploaded_movie_provider; ///< `url`, or empty.
+    std::string uploaded_movie_provider; ///< `signedurl`, or empty.
 };
 
 } // namespace xstudio::mikros_shotbrowser::poco

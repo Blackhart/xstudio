@@ -551,7 +551,7 @@ void fillVersionCard(Record &row, std::size_t index) {
     row.fields["has_notes"] = std::int64_t{(id % 2) == 0 ? 1 : 0};
     row.fields["synced_to_client"] = std::int64_t{(id % 3) == 0 ? 1 : 0};
     row.fields["uploaded_movie"] = "https://example.test/movies/" + name + ".mp4";
-    row.fields["uploaded_movie_provider"] = std::string("url");
+    row.fields["uploaded_movie_provider"] = std::string("signedurl");
 
     const VersionAssetPaths assets = ensureVersionAssets(name, projectId, id);
     if (!assets.frames.empty()) {

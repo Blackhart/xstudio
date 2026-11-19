@@ -152,7 +152,7 @@ TEST_CASE("schema loads the version entity") {
     const FieldSpec *uploaded = version->field("uploaded_movie");
     REQUIRE(uploaded != nullptr);
     REQUIRE(uploaded->providers.size() == 1);
-    CHECK(uploaded->providers[0] == "url");
+    CHECK(uploaded->providers[0] == "signedurl");
 }
 
 TEST_CASE("generated proxies use the schema keys") {
