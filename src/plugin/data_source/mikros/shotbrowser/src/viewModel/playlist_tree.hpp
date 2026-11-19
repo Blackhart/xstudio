@@ -80,8 +80,8 @@ class PlaylistTree : public QObject {
     void schedulePlaylistThumbs(const std::vector<poco::VersionListElement> &rows);
 
     /**
-     * @brief Handles a playlist page and declines every other catalog.
-     * @return The playlist-page handler.
+     * @brief Handles `playlist_tree`, `playlist_versions`, and `playlist_version_thumbs`.
+     * @return The playlist catalog handler.
      */
     caf::message_handler message_handler_extensions();
 

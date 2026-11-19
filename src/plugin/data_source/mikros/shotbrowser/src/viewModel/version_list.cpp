@@ -359,8 +359,9 @@ class VersionPageHandler : public caf::detail::behavior_impl {
     VersionList *list_ = nullptr; ///< Receives version pages and footer counts.
 };
 
+
 /**
- * @brief Routes a ready thumb URL to `VersionList::applyCardImage`.
+ * @brief Routes a `version_thumbs` batch to `VersionList::applyCardImages`.
  *
  * `or_else` tries the next handler only when `invoke` returns false.
  */
@@ -373,9 +374,9 @@ class VersionThumbHandler : public caf::detail::behavior_impl {
     explicit VersionThumbHandler(VersionList *list) : list_(list) {}
 
     /**
-     * @brief Applies one thumb URL, or declines the message.
-     * @param visitor Receives an empty result when the page was ours.
-     * @param message Card thumb mail.
+     * @brief Applies a thumb batch, or declines the message.
+     * @param visitor Receives an empty result when the mail was ours.
+     * @param message Thumb batch mail.
      * @return False when this handler does not take the message.
      */
     bool invoke(caf::detail::invoke_result_visitor &visitor, caf::message &message) override {
@@ -383,16 +384,21 @@ class VersionThumbHandler : public caf::detail::behavior_impl {
         if (!view) {
             return false;
         }
-        if (caf::get<2>(view) != "version_thumb") {
+        if (caf::get<2>(view) != "version_thumbs") {
             return false; ///< Another catalog: the next handler continues.
         }
-        list_->applyCardImage(caf::get<13>(view));
+        const std::int64_t projectId = caf::get<3>(view);
+        const utility::JsonStore &payload = caf::get<13>(view);
+        rememberThumbs(projectId, payload); ///< Playlist can reuse these URLs via thumbFor.
+        if (dal::selectedProject() == projectId) {
+            list_->applyCardImages(payload);
+        }
         visitor(caf::unit);
         return true;
     }
 
   private:
-    VersionList *list_ = nullptr; ///< Receives ready thumb URLs.
+    VersionList *list_ = nullptr; ///< Receives ready thumb URL batches.
 };
 
 /**
@@ -567,11 +573,14 @@ void VersionList::appendVersions(const std::vector<poco::VersionListElement> &ne
         return;
     }
     const std::int64_t projectId = dal::selectedProject();
-    const VersionCard::ImageReady notify = makeImageReadyNotifier();
+    std::vector<std::int64_t> versionIds;
+    versionIds.reserve(newRows.size());
     versions_.reserve(versions_.size() + newRows.size());
     for (const poco::VersionListElement &row : newRows) {
-        versions_.push_back(std::make_unique<VersionCard>(row, row.name, projectId, notify));
+        versions_.push_back(std::make_unique<VersionCard>(row, row.name));
+        versionIds.push_back(row.id);
     }
+    scheduleVersionThumbs(projectId, std::move(versionIds));
 }
 
 void VersionList::sendVersionCardsToQml() {
@@ -585,56 +594,59 @@ void VersionList::sendVersionCardsToQml() {
     version_cards_->set_value(rows); ///< The QML ListView reads this attribute.
 }
 
-VersionCard::ImageReady VersionList::makeImageReadyNotifier() {
+void VersionList::scheduleVersionThumbs(
+    std::int64_t projectId, std::vector<std::int64_t> versionIds) {
+    if (projectId == -1 || versionIds.empty()) {
+        return;
+    }
     const caf::weak_actor_ptr panel = caf::actor_cast<caf::weak_actor_ptr>(&panel_);
-    const std::int64_t projectId = dal::selectedProject();
-    return [panel, projectId](std::int64_t id, const std::string &fileUrl) {
-        if (fileUrl.empty()) {
-            return;
-        }
-        nlohmann::json body = {{"id", id}, {"image", fileUrl}};
-        sendCatalog(
-            panel,
-            0,
-            "version_thumb",
-            projectId,
-            {},
-            false,
-            utility::JsonStore(std::move(body)));
-    };
+    scheduleThumbs(
+        projectId,
+        std::move(versionIds),
+        [panel, projectId](std::vector<std::pair<std::int64_t, std::string>> ready) {
+            if (ready.empty()) {
+                return;
+            }
+            nlohmann::json body = nlohmann::json::array();
+            for (auto &[id, fileUrl] : ready) {
+                body.push_back({{"versionId", id}, {"image", std::move(fileUrl)}});
+            }
+            sendCatalog(
+                panel,
+                0,
+                "version_thumbs",
+                projectId,
+                {},
+                false,
+                utility::JsonStore(std::move(body)));
+        });
 }
 
-void VersionList::applyCardImage(const utility::JsonStore &payload) {
-    if (!payload.is_object() || !payload.contains("id") || !payload.contains("image")) {
+void VersionList::applyCardImages(const utility::JsonStore &payload) {
+    if (!payload.is_array() || payload.empty()) {
         return;
     }
-    const std::int64_t id = payload["id"].get<std::int64_t>();
-    const std::string image = payload["image"].get<std::string>();
-    if (image.empty()) {
-        return;
-    }
-    const std::int64_t projectId = dal::selectedProject();
-    if (projectId != -1) {
-        nlohmann::json remembered = nlohmann::json::array();
-        remembered.push_back({{"versionId", id}, {"image", image}});
-        const utility::JsonStore thumbsPayload(remembered);
-        rememberThumbs(projectId, thumbsPayload); ///< Playlist rows can reuse this URL.
-        sendCatalog(
-            caf::actor_cast<caf::weak_actor_ptr>(&panel_),
-            0,
-            "version_thumbs",
-            projectId,
-            {},
-            false,
-            thumbsPayload); ///< Stamp playlist rows that share this id.
-    }
-    for (std::unique_ptr<VersionCard> &card : versions_) {
-        if (card->id() != id) {
+    bool changed = false;
+    for (const auto &entry : payload) {
+        if (!entry.contains("versionId") || !entry.contains("image")) {
             continue;
         }
-        card->setImage(image);
-        sendVersionCardsToQml();
-        return;
+        const std::int64_t id = entry["versionId"].get<std::int64_t>();
+        const std::string image = entry["image"].get<std::string>();
+        if (image.empty()) {
+            continue;
+        }
+        for (std::unique_ptr<VersionCard> &card : versions_) {
+            if (card->id() != id) {
+                continue;
+            }
+            card->setImage(image);
+            changed = true;
+            break;
+        }
+    }
+    if (changed) {
+        sendVersionCardsToQml(); ///< One republish for the whole batch.
     }
 }
 

@@ -2,7 +2,7 @@ project(mikros_shotbrowser VERSION ${XSTUDIO_GLOBAL_VERSION} LANGUAGES CXX)
 
 add_subdirectory(model/pms)
 
-find_package(Qt6 COMPONENTS Core Gui Widgets Qml Quick Network REQUIRED)
+find_package(Qt6 COMPONENTS Concurrent Core Gui Widgets Qml Quick Network REQUIRED)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/fileseq.cmake)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -42,6 +42,7 @@ target_link_libraries(${PROJECT_NAME}
 		xstudio::utility
 		xstudio::session
 		xstudio::plugin_manager
+		Qt6::Concurrent
 		Qt6::Core
 		Qt6::Gui
 		Qt6::Qml

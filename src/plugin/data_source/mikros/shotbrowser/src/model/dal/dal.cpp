@@ -605,28 +605,44 @@ RowPage<poco::VersionListElement> findVersionListElements(
     return fetchPage<poco::VersionListElement>(std::move(query), limit, cursor);
 }
 
-poco::VersionThumb findVersionThumb(std::int64_t versionId) {
+std::vector<poco::VersionThumb> findVersionThumbs(const std::vector<std::int64_t> &versionIds) {
+    if (versionIds.empty()) {
+        return {};
+    }
     try {
         using namespace pms::version;
+        auto idFilter = (id == versionIds.front()); ///< First id; later ids OR into this tree.
+        for (std::size_t index = 1; index < versionIds.size(); ++index) {
+            idFilter = idFilter || (id == versionIds[index]);
+        }
         const pms::Page page =
             pms::Version()
-                .Where(id == versionId)
+                .Where(std::move(idFilter))
                 .Fields(id, name, image)
-                .Limit(1)
+                .Limit(versionIds.size())
                 .find(SharedPms::getInstance().getSession());
-        if (page.rows.empty()) {
-            return {};
+        std::vector<poco::VersionThumb> rows;
+        rows.reserve(page.rows.size());
+        for (const pms::Record &record : page.rows) {
+            poco::VersionThumb row;
+            row.id = std::get<std::int64_t>(record.at("id"));
+            row.image = optionalString(record, "image");
+            row.image_provider = optionalString(record, "image_provider");
+            rows.push_back(std::move(row));
         }
-        const pms::Record &record = page.rows.front();
-        poco::VersionThumb row;
-        row.id = std::get<std::int64_t>(record.at("id"));
-        row.image = optionalString(record, "image");
-        row.image_provider = optionalString(record, "image_provider");
-        return row;
+        return rows;
     } catch (const std::exception &error) {
         trace::failure(error);
         return {};
     }
+}
+
+poco::VersionThumb findVersionThumb(std::int64_t versionId) {
+    const std::vector<poco::VersionThumb> rows = findVersionThumbs({versionId});
+    if (rows.empty()) {
+        return {};
+    }
+    return rows.front();
 }
 
 poco::VersionMedia findVersionMedia(std::int64_t versionId) {

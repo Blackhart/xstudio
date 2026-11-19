@@ -9,7 +9,6 @@
 #include "viewModel/playlist_tree.hpp"
 #include "viewModel/project_selector.hpp"
 #include "viewModel/shot_tree.hpp"
-#include "utility/thumbnails.hpp"
 #include "viewModel/version_list.hpp"
 
 #include "xstudio/global_store/global_store.hpp"
@@ -32,7 +31,6 @@ const char *kBrowserModeShot = "shot";
 const char *kBrowserModeAsset = "asset";
 const char *kResultViewVersions = "versions";
 const char *kResultViewPlaylist = "playlist";
-const char *kVersionThumbsCatalog = "version_thumbs";
 
 /**
  * @brief Left tab named by a preference or by the QML.
@@ -282,7 +280,7 @@ void ShotBrowser::setResultView() {
 }
 
 // ---------------------------------------------------------------------------
-// Pages. Each screen takes its catalog. Thumbnails refresh both lists.
+// Pages. Each screen takes its own catalogs, including its thumb batch.
 // ---------------------------------------------------------------------------
 
 caf::message_handler ShotBrowser::message_handler_extensions() {
@@ -306,35 +304,7 @@ caf::message_handler ShotBrowser::message_handler_extensions() {
     if (playlist_tree_) {
         playlists = playlist_tree_->message_handler_extensions();
     }
-    return projects.or_else(shotTree)
-        .or_else(assets)
-        .or_else(versions)
-        .or_else(playlists)
-        .or_else([this](data_source::put_data_atom,
-                     const std::uint64_t,
-                     const std::string &catalog,
-                     const std::int64_t projectId,
-                     const bool,
-                     const std::int64_t,
-                     const bool,
-                     const std::int64_t,
-                     const bool,
-                     const std::int64_t,
-                     const bool,
-                     const std::int64_t,
-                     const bool,
-                     const utility::JsonStore &payload) {
-            if (catalog != kVersionThumbsCatalog) {
-                return; ///< Another catalog was already declined by its screen.
-            }
-            rememberThumbs(projectId, payload); ///< Playlist rows still read thumbFor.
-            if (dal::selectedProject() != projectId) {
-                return;
-            }
-            if (playlist_tree_) {
-                playlist_tree_->stampPlaylistThumbs();
-            }
-        });
+    return projects.or_else(shotTree).or_else(assets).or_else(versions).or_else(playlists);
 }
 
 } // namespace xstudio::mikros_shotbrowser

@@ -103,7 +103,8 @@ class PlaylistPageHandler : public caf::detail::behavior_impl {
             return false;
         }
         const std::string catalog = caf::get<2>(view);
-        if (catalog != "playlist_tree" && catalog != "playlist_versions") {
+        if (catalog != "playlist_tree" && catalog != "playlist_versions" &&
+            catalog != "playlist_version_thumbs") {
             return false; ///< Another catalog: the next handler continues.
         }
         apply_(
@@ -456,27 +457,32 @@ void PlaylistTree::schedulePlaylistThumbs(const std::vector<poco::VersionListEle
     if (projectId == -1 || rows.empty()) {
         return;
     }
-    const caf::weak_actor_ptr panel = caf::actor_cast<caf::weak_actor_ptr>(&panel_);
+    std::vector<std::int64_t> versionIds;
+    versionIds.reserve(rows.size());
     for (const poco::VersionListElement &row : rows) {
-        scheduleOneThumb(
-            projectId,
-            row.id,
-            [panel, projectId, versionId = row.id](std::string fileUrl) {
-                if (fileUrl.empty()) {
-                    return;
-                }
-                nlohmann::json body = nlohmann::json::array();
-                body.push_back({{"versionId", versionId}, {"image", fileUrl}});
-                sendCatalog(
-                    panel,
-                    0,
-                    "version_thumbs",
-                    projectId,
-                    {},
-                    false,
-                    utility::JsonStore(std::move(body)));
-            });
+        versionIds.push_back(row.id);
     }
+    const caf::weak_actor_ptr panel = caf::actor_cast<caf::weak_actor_ptr>(&panel_);
+    scheduleThumbs(
+        projectId,
+        std::move(versionIds),
+        [panel, projectId](std::vector<std::pair<std::int64_t, std::string>> ready) {
+            if (ready.empty()) {
+                return;
+            }
+            nlohmann::json body = nlohmann::json::array();
+            for (auto &[id, fileUrl] : ready) {
+                body.push_back({{"versionId", id}, {"image", std::move(fileUrl)}});
+            }
+            sendCatalog(
+                panel,
+                0,
+                "playlist_version_thumbs",
+                projectId,
+                {},
+                false,
+                utility::JsonStore(std::move(body)));
+        });
 }
 
 // ---------------------------------------------------------------------------
@@ -501,6 +507,11 @@ caf::message_handler PlaylistTree::message_handler_extensions() {
                 return;
             }
             updatePlaylistList(append, payload);
+            return;
+        }
+        if (catalog == "playlist_version_thumbs") {
+            rememberThumbs(projectId, payload); ///< Cards can reuse these URLs via thumbFor.
+            stampPlaylistThumbs();
             return;
         }
         updateVersionsForPlaylist(

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/version_card.hpp
- * @brief One version row: list metadata and thumbnail load (no QObject).
+ * @brief One version row: list metadata for QML (no QObject).
  */
 #pragma once
 
@@ -10,7 +10,6 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
-#include <functional>
 #include <string>
 
 namespace xstudio::mikros_shotbrowser {
@@ -18,31 +17,17 @@ namespace xstudio::mikros_shotbrowser {
 /**
  * @brief Display state of one version. Reusable by the version list and playlists.
  *
- * The constructor copies list fields and starts the thumbnail resolve by id.
- * When the local image is ready, `ImageReady` is called so the owner can
- * republish JSON to QML.
+ * The constructor copies list fields. The list owner resolves thumbnails in
+ * batch and calls `setImage` when a local URL is ready.
  */
 class VersionCard {
   public:
     /**
-     * @brief Called on a worker thread when the local thumb URL is ready.
-     * @param id Version id.
-     * @param fileUrl `file://` path for the image.
-     */
-    using ImageReady = std::function<void(std::int64_t id, const std::string &fileUrl)>;
-
-    /**
-     * @brief Stores display fields and starts the thumbnail load.
+     * @brief Stores display fields from one list row.
      * @param row List row from the catalog.
      * @param label Name shown in the title.
-     * @param projectId Project used for the thumb cache path.
-     * @param onImageReady Notified when the thumb file URL is ready. May run off the actor.
      */
-    VersionCard(
-        const poco::VersionListElement &row,
-        const std::string &label,
-        std::int64_t projectId,
-        ImageReady onImageReady);
+    VersionCard(const poco::VersionListElement &row, const std::string &label);
 
     /**
      * @brief Writes the local image URL after the thumb resolve finishes.
@@ -59,12 +44,6 @@ class VersionCard {
     [[nodiscard]] std::int64_t id() const { return id_; }
 
   private:
-    /**
-     * @brief Resolves the thumbnail from cache or downloads by version id.
-     * @param projectId Project for the cache path.
-     */
-    void startThumbnailLoad(std::int64_t projectId);
-
     std::int64_t id_ = 0;
     std::string name_;
     std::string image_;
@@ -78,7 +57,6 @@ class VersionCard {
     std::string sites_;
     bool has_notes_ = false;
     bool synced_to_client_ = false;
-    ImageReady on_image_ready_; ///< Owner republishes JSON when the thumb arrives.
 };
 
 } // namespace xstudio::mikros_shotbrowser

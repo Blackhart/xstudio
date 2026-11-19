@@ -70,7 +70,7 @@ class VersionList : public QObject {
     void clearVersions();
 
     /**
-     * @brief Handles a `version` page, a `version_count`, a thumb ready mail, and an `open_media` result.
+     * @brief Handles `version`, `version_count`, `version_thumbs`, and `open_media`.
      * @return The handlers for those catalogs.
      */
     caf::message_handler message_handler_extensions();
@@ -90,6 +90,12 @@ class VersionList : public QObject {
     friend class OpenPageHandler;
 
     /**
+     * @brief Applies local thumb URLs on matching cards and republishes JSON once.
+     * @param payload Array of `{versionId, image}` from the `version_thumbs` mail.
+     */
+    void applyCardImages(const utility::JsonStore &payload);
+
+    /**
      * @brief Publishes the version cards and the open-media attributes.
      * @param panel Panel actor that owns the attributes.
      */
@@ -103,12 +109,6 @@ class VersionList : public QObject {
      */
     void updateVersionList(
         std::uint64_t requestId, bool append, const utility::JsonStore &payload);
-
-    /**
-     * @brief Applies a local thumb URL on one card and republishes the JSON.
-     * @param payload `{id, image}` from the card's CAF mail.
-     */
-    void applyCardImage(const utility::JsonStore &payload);
 
     /**
      * @brief Places media after the open-disk check finishes (double-click / menu).
@@ -125,7 +125,7 @@ class VersionList : public QObject {
     findUnknownVersionRows(const std::vector<poco::VersionListElement> &rows) const;
 
     /**
-     * @brief Builds a card for each new row and starts its thumb load.
+     * @brief Builds a card for each new row and schedules a batch thumb load.
      * @param newRows Rows that are not yet in `versions_`.
      */
     void appendVersions(const std::vector<poco::VersionListElement> &newRows);
@@ -136,10 +136,11 @@ class VersionList : public QObject {
     void sendVersionCardsToQml();
 
     /**
-     * @brief Notifier that mails a ready thumb URL back to the panel actor.
-     * @return Callback passed to each new `VersionCard`.
+     * @brief Resolves thumbnails for the given version ids and mails ready URLs.
+     * @param projectId Project for the thumb cache path.
+     * @param versionIds Ids of the new cards.
      */
-    [[nodiscard]] VersionCard::ImageReady makeImageReadyNotifier();
+    void scheduleVersionThumbs(std::int64_t projectId, std::vector<std::int64_t> versionIds);
 
     /**
      * @brief Drops a stale count, otherwise writes the version total into the footer.

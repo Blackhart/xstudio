@@ -16,13 +16,17 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QThreadPool>
+#include <QtConcurrent>
 #include <QUrl>
 
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <system_error>
 #include <thread>
+#include <utility>
 
 
 namespace trace = xstudio::mikros_shotbrowser::log;
@@ -244,6 +248,145 @@ std::string toFileUrl(const std::filesystem::path &path) {
 
 namespace xstudio::mikros_shotbrowser {
 
+namespace {
+
+constexpr int kThumbDownloadPool = 6; ///< Cap concurrent JPEG downloads.
+
+/**
+ * @brief One HTTP thumb that still needs a download.
+ */
+struct ThumbFetchJob {
+    std::int64_t version_id = 0; ///< Version id for the cache path and the callback.
+    std::string url;             ///< Remote image URL from the version row.
+    std::filesystem::path path;  ///< Cache file to write.
+};
+
+/**
+ * @brief Downloads one thumb on a QtConcurrent worker.
+ * @param projectId Project id for log lines.
+ * @param job Fetch job.
+ * @return Ready `{id, file://}` when stored, otherwise empty.
+ */
+std::optional<std::pair<std::int64_t, std::string>>
+downloadOneThumb(std::int64_t projectId, const ThumbFetchJob &job) {
+    const bool stored = thumb::writeBytesIfMissing(job.path, thumb::fetchJpeg(job.url));
+    trace::info(
+        "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+        std::to_string(job.version_id) + " origin=" + (stored ? "download" : "none"));
+    if (!stored) {
+        return std::nullopt;
+    }
+    return std::make_pair(job.version_id, thumb::toFileUrl(job.path));
+}
+
+/**
+ * @brief Downloads thumbs with a local Qt thread pool of at most six workers.
+ * @param projectId Project id for log lines.
+ * @param jobs Fetch jobs.
+ * @return Ready `{id, file://}` pairs for the downloads that succeeded.
+ */
+std::vector<std::pair<std::int64_t, std::string>>
+downloadThumbsConcurrent(std::int64_t projectId, std::vector<ThumbFetchJob> jobs) {
+    if (jobs.empty()) {
+        return {};
+    }
+    QThreadPool pool;
+    pool.setMaxThreadCount(kThumbDownloadPool);
+    const auto mapped = QtConcurrent::blockingMapped(
+        &pool,
+        jobs,
+        [projectId](const ThumbFetchJob &job) { return downloadOneThumb(projectId, job); });
+    std::vector<std::pair<std::int64_t, std::string>> ready;
+    ready.reserve(mapped.size());
+    for (const auto &entry : mapped) {
+        if (entry) {
+            ready.push_back(*entry);
+        }
+    }
+    return ready;
+}
+
+} // namespace
+
+void scheduleThumbs(
+    std::int64_t projectId,
+    std::vector<std::int64_t> versionIds,
+    std::function<void(std::vector<std::pair<std::int64_t, std::string>>)> onBatchReady) {
+    if (!onBatchReady || versionIds.empty()) {
+        return;
+    }
+    const std::filesystem::path root = thumb::thumbRoot();
+    std::vector<std::pair<std::int64_t, std::string>> cachedReady;
+    std::vector<std::int64_t> needFind;
+    cachedReady.reserve(versionIds.size());
+    needFind.reserve(versionIds.size());
+    for (const std::int64_t versionId : versionIds) {
+        const thumb::ThumbPlan cached = thumb::planHttp(root, projectId, versionId);
+        if (cached.kind == thumb::ThumbKind::Ready) {
+            trace::info(
+                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+                std::to_string(versionId) + " origin=cache");
+            cachedReady.emplace_back(versionId, thumb::toFileUrl(cached.path));
+        } else {
+            needFind.push_back(versionId); ///< Still need image URL from the DAL.
+        }
+    }
+    if (!cachedReady.empty()) {
+        onBatchReady(std::move(cachedReady));
+    }
+    if (needFind.empty()) {
+        return;
+    }
+    std::thread([projectId,
+                 root,
+                 needFind = std::move(needFind),
+                 onBatchReady = std::move(onBatchReady)]() mutable {
+        const std::vector<poco::VersionThumb> rows = dal::findVersionThumbs(needFind);
+        std::vector<std::pair<std::int64_t, std::string>> ready;
+        std::vector<ThumbFetchJob> fetchJobs;
+        ready.reserve(rows.size());
+        fetchJobs.reserve(rows.size());
+        for (const poco::VersionThumb &row : rows) {
+            if (row.image.empty()) {
+                trace::info(
+                    "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+                    std::to_string(row.id) + " origin=none");
+                continue;
+            }
+            const thumb::ThumbPlan plan =
+                thumb::planThumb(root, row.image, row.image_provider, projectId, row.id);
+            if (plan.kind == thumb::ThumbKind::Ready) {
+                const char *origin = row.image_provider == "file" ? "file" : "cache";
+                trace::info(
+                    "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+                    std::to_string(row.id) + " origin=" + origin);
+                ready.emplace_back(row.id, thumb::toFileUrl(plan.path));
+                continue;
+            }
+            if (plan.kind != thumb::ThumbKind::Fetch) {
+                trace::info(
+                    "thumb projectId=" + std::to_string(projectId) + " versionId=" +
+                    std::to_string(row.id) + " origin=none");
+                continue;
+            }
+            ThumbFetchJob job;
+            job.version_id = row.id;
+            job.url = row.image;
+            job.path = plan.path;
+            fetchJobs.push_back(std::move(job));
+        }
+        std::vector<std::pair<std::int64_t, std::string>> downloaded =
+            downloadThumbsConcurrent(projectId, std::move(fetchJobs));
+        ready.insert(
+            ready.end(),
+            std::make_move_iterator(downloaded.begin()),
+            std::make_move_iterator(downloaded.end()));
+        if (!ready.empty()) {
+            onBatchReady(std::move(ready)); ///< One flush after file hits and downloads.
+        }
+    }).detach();
+}
+
 void scheduleOneThumb(
     std::int64_t projectId,
     std::int64_t versionId,
@@ -251,49 +394,16 @@ void scheduleOneThumb(
     if (!onReady) {
         return;
     }
-    const std::filesystem::path root = thumb::thumbRoot();
-    const thumb::ThumbPlan cached =
-        thumb::planHttp(root, projectId, versionId); ///< Skip the find when the cache already has it.
-    if (cached.kind == thumb::ThumbKind::Ready) {
-        trace::info(
-            "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-            std::to_string(versionId) + " origin=cache");
-        onReady(thumb::toFileUrl(cached.path));
-        return;
-    }
-    std::thread([projectId, versionId, root, onReady = std::move(onReady)]() {
-        const poco::VersionThumb row = dal::findVersionThumb(versionId);
-        if (row.image.empty()) {
-            trace::info(
-                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-                std::to_string(versionId) + " origin=none");
-            return;
-        }
-        const thumb::ThumbPlan plan =
-            thumb::planThumb(root, row.image, row.image_provider, projectId, versionId);
-        if (plan.kind == thumb::ThumbKind::Ready) {
-            const char *origin = row.image_provider == "file" ? "file" : "cache";
-            trace::info(
-                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-                std::to_string(versionId) + " origin=" + origin);
-            onReady(thumb::toFileUrl(plan.path));
-            return;
-        }
-        if (plan.kind != thumb::ThumbKind::Fetch) {
-            trace::info(
-                "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-                std::to_string(versionId) + " origin=none");
-            return;
-        }
-        const bool stored = thumb::writeBytesIfMissing(plan.path, thumb::fetchJpeg(row.image));
-        trace::info(
-            "thumb projectId=" + std::to_string(projectId) + " versionId=" +
-            std::to_string(versionId) + " origin=" + (stored ? "download" : "none"));
-        if (!stored) {
-            return;
-        }
-        onReady(thumb::toFileUrl(plan.path));
-    }).detach();
+    scheduleThumbs(
+        projectId,
+        {versionId},
+        [onReady = std::move(onReady)](
+            std::vector<std::pair<std::int64_t, std::string>> ready) {
+            for (auto &[id, fileUrl] : ready) {
+                (void)id;
+                onReady(std::move(fileUrl));
+            }
+        });
 }
 
 } // namespace xstudio::mikros_shotbrowser

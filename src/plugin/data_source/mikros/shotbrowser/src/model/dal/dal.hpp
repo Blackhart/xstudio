@@ -210,6 +210,13 @@ RowPage<poco::VersionListElement> findVersionListElements(
 poco::VersionThumb findVersionThumb(std::int64_t versionId);
 
 /**
+ * @brief Image URL or path for many versions in one find (`Fields(image)` only).
+ * @param versionIds Domain version ids. Empty yields an empty vector.
+ * @return Thumb rows that matched. Missing ids are omitted.
+ */
+std::vector<poco::VersionThumb> findVersionThumbs(const std::vector<std::int64_t> &versionIds);
+
+/**
  * @brief Frames and movie paths for opening one version.
  * @param versionId Domain version `id`.
  * @return Media row, or empty id when missing.

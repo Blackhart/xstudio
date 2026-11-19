@@ -1,21 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/version_card.cpp
- * @brief Version card fields and thumbnail resolve for one row.
+ * @brief Version card fields for one row. Thumbs are applied by the list owner.
  */
 
 #include "viewModel/version_card.hpp"
-#include "utility/thumbnails.hpp"
-
-#include <utility>
 
 namespace xstudio::mikros_shotbrowser {
 
-VersionCard::VersionCard(
-    const poco::VersionListElement &row,
-    const std::string &label,
-    std::int64_t projectId,
-    ImageReady onImageReady)
+VersionCard::VersionCard(const poco::VersionListElement &row, const std::string &label)
     : id_(row.id),
       name_(label),
       author_(row.author),
@@ -27,10 +20,7 @@ VersionCard::VersionCard(
       artistic_status_(row.artistic_status),
       sites_(row.sites),
       has_notes_(row.has_notes),
-      synced_to_client_(row.synced_to_client),
-      on_image_ready_(std::move(onImageReady)) {
-    startThumbnailLoad(projectId);
-}
+      synced_to_client_(row.synced_to_client) {}
 
 void VersionCard::setImage(const std::string &path) { image_ = path; }
 
@@ -49,17 +39,6 @@ nlohmann::json VersionCard::toJson() const {
         {"sites", sites_},
         {"hasNotes", has_notes_},
         {"syncedToClient", synced_to_client_}};
-}
-
-void VersionCard::startThumbnailLoad(std::int64_t projectId) {
-    scheduleOneThumb(
-        projectId,
-        id_,
-        [id = id_, onReady = on_image_ready_](std::string fileUrl) {
-            if (onReady) {
-                onReady(id, fileUrl); ///< Owner applies the URL on the actor thread.
-            }
-        });
 }
 
 } // namespace xstudio::mikros_shotbrowser

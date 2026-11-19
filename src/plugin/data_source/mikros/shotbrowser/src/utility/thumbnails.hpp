@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace xstudio::mikros_shotbrowser {
@@ -28,10 +29,23 @@ std::filesystem::path thumbRoot();
 } // namespace thumb
 
 /**
+ * @brief Resolves many version thumbnails (cache, one batch find, pooled download).
+ *
+ * Cache hits may call `onBatchReady` on the caller thread. Other work runs off
+ * the actor. Callbacks may run on a worker thread; the caller marshals to the UI.
+ * @param projectId Project id for the cache path.
+ * @param versionIds Version ids to resolve.
+ * @param onBatchReady Called with ready `{id, file:// URL}` pairs, coalesced.
+ */
+void scheduleThumbs(
+    std::int64_t projectId,
+    std::vector<std::int64_t> versionIds,
+    std::function<void(std::vector<std::pair<std::int64_t, std::string>>)> onBatchReady);
+
+/**
  * @brief Resolves one version thumbnail (cache or download by id).
  *
- * Runs off the caller when a download is needed. `onReady` may run on a worker
- * thread; the caller marshals to the UI thread.
+ * Thin wrapper over `scheduleThumbs`. `onReady` may run on a worker thread.
  * @param projectId Project id for the cache path.
  * @param versionId Version id for the cache path and the image fetch.
  * @param onReady Called with a `file://` URL when an image is ready. Not called when none.

@@ -136,6 +136,29 @@ TEST_CASE("the fake backend accepts a fields projection on versions") {
     CHECK(rows[0].fields.count("author") == 1);
 }
 
+TEST_CASE("the fake backend finds version thumbs by several ids") {
+    FakeBackend backend;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    const Records listed =
+        Version().In(scope::project == std::int64_t{1}).Limit(2).find(session).rows;
+    REQUIRE(listed.size() == 2);
+    const auto firstId = std::get<std::int64_t>(listed[0].at("id"));
+    const auto secondId = std::get<std::int64_t>(listed[1].at("id"));
+
+    const Records rows =
+        Version()
+            .Where((version::id == firstId) || (version::id == secondId))
+            .Fields(version::id, version::name, version::image)
+            .Limit(2)
+            .find(session)
+            .rows;
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].fields.count("image") == 1);
+    CHECK(rows[1].fields.count("image") == 1);
+    CHECK(std::get<std::string>(rows[0].at("image_provider")) == "file");
+}
+
 TEST_CASE("the fake backend lists versions in a sequence including shot versions") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
