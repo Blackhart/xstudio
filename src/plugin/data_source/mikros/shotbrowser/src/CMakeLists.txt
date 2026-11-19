@@ -3,6 +3,7 @@ project(mikros_shotbrowser VERSION ${XSTUDIO_GLOBAL_VERSION} LANGUAGES CXX)
 add_subdirectory(model/pms)
 
 find_package(Qt6 COMPONENTS Core Gui Widgets Qml Quick Network REQUIRED)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/fileseq.cmake)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
@@ -15,6 +16,7 @@ set(SOURCES
 	mikros_shotbrowser.cpp
 	utility/home.cpp
 	utility/catalog.cpp
+	utility/sequence_path.cpp
 	utility/thumbnails.cpp
 	viewModel/project_selector.cpp
 	viewModel/shot_browser.cpp
@@ -27,6 +29,7 @@ set(SOURCES
 )
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
+add_dependencies(${PROJECT_NAME} gofileseq)
 
 target_include_directories(${PROJECT_NAME}
 	PRIVATE
@@ -47,6 +50,7 @@ target_link_libraries(${PROJECT_NAME}
 		Qt6::Network
 	PRIVATE
 		pms::pms
+		fileseq::fileseq
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS_NO_SHARED true)

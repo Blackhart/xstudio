@@ -8,12 +8,12 @@
 
 #include "model/dal/dal.hpp"
 #include "utility/home.hpp"
+#include "utility/sequence_path.hpp"
 #include "utility/thumbnails.hpp"
 
 #include "xstudio/media/media_actor.hpp"
 #include "xstudio/utility/frame_list.hpp"
 #include "xstudio/utility/helpers.hpp"
-#include "xstudio/utility/media_reference.hpp"
 #include "xstudio/utility/uuid.hpp"
 
 #include <caf/actor_registry.hpp>
@@ -31,7 +31,6 @@
 
 #include <filesystem>
 #include <fstream>
-#include <regex>
 #include <thread>
 #include <unordered_set>
 #include <utility>
@@ -67,16 +66,6 @@ SourceChoice chooseSources(bool framesOnDisk, bool movieOnDisk, bool hasUploaded
 }
 
 /**
- * @brief True when a ShotGrid frame range can be appended to a sequence path.
- * @param range Text such as `1001-1100` or `1001-1100x2`.
- * @return False for an empty or prose range.
- */
-bool usableRange(const std::string &range) {
-    static const std::regex pattern(R"(^[0-9]+-[0-9]+(x[0-9]+)?$)");
-    return std::regex_match(range, pattern);
-}
-
-/**
  * @brief True when `path` is a regular file.
  * @param path Posix path from ShotGrid, or a cache file.
  * @return False when the path is empty, missing, or not a file.
@@ -92,34 +81,21 @@ bool regularFile(const std::string &path) {
 /**
  * @brief Sequence spec accepted by xSTUDIO when at least one frame is on disk.
  *
- * `frameRange` is appended as an xSTUDIO range when it looks like `1001-1100`.
- * Otherwise the directory is scanned.
- * @param path ShotGrid sequence path, with `#`, `@`, or `{frame}`.
- * @param frameRange Version frame range. Empty scans the directory.
- * @return The spec, or empty when no frame exists.
+ * ShotGrid `%04d` / `####` paths are converted via libfileseq into `{:04d}` specs.
+ * @param path ShotGrid sequence path (`%04d`, `#`, `@`, or `{:`).
+ * @param frameRange Version frame range. Empty keeps the on-disk fileseq range.
+ * @return The xSTUDIO spec, or empty when no frame exists on this site.
  */
 std::string sequenceSpec(const std::string &path, const std::string &frameRange) {
-    if (path.empty()) {
+    const ResolvedFrames resolved = resolveShotGridFrames(path, frameRange);
+    if (!resolved.exists || resolved.xstudio_path.empty()) {
         return {};
     }
-    const bool ranged = usableRange(frameRange);
-    const std::string spec = ranged && path.find('=') == std::string::npos ? path + "=" + frameRange
-                                                                             : path;
-    try {
-        utility::FrameList frames;
-        const caf::uri uri = utility::parse_cli_posix_path(spec, frames, !ranged);
-        if (frames.empty()) {
-            return {};
-        }
-        utility::MediaReference reference(uri, frames, false);
-        const auto sample = reference.pick_representative_frame();
-        if (!sample || !regularFile(utility::uri_to_posix_path(sample->first))) {
-            return {}; ///< The pattern parsed, but no frame is on this site.
-        }
-        return spec;
-    } catch (const std::exception &) {
-        return {};
+    if (resolved.xstudio_path != path) {
+        trace::info(
+            "frames fileseq '" + path + "' -> '" + resolved.xstudio_path + "'");
     }
+    return resolved.xstudio_path;
 }
 
 
