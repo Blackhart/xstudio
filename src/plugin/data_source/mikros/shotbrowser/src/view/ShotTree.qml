@@ -12,11 +12,13 @@ Item {
     id: tree
 
     property string query: ""
+    property bool rebuildView: false ///< True after a clear, so the next pass drops the stale flat list.
     readonly property real chevronWidth: XsStyleSheet.widgetStdHeight / 1.2
 
     onQueryChanged: {
         ShotTreeBridge.filterText = query
-        expandAfterFilter.restart() ///< TreeView clears expansion on filter layout; reopen after it settles.
+        rebuildView = !query ///< A clear keeps expanded search rows; the timer rebuilds the view.
+        expandAfterFilter.restart() ///< Filter layout settles before expand or fold.
     }
 
     function listPlaceholder() {
@@ -36,17 +38,57 @@ Item {
             shot.value = String(shot.value) === key ? "-1" : key
     }
 
-    function expandVisibleParents() {
-        if (!query)
-            return
+    function rowNodeId(row) {
+        return String(shotTree.model.data(shotTree.index(row, 0), Qt.UserRole + 1))
+    }
+
+    function rowIsSequence(row) {
+        return shotTree.model.data(shotTree.index(row, 0), Qt.UserRole + 3) === true
+    }
+
+    function expandMatchingSequences() {
         for (let row = 0; row < shotTree.rows; ++row) {
             if (!shotTree.isExpanded(row))
                 shotTree.expand(row) ///< Sequences with a shot hit open; leaves stay put.
         }
     }
 
+    function rebuildCollapsedView() {
+        if (!rebuildView)
+            return
+        rebuildView = false ///< A later page reset must not reassign the model, or the timer loops.
+        const model = shotTree.model
+        shotTree.model = null ///< Drops the flat list left open by the search.
+        shotTree.model = model ///< Same proxy; treeModel does not change for the life of the panel.
+    }
+
+    function expandSelectedShotSequence() {
+        const shotId = String(shot.value ?? "-1")
+        const sequenceId = String(sequence.value ?? "-1")
+        if (shotId === "-1" || sequenceId === "-1")
+            return ///< No selected shot: every sequence stays folded.
+        for (let row = 0; row < shotTree.rows; ++row) {
+            if (!rowIsSequence(row))
+                continue ///< Shots inserted by expand sit on the following rows.
+            if (rowNodeId(row) !== sequenceId)
+                continue
+            if (!shotTree.isExpanded(row))
+                shotTree.expand(row) ///< Keep the selected shot's sequence open.
+        }
+    }
+
+    function expandVisibleParents() {
+        if (query) {
+            expandMatchingSequences()
+            return
+        }
+        rebuildCollapsedView() ///< Clear only; a page reset has already folded the tree.
+        expandSelectedShotSequence()
+    }
+
     Component.onCompleted: {
         ShotTreeBridge.filterText = query
+        rebuildView = !query ///< First show with an empty search starts from a folded tree.
         expandAfterFilter.restart()
     }
 
@@ -78,16 +120,15 @@ Item {
         model: attributes
     }
 
-    // Shots arriving while a search is active: reopen parents so matches stay visible.
+    // A page resets expansion. Search reopens matches; an empty search reopens the selected sequence.
     Connections {
         target: ShotTreeBridge.treeModel
         function onRowsInserted() {
             if (tree.query)
-                expandAfterFilter.restart()
+                expandAfterFilter.restart() ///< New rows during a search must open like the ones already shown.
         }
         function onModelReset() {
-            if (tree.query)
-                expandAfterFilter.restart()
+            expandAfterFilter.restart() ///< Do not set rebuildView: this reset already folded the tree.
         }
     }
 
@@ -119,10 +160,10 @@ Item {
                 flickDeceleration: 5000
                 model: ShotTreeBridge.treeModel
                 rowHeightProvider: function (row) { return XsStyleSheet.widgetStdHeight }
-                // Filter remaps rows after invalidateFilter; expand once the view has the new roots.
+                // Search only. An empty query must not restart: opening the selected sequence changes rows.
                 onRowsChanged: {
                     if (tree.query)
-                        expandAfterFilter.restart()
+                        expandAfterFilter.restart() ///< Filter remaps rows; expand once the view has the new roots.
                 }
 
                 ScrollBar.vertical: XsScrollBar {}
