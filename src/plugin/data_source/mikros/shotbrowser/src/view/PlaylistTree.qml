@@ -107,7 +107,8 @@ Item {
                     status: field(entry, "status"),
                     artisticStatus: field(entry, "artisticStatus"),
                     sites: field(entry, "sites"),
-                    hasNotes: flag(entry, "hasNotes"),
+                    openNotesCount: entry && entry.openNotesCount !== undefined
+                            ? Number(entry.openNotesCount) : 0,
                     syncedToClient: flag(entry, "syncedToClient"),
                     id: entry && entry.id !== undefined ? entry.id : 0,
                     depth: 1,

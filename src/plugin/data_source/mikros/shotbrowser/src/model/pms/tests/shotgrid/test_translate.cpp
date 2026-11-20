@@ -154,7 +154,7 @@ TEST_CASE("version image copies the url and the mapping provider") {
     CHECK(std::get<std::string>(record.at("image_provider")) == "http");
 }
 
-TEST_CASE("version card fields copy entities, notes, the client flag, and sites") {
+TEST_CASE("version card fields copy entities, open notes count, the client flag, and sites") {
     const ShotGridMapping mapping = filledMapping();
     const ShotGridSchema *version = mapping.findSchema("version");
     REQUIRE(version != nullptr);
@@ -170,7 +170,7 @@ TEST_CASE("version card fields copy entities, notes, the client flag, and sites"
           {"sg_task.Task.step", {{"type", "Step"}, {"id", 3}, {"name", "Comp"}}},
           {"sg_status_list", "ip"},
           {"sg_status_artistique", "apr"},
-          {"notes", nlohmann::json::array({{{"id", 9}, {"name", "note"}}})},
+          {"open_notes_count", 2},
           {"sg_synced_to_client", true},
           {"sg_published_file.PublishedFile.sg_sites",
            nlohmann::json::array({"Paris", "Montreal"})}}}};
@@ -182,7 +182,7 @@ TEST_CASE("version card fields copy entities, notes, the client flag, and sites"
     CHECK(std::get<std::string>(record.at("step")) == "Comp");
     CHECK(std::get<std::string>(record.at("status")) == "ip");
     CHECK(std::get<std::string>(record.at("artistic_status")) == "apr");
-    CHECK(std::get<std::int64_t>(record.at("has_notes")) == 1);
+    CHECK(std::get<std::int64_t>(record.at("open_notes_count")) == 2);
     CHECK(std::get<std::int64_t>(record.at("synced_to_client")) == 1);
     CHECK(std::get<std::string>(record.at("sites")) == "Paris,Montreal");
 }
@@ -317,12 +317,9 @@ TEST_CASE("version author is read from relationships data") {
         {"attributes", {{"code", "v001"}}},
         {"relationships",
          {{"created_by",
-           {{"data", {{"type", "HumanUser"}, {"id", 7}, {"name", "Ada"}}}}},
-          {"notes",
-           {{"data", nlohmann::json::array({{{"id", 9}, {"name", "note"}, {"type", "Note"}}})}}}}}};
+           {{"data", {{"type", "HumanUser"}, {"id", 7}, {"name", "Ada"}}}}}}}};
     const Record record = shotgridRecordFromJson(row, *version);
     CHECK(std::get<std::string>(record.at("author")) == "Ada");
-    CHECK(std::get<std::int64_t>(record.at("has_notes")) == 1);
 }
 
 TEST_CASE("an empty shot list leaves the field absent") {
@@ -363,7 +360,7 @@ TEST_CASE("shotgrid field names honour a list-element projection") {
         "status",
         "artistic_status",
         "sites",
-        "has_notes",
+        "open_notes_count",
         "synced_to_client"};
     const std::vector<std::string> names = shotgridFieldNames(*version, &domain);
     CHECK(std::find(names.begin(), names.end(), "image") == names.end());

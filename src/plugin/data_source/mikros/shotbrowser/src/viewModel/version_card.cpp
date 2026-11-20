@@ -19,7 +19,7 @@ VersionCard::VersionCard(const poco::VersionListElement &row, const std::string 
       status_(row.status),
       artistic_status_(row.artistic_status),
       sites_(row.sites),
-      has_notes_(row.has_notes),
+      open_notes_count_(row.open_notes_count),
       synced_to_client_(row.synced_to_client) {}
 
 void VersionCard::setImage(const std::string &path) { image_ = path; }
@@ -37,7 +37,7 @@ nlohmann::json VersionCard::toJson() const {
         {"status", status_},
         {"artisticStatus", artistic_status_},
         {"sites", sites_},
-        {"hasNotes", has_notes_},
+        {"openNotesCount", open_notes_count_},
         {"syncedToClient", synced_to_client_}};
 }
 

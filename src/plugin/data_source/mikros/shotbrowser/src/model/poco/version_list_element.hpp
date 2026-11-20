@@ -27,8 +27,8 @@ struct VersionListElement {
     std::string status;            ///< Step status. Empty shows N/A.
     std::string artistic_status;   ///< Artistic status. Empty shows N/A.
     std::string sites;             ///< ShotGrid site names, joined by commas.
-    bool has_notes = false;        ///< True when the version has at least one note.
-    bool synced_to_client = false; ///< True when the version was sent to the client.
+    std::int64_t open_notes_count = 0; ///< Open notes count for the N indicator.
+    bool synced_to_client = false;     ///< True when the version was sent to the client.
 };
 
 } // namespace xstudio::mikros_shotbrowser::poco

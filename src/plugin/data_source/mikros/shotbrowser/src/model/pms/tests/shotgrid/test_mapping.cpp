@@ -23,6 +23,9 @@ TEST_CASE("filled fixture parses and names are present") {
     CHECK(
         mapping.findSchema("playlist")->findField("open_notes_count")->shotgrid ==
         "open_notes_count");
+    CHECK(
+        mapping.findSchema("version")->findField("open_notes_count")->shotgrid ==
+        "open_notes_count");
 }
 
 TEST_CASE("example mapping stores version images over http") {

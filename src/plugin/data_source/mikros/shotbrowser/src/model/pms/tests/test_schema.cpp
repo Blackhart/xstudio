@@ -141,10 +141,10 @@ TEST_CASE("schema loads the version entity") {
     CHECK(author->type == "string");
     CHECK_FALSE(author->filter);
 
-    const FieldSpec *notes = version->field("has_notes");
-    REQUIRE(notes != nullptr);
-    CHECK(notes->type == "int");
-    CHECK_FALSE(notes->filter);
+    const FieldSpec *openNotes = version->field("open_notes_count");
+    REQUIRE(openNotes != nullptr);
+    CHECK(openNotes->type == "int");
+    CHECK_FALSE(openNotes->filter);
 
     const FieldSpec *synced = version->field("synced_to_client");
     REQUIRE(synced != nullptr);
@@ -194,6 +194,7 @@ TEST_CASE("generated proxies use the schema keys") {
     CHECK(std::string(version::id.key) == "id");
     CHECK(std::string(version::name.key) == "name");
     CHECK(std::string(version::image.key) == "image");
+    CHECK(std::string(version::openNotesCount.key) == "open_notes_count");
     CHECK(Version().ir().entity == "version");
     CHECK(std::string(scope::project.key) == "project");
     CHECK(std::string(scope::sequence.key) == "sequence");

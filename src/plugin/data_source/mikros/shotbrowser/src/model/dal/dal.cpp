@@ -347,7 +347,7 @@ std::string optionalString(const pms::Record &record, const std::string &key) {
 /**
  * @brief Reads one optional flag stored as an integer.
  * @param record Domain row.
- * @param key Field name, such as `"has_notes"`.
+ * @param key Field name, such as `"synced_to_client"`.
  * @return True when the field is a non-zero integer.
  */
 bool optionalFlag(const pms::Record &record, const std::string &key) {
@@ -394,7 +394,7 @@ std::vector<poco::VersionListElement> mapRecordsToRows<poco::VersionListElement>
         row.status = optionalString(record, "status");
         row.artistic_status = optionalString(record, "artistic_status");
         row.sites = optionalString(record, "sites");
-        row.has_notes = optionalFlag(record, "has_notes");
+        row.open_notes_count = optionalInt64(record, "open_notes_count");
         row.synced_to_client = optionalFlag(record, "synced_to_client");
         rows.push_back(std::move(row));
     }
@@ -652,7 +652,7 @@ RowPage<poco::VersionListElement> findVersionListElements(
                          status,
                          artisticStatus,
                          sites,
-                         hasNotes,
+                         openNotesCount,
                          syncedToClient);
     return fetchPage<poco::VersionListElement>(std::move(query), limit, cursor);
 }

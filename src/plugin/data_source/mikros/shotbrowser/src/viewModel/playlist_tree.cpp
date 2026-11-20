@@ -51,7 +51,7 @@ nlohmann::json versionFacts(
         {"status", row.status},
         {"artisticStatus", row.artistic_status},
         {"sites", row.sites},
-        {"hasNotes", row.has_notes},
+        {"openNotesCount", row.open_notes_count},
         {"syncedToClient", row.synced_to_client}};
 }
 

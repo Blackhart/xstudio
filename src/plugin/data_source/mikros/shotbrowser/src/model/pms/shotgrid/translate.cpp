@@ -324,21 +324,14 @@ std::string joinNames(const nlohmann::json &value) {
 /**
  * @brief Copies one ShotGrid attribute onto the domain record.
  *
- * Notes become `1` when the list is not empty. A true client flag becomes `1`.
- * Site lists keep the ShotGrid names. `shots` and `versions` become lists of links.
- * An entity object keeps its `name`.
+ * A true client flag becomes `1`. Site lists keep the ShotGrid names.
+ * `shots` and `versions` become lists of links. An entity object keeps its `name`.
  *
  * @param out Record being filled.
  * @param field Domain field and its ShotGrid key.
  * @param value Attribute value. Null is not passed in.
  */
 void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::json &value) {
-    if (field.domain == "has_notes") {
-        if (value.is_array() && !value.empty()) {
-            out.fields["has_notes"] = std::int64_t{1}; ///< The N button lights up.
-        }
-        return;
-    }
     if (field.domain == "synced_to_client") {
         if (value.is_boolean() && value.get<bool>()) {
             out.fields["synced_to_client"] = std::int64_t{1}; ///< The C button lights up.

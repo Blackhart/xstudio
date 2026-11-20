@@ -559,7 +559,7 @@ void fillVersionCard(Record &row, std::size_t index) {
     row.fields["status"] = std::string(statuses[pick]);
     row.fields["artistic_status"] = std::string(artistic[pick]);
     row.fields["sites"] = std::string(sites[pick]);
-    row.fields["has_notes"] = std::int64_t{(id % 2) == 0 ? 1 : 0};
+    row.fields["open_notes_count"] = std::int64_t{(id % 2) == 0 ? 2 : 0};
     row.fields["synced_to_client"] = std::int64_t{(id % 3) == 0 ? 1 : 0};
     row.fields["uploaded_movie"] = "https://example.test/movies/" + name + ".mp4";
     row.fields["uploaded_movie_provider"] = std::string("signedurl");
@@ -850,7 +850,7 @@ Record publicVersion(const Record &row) {
     copyPresent(out, row, "status");
     copyPresent(out, row, "artistic_status");
     copyPresent(out, row, "sites");
-    copyPresent(out, row, "has_notes");
+    copyPresent(out, row, "open_notes_count");
     copyPresent(out, row, "synced_to_client");
     copyPresent(out, row, "frames");
     copyPresent(out, row, "frames_provider");

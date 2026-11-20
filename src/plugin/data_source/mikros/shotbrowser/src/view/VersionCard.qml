@@ -75,7 +75,13 @@ Rectangle {
     readonly property string stepStatus: field("status")
     readonly property string artisticStatus: field("artisticStatus")
     readonly property string sites: field("sites")
-    readonly property bool hasNotes: flag("hasNotes")
+    readonly property int openNotesCount: {
+        const row = rowBag()
+        if (!row || row.openNotesCount === undefined || row.openNotesCount === null)
+            return 0
+        return Number(row.openNotesCount)
+    }
+    readonly property bool hasOpenNotes: openNotesCount > 0
     readonly property bool syncedToClient: flag("syncedToClient")
     readonly property int versionId: {
         const row = rowBag()
@@ -140,7 +146,7 @@ Rectangle {
 
                     Repeater {
                         model: [
-                            {letter: "N", on: card.hasNotes},
+                            {letter: "N", on: card.hasOpenNotes},
                             {letter: "C", on: card.syncedToClient}
                         ]
 

@@ -61,7 +61,7 @@ entities:
       step:             { shotgrid: sg_task.Task.step }
       status:           { shotgrid: sg_status_list }
       artistic_status:  { shotgrid: sg_status_artistique }
-      has_notes:        { shotgrid: notes }
+      open_notes_count: { shotgrid: open_notes_count }
       synced_to_client: { shotgrid: sg_synced_to_client }
       sites:            { shotgrid: sg_published_file.PublishedFile.sg_sites }
       frames:           { shotgrid: sg_path_to_frames, provider: fileSeq }

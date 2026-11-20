@@ -370,7 +370,7 @@ inline xstudio::utility::JsonStore rowsToJson<poco::VersionListElement>(
              {"status", row.status},
              {"artistic_status", row.artistic_status},
              {"sites", row.sites},
-             {"has_notes", row.has_notes},
+             {"open_notes_count", row.open_notes_count},
              {"synced_to_client", row.synced_to_client}});
     }
     return xstudio::utility::JsonStore(out);
@@ -401,7 +401,7 @@ inline std::vector<poco::VersionListElement> rowsFromJson<poco::VersionListEleme
         row.status = entry.value("status", std::string());
         row.artistic_status = entry.value("artistic_status", std::string());
         row.sites = entry.value("sites", std::string());
-        row.has_notes = entry.value("has_notes", false);
+        row.open_notes_count = entry.value("open_notes_count", static_cast<std::int64_t>(0));
         row.synced_to_client = entry.value("synced_to_client", false);
         rows.push_back(std::move(row));
     }

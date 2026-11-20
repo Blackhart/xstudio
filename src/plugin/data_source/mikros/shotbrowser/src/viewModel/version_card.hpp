@@ -55,7 +55,7 @@ class VersionCard {
     std::string status_;
     std::string artistic_status_;
     std::string sites_;
-    bool has_notes_ = false;
+    std::int64_t open_notes_count_ = 0;
     bool synced_to_client_ = false;
 };
 
