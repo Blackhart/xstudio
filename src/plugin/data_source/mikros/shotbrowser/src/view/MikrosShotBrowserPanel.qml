@@ -112,6 +112,10 @@ Item {
         id: openMenu
     }
 
+    OpenPlaylistMenu {
+        id: openPlaylistMenu
+    }
+
     XsSplitView {
         id: mainSplit
         anchors.fill: parent
@@ -288,6 +292,10 @@ Item {
                 onResultChosen: function(mode) { panel.chooseResult(mode) }
                 onOpenRequested: function(row) { openMenu.openInCurrent(row) }
                 onMenuRequested: function(row, item, x, y) { openMenu.showFor(row, item, x, y) }
+                onOpenPlaylistRequested: function(row) { openPlaylistMenu.openPlaylist(row) }
+                onMenuPlaylistRequested: function(row, item, x, y) {
+                    openPlaylistMenu.showFor(row, item, x, y)
+                }
             }
         }
     }

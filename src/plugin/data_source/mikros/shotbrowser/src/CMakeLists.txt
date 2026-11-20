@@ -16,6 +16,7 @@ set(SOURCES
 	mikros_shotbrowser.cpp
 	utility/home.cpp
 	utility/catalog.cpp
+	utility/media.cpp
 	utility/sequence_path.cpp
 	utility/thumbnails.cpp
 	viewModel/project_selector.cpp
@@ -88,6 +89,7 @@ qt_add_qml_module(${PROJECT_NAME}
 		view/PlaylistTree.qml
 		view/PlaylistCard.qml
 		view/OpenMediaMenu.qml
+		view/OpenPlaylistMenu.qml
 )
 
 default_plugin_options(${PROJECT_NAME})

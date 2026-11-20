@@ -15,6 +15,8 @@ Rectangle {
     property bool expandable: false
 
     signal toggleRequested()
+    signal openRequested()
+    signal menuRequested(real x, real y)
 
     function rowBag() {
         if (modelData !== undefined && modelData !== null && typeof modelData === "object")
@@ -74,6 +76,18 @@ Rectangle {
     color: XsStyleSheet.widgetBgNormalColor
     border.width: 1
     border.color: rowHover.hovered ? XsStyleSheet.accentColor : "transparent"
+
+    MouseArea {
+        anchors.fill: parent
+        z: -1
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onDoubleClicked: card.openRequested()
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.RightButton)
+                card.menuRequested(mouse.x, mouse.y)
+        }
+    }
 
     GridLayout {
         anchors.fill: parent

@@ -10,8 +10,10 @@
 #include <caf/allowed_unsafe_message_type.hpp>
 #include <caf/event_based_actor.hpp>
 
+#include <algorithm>
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
 
@@ -302,27 +304,46 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         return;
     }
     case CatalogKind::PlaylistVersions: {
-        const VersionParents parents = versionParentsOf(request);
-        PageScope scope = pageScope(parents);
+        PageScope scope;
         scope.has_playlist = true;
         scope.playlist_id = request.playlist_id; ///< The panel writes these versions into that node.
-        publishPages<poco::VersionListElement>(
-            request.panel,
-            request.request_id,
-            "playlist_versions",
-            request.project_id,
-            [projectId = request.project_id, parents, playlistId = request.playlist_id](
-                const std::optional<std::string> &cursor) {
-                return dal::findVersionListElements(
-                    projectId,
-                    dal::readPageLimit(),
-                    cursor,
-                    parents.sequenceId,
-                    parents.shotId,
-                    parents.assetId,
-                    playlistId);
-            },
-            scope);
+        const std::vector<poco::PlaylistVersionLink> links =
+            dal::findPlaylistVersionLinks(request.playlist_id);
+        std::vector<std::int64_t> versionIds;
+        versionIds.reserve(links.size());
+        for (const poco::PlaylistVersionLink &link : links) {
+            versionIds.push_back(link.id);
+        }
+        if (versionIds.empty()) {
+            sendCatalog(
+                request.panel,
+                request.request_id,
+                "playlist_versions",
+                request.project_id,
+                scope,
+                false,
+                rowsToJson(std::vector<poco::VersionListElement>{}));
+            return;
+        }
+        const std::size_t pageLimit = dal::readPageLimit();
+        bool append = false;
+        for (std::size_t offset = 0; offset < versionIds.size(); offset += pageLimit) {
+            const std::size_t end = std::min(offset + pageLimit, versionIds.size());
+            const std::vector<std::int64_t> chunk(
+                versionIds.begin() + static_cast<std::ptrdiff_t>(offset),
+                versionIds.begin() + static_cast<std::ptrdiff_t>(end));
+            const std::vector<poco::VersionListElement> rows =
+                dal::findVersionListElementsByIds(chunk);
+            sendCatalog(
+                request.panel,
+                request.request_id,
+                "playlist_versions",
+                request.project_id,
+                scope,
+                append,
+                rowsToJson(rows));
+            append = true;
+        }
         return;
     }
     }

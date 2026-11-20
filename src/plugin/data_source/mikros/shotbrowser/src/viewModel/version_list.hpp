@@ -24,21 +24,6 @@ using namespace xstudio;
 namespace xstudio::mikros_shotbrowser {
 
 /**
- * @brief Paths that survived the disk check for one version.
- *
- * `frames_spec` is empty when the sequence is not opened. `movie_path` is a local file.
- */
-struct OpenReady {
-    std::int64_t version_id = 0; ///< ShotGrid version id, for the log line.
-    std::uint64_t token = 0;     ///< Matches the QML request that should be selected.
-    bool select = false;         ///< True when the new media should become current.
-    std::string name;            ///< Media name.
-    std::string playlist_uuid;   ///< Playlist actor uuid.
-    std::string frames_spec;     ///< Sequence spec accepted by `parse_cli_posix_path`.
-    std::string movie_path;      ///< Local movie file. Empty when there is no movie.
-};
-
-/**
  * @brief View model of the version catalog load and open action.
  *
  * Holds plain `VersionCard` objects. The list is published as a `JsonAttribute`
@@ -91,17 +76,17 @@ class VersionList : public QObject {
     void clearVersions();
 
     /**
-     * @brief Handles `version`, `version_count`, `version_thumbs`, and `open_media`.
+     * @brief Handles `version`, `version_count`, and `version_thumbs`.
      * @return The handlers for those catalogs.
      */
     caf::message_handler message_handler_extensions();
 
     /**
-     * @brief Starts an open, a load-more, or a search when QML writes the matching attribute.
+     * @brief Starts a load-more, a search, or an open when QML writes the matching attribute.
      *
-     * `OpenVersion` starts the disk check. `LoadMoreVersions` starts the next page.
-     * `VersionSearch` clears then reloads with the name-or-id filter.
-     * Other attributes are ignored. An empty open value does nothing.
+     * `LoadMoreVersions` starts the next page. `VersionSearch` clears then reloads
+     * with the name-or-id filter. `OpenVersion` calls `open_version`.
+     * Other attributes are ignored.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed. Only Value is a request.
      */
@@ -110,7 +95,12 @@ class VersionList : public QObject {
   private:
     friend class VersionPageHandler;
     friend class VersionThumbHandler;
-    friend class OpenPageHandler;
+
+    /**
+     * @brief Parses a QML JSON open request and forwards it to `open_version` in utility/media.
+     * @param text Attribute value: versionId, name, playlistName, frameRange.
+     */
+    void open_version(const std::string &text);
 
     /**
      * @brief Applies local thumb URLs on matching cards and republishes JSON once.
@@ -119,7 +109,7 @@ class VersionList : public QObject {
     void applyCardImages(const utility::JsonStore &payload);
 
     /**
-     * @brief Publishes the version cards and the open-media attributes.
+     * @brief Publishes the version cards and list attributes.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
@@ -132,12 +122,6 @@ class VersionList : public QObject {
      */
     void updateVersionList(
         std::uint64_t requestId, bool append, const utility::JsonStore &payload);
-
-    /**
-     * @brief Places media after the open-disk check finishes (double-click / menu).
-     * @param payload Paths checked off the actor thread.
-     */
-    void openMedia(const utility::JsonStore &payload);
 
     /**
      * @brief Keeps only rows whose version id is not already in `versions_`.
@@ -192,11 +176,6 @@ class VersionList : public QObject {
      */
     void markVersionsLoaded();
 
-    void startOpen(const std::string &text);
-    void placeOpenedMedia(const OpenReady &ready);
-    void addOpenedSources(
-        const OpenReady &ready, caf::actor playlist, const utility::FrameRate &rate);
-
     /**
      * @brief Active search text for catalog loads, or empty when unfiltered.
      * @return `search_query_` when set, otherwise nullopt.
@@ -217,7 +196,6 @@ class VersionList : public QObject {
     module::StringAttribute *load_more_versions_ = nullptr; ///< QML bump that requests the next page.
     module::StringAttribute *version_search_ = nullptr; ///< QML Enter on the result search bar.
     module::StringAttribute *open_version_ = nullptr; ///< JSON request from a double-click or the menu.
-    module::StringAttribute *opened_media_ = nullptr; ///< JSON result the panel selects when asked.
 };
 
 } // namespace xstudio::mikros_shotbrowser

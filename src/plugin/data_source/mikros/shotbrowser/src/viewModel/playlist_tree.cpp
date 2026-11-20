@@ -6,6 +6,7 @@
 
 #include "viewModel/playlist_tree.hpp"
 #include "viewModel/playlist_card.hpp"
+#include "utility/media.hpp"
 #include "utility/thumbnails.hpp"
 
 #include <caf/actor_cast.hpp>
@@ -224,6 +225,8 @@ void PlaylistTree::initQmlAttributes(plugin::StandardPlugin &panel) {
     playlist_search_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     footer_ = panel.add_string_attribute("PlaylistTreeFooter", "PlaylistTreeFooter", "");
     footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    open_playlist_ = panel.add_string_attribute("OpenPlaylist", "OpenPlaylist", "");
+    open_playlist_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 std::optional<std::string> PlaylistTree::activeSearchQuery() const {
@@ -250,10 +253,35 @@ void PlaylistTree::attribute_changed(const utility::Uuid &attr_uuid, int role) {
         loadPlaylistsFromNameOrIdAsync(playlist_search_->value());
         return;
     }
+    if (open_playlist_ && attr_uuid == open_playlist_->uuid()) {
+        open_playlist(open_playlist_->value());
+        return;
+    }
     if (!expanded_ || attr_uuid != expanded_->uuid()) {
         return; ///< Only an unfold loads versions.
     }
     expandPlaylist();
+}
+
+void PlaylistTree::open_playlist(const std::string &text) {
+    if (text.empty()) {
+        return;
+    }
+    nlohmann::json body;
+    try {
+        body = nlohmann::json::parse(text);
+    } catch (const std::exception &) {
+        log::error("open_playlist request is not json");
+        return;
+    }
+    if (!body.is_object()) {
+        return;
+    }
+    const std::int64_t playlistId = body.value("playlistId", std::int64_t{0});
+    const std::string name = body.value("name", std::string());
+    const std::int64_t projectId =
+        dal::selectedProject() == -1 ? std::int64_t{0} : dal::selectedProject();
+    mikros_shotbrowser::open_playlist(panel_, playlistId, projectId, name);
 }
 
 void PlaylistTree::expandPlaylist() {
@@ -370,16 +398,12 @@ void PlaylistTree::markPlaylistsLoaded() {
 }
 
 void PlaylistTree::loadVersionsForPlaylistAsync(std::int64_t playlistId) {
-    const VersionParents parents = readVersionParents();
     CatalogLoadRequest request = makeCatalogRequest(
         &panel_,
         CatalogKind::PlaylistVersions,
         playlist_request_id_->load(),
         dal::selectedProject());
     request.playlist_id = playlistId;
-    request.sequence = parents.sequenceId;
-    request.shot = parents.shotId;
-    request.asset = parents.assetId;
     launchCatalogLoad(panel_.system(), std::move(request));
 }
 
@@ -515,8 +539,7 @@ void PlaylistTree::updateVersionsForPlaylist(
         if (rows.size() < dal::readPageLimit()) {
             node["versionsLoaded"] = true; ///< A short page is the last page.
         }
-        sortVersionsByName(node); ///< Only the versions of this playlist move.
-        sendPlaylistTreeToQml(tree);
+        sendPlaylistTreeToQml(tree); ///< Keep ShotGrid link order from the catalog pages.
         stampPlaylistThumbs(); ///< A file stored earlier can show with this page.
         return;
     }

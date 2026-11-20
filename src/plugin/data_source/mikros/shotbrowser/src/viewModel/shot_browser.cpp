@@ -252,10 +252,10 @@ void ShotBrowser::attribute_changed(const utility::Uuid &attr_uuid, int role) {
         asset_list_->attribute_changed(attr_uuid, role); ///< Selected asset, then onAssetSelected.
     }
     if (playlist_tree_) {
-        playlist_tree_->attribute_changed(attr_uuid, role); ///< An unfolded playlist.
+        playlist_tree_->attribute_changed(attr_uuid, role); ///< Unfold, search, or open playlist.
     }
     if (version_list_) {
-        version_list_->attribute_changed(attr_uuid, role); ///< A double-click or a menu open.
+        version_list_->attribute_changed(attr_uuid, role); ///< Open version.
     }
 }
 

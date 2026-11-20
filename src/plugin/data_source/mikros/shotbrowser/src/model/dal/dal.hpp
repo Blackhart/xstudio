@@ -8,6 +8,7 @@
 #include "model/context/shotbrowser_state.hpp"
 #include "model/poco/asset.hpp"
 #include "model/poco/playlist.hpp"
+#include "model/poco/playlist_version_link.hpp"
 #include "model/poco/project.hpp"
 #include "model/poco/sequence_shots.hpp"
 #include "model/poco/version.hpp"
@@ -206,6 +207,25 @@ RowPage<poco::VersionListElement> findVersionListElements(
     std::optional<std::int64_t> assetId = std::nullopt,
     std::optional<std::int64_t> playlistId = std::nullopt,
     std::optional<std::string> nameOrId = std::nullopt);
+
+/**
+ * @brief Version membership of one playlist from its `versions` links field.
+ * @param playlistId Domain playlist `id`.
+ * @return Ordered link stubs. Empty when the playlist is missing or the lookup fails.
+ */
+std::vector<poco::PlaylistVersionLink> findPlaylistVersionLinks(std::int64_t playlistId);
+
+/**
+ * @brief Card rows for the given version ids (`Fields` without image or media).
+ *
+ * Builds an OR filter on `id`. Results are reordered to match `versionIds`.
+ * Missing ids are omitted from the result.
+ *
+ * @param versionIds Domain version ids. Empty yields an empty vector.
+ * @return List elements that matched, in `versionIds` order.
+ */
+std::vector<poco::VersionListElement>
+findVersionListElementsByIds(const std::vector<std::int64_t> &versionIds);
 
 /**
  * @brief Image URL or path for one version (`Fields(image)` only).

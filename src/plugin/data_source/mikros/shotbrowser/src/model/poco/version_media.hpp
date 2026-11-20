@@ -18,6 +18,8 @@ namespace xstudio::mikros_shotbrowser::poco {
  */
 struct VersionMedia {
     std::int64_t id = 0;                     ///< Domain version id.
+    std::string name;                        ///< Version code. Empty when missing.
+    std::string frame_range;                 ///< Frame range text for sequence bounds.
     std::string frames;                      ///< Image-sequence path. Empty when none.
     std::string frames_provider;             ///< `fileSeq`, or empty.
     std::string movie;                       ///< On-disk movie path. Empty when none.

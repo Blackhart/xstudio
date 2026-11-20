@@ -18,6 +18,7 @@
 #include <cctype>
 #include <chrono>
 #include <iomanip>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -729,6 +730,86 @@ RowPage<poco::VersionListElement> findVersionListElements(
     return fetchPage<poco::VersionListElement>(std::move(query), limit, cursor);
 }
 
+std::vector<poco::PlaylistVersionLink> findPlaylistVersionLinks(std::int64_t playlistId) {
+    try {
+        using namespace pms::playlist;
+        const pms::Page page = pms::Playlist()
+                                   .Where(id == playlistId)
+                                   .Limit(1)
+                                   .find(SharedPms::getInstance().getSession());
+        if (page.rows.empty()) {
+            return {};
+        }
+        const pms::Record &record = page.rows.front();
+        const auto found = record.fields.find("versions");
+        if (found == record.fields.end()) {
+            return {};
+        }
+        const auto *links = std::get_if<std::vector<pms::Link>>(&found->second);
+        if (!links) {
+            return {};
+        }
+        std::vector<poco::PlaylistVersionLink> rows;
+        rows.reserve(links->size());
+        for (const pms::Link &link : *links) {
+            rows.push_back(poco::PlaylistVersionLink{link.id, link.name});
+        }
+        return rows;
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return {};
+    }
+}
+
+std::vector<poco::VersionListElement>
+findVersionListElementsByIds(const std::vector<std::int64_t> &versionIds) {
+    if (versionIds.empty()) {
+        return {};
+    }
+    try {
+        using namespace pms::version;
+        auto idFilter = (id == versionIds.front());
+        for (std::size_t index = 1; index < versionIds.size(); ++index) {
+            idFilter = idFilter || (id == versionIds[index]);
+        }
+        const pms::Page page = pms::Version()
+                                   .Where(std::move(idFilter))
+                                   .Fields(
+                                       id,
+                                       name,
+                                       author,
+                                       createdAt,
+                                       frameRange,
+                                       description,
+                                       step,
+                                       status,
+                                       artisticStatus,
+                                       sites,
+                                       openNotesCount,
+                                       syncedToClient)
+                                   .Limit(versionIds.size())
+                                   .find(SharedPms::getInstance().getSession());
+        const std::vector<poco::VersionListElement> found =
+            mapRecordsToRows<poco::VersionListElement>(page.rows);
+        std::map<std::int64_t, poco::VersionListElement> byId;
+        for (const poco::VersionListElement &row : found) {
+            byId.emplace(row.id, row);
+        }
+        std::vector<poco::VersionListElement> ordered;
+        ordered.reserve(versionIds.size());
+        for (const std::int64_t versionId : versionIds) {
+            const auto it = byId.find(versionId);
+            if (it != byId.end()) {
+                ordered.push_back(it->second);
+            }
+        }
+        return ordered;
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return {};
+    }
+}
+
 std::vector<poco::VersionThumb> findVersionThumbs(const std::vector<std::int64_t> &versionIds) {
     if (versionIds.empty()) {
         return {};
@@ -775,7 +856,7 @@ poco::VersionMedia findVersionMedia(std::int64_t versionId) {
         const pms::Page page =
             pms::Version()
                 .Where(id == versionId)
-                .Fields(id, name, frames, movie, uploadedMovie)
+                .Fields(id, name, frameRange, frames, movie, uploadedMovie)
                 .Limit(1)
                 .find(SharedPms::getInstance().getSession());
         if (page.rows.empty()) {
@@ -784,6 +865,8 @@ poco::VersionMedia findVersionMedia(std::int64_t versionId) {
         const pms::Record &record = page.rows.front();
         poco::VersionMedia row;
         row.id = std::get<std::int64_t>(record.at("id"));
+        row.name = optionalString(record, "name");
+        row.frame_range = optionalString(record, "frame_range");
         row.frames = optionalString(record, "frames");
         row.frames_provider = optionalString(record, "frames_provider");
         row.movie = optionalString(record, "movie");

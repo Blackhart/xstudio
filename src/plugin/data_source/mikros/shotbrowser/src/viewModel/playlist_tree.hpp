@@ -41,10 +41,11 @@ class PlaylistTree : public QObject {
     explicit PlaylistTree(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Loads more playlist names, expands a playlist, or runs a search.
+     * @brief Loads more playlist names, expands a playlist, runs a search, or opens a playlist.
      *
      * `LoadMorePlaylists` starts the next name page. `ExpandedPlaylist` starts a version load.
      * `PlaylistSearch` clears then reloads with the name-or-id filter.
+     * `OpenPlaylist` calls `open_playlist`.
      * Other attributes are ignored.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed. Only Value is a request.
@@ -94,6 +95,13 @@ class PlaylistTree : public QObject {
     void reloadExpanded();
 
     /**
+     * @brief Handles `playlist_tree`, `playlist_count`, `playlist_versions`, and thumbs.
+     * @return The playlist catalog handler.
+     */
+    caf::message_handler message_handler_extensions();
+
+  private:
+    /**
      * @brief Copies stored thumbnail URLs onto the version rows.
      */
     void stampPlaylistThumbs();
@@ -105,17 +113,16 @@ class PlaylistTree : public QObject {
     void schedulePlaylistThumbs(const std::vector<poco::VersionListElement> &rows);
 
     /**
-     * @brief Handles `playlist_tree`, `playlist_count`, `playlist_versions`, and thumbs.
-     * @return The playlist catalog handler.
-     */
-    caf::message_handler message_handler_extensions();
-
-  private:
-    /**
      * @brief Publishes the playlist tree and the unfolded name.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
+
+    /**
+     * @brief Parses a QML JSON open request and forwards it to `open_playlist` in utility/media.
+     * @param text Attribute value: playlistId, name.
+     */
+    void open_playlist(const std::string &text);
 
     /**
      * @brief True when the right tab is the playlist tree.
@@ -242,6 +249,7 @@ class PlaylistTree : public QObject {
     module::StringAttribute *load_more_playlists_ = nullptr; ///< QML bump that requests the next name page.
     module::StringAttribute *playlist_search_ = nullptr; ///< QML Enter on the result search bar.
     module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
+    module::StringAttribute *open_playlist_ = nullptr; ///< JSON request from a double-click or the menu.
 };
 
 } // namespace xstudio::mikros_shotbrowser

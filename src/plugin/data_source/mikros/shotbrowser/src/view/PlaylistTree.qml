@@ -17,6 +17,8 @@ Item {
     signal resultChosen(string mode)
     signal openRequested(var row)
     signal menuRequested(var row, var item, real x, real y)
+    signal openPlaylistRequested(var row)
+    signal menuPlaylistRequested(var row, var item, real x, real y)
 
     function field(entry, key) {
         if (!entry || entry[key] === undefined || entry[key] === null)
@@ -252,12 +254,25 @@ Item {
                     : XsStyleSheet.widgetStdHeight * 2
 
             PlaylistCard {
+                id: playlistCard
                 visible: !row.versionLine
                 width: row.width
                 modelData: row.modelData
                 expandable: row.isParent
                 expanded: row.isOpen
                 onToggleRequested: playlists.togglePlaylist(row.label)
+                onOpenRequested: playlists.openPlaylistRequested({
+                    playlistId: row.modelData && row.modelData.id !== undefined
+                            ? Number(row.modelData.id) : 0,
+                    name: row.label
+                })
+                onMenuRequested: function(x, y) {
+                    playlists.menuPlaylistRequested({
+                        playlistId: row.modelData && row.modelData.id !== undefined
+                                ? Number(row.modelData.id) : 0,
+                        name: row.label
+                    }, playlistCard, x, y)
+                }
             }
 
             VersionCard {
