@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 import xStudio 1.0
 
-// One version row: name, author, statuses, the cached image, and the open gesture.
+// One version row: name, author, statuses, the cached image, preview and open gestures.
 Rectangle {
     id: card
 
@@ -14,6 +14,7 @@ Rectangle {
     property bool chosen: false
     property int indent: 0
 
+    signal previewCurrent()
     signal openCurrent()
     signal menuRequested(real x, real y)
 
@@ -347,15 +348,30 @@ Rectangle {
         id: rowHover
     }
 
+    // Delay preview so a double-click only opens durable (no ephemeral playlist).
+    Timer {
+        id: previewClickTimer
+        interval: 250
+        repeat: false
+        onTriggered: card.previewCurrent()
+    }
+
     MouseArea {
         id: versionPress
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onDoubleClicked: card.openCurrent()
+        onDoubleClicked: {
+            previewClickTimer.stop()
+            card.openCurrent()
+        }
         onClicked: (mouse) => {
-            if (mouse.button === Qt.RightButton)
+            if (mouse.button === Qt.RightButton) {
+                previewClickTimer.stop()
                 card.menuRequested(mouse.x, mouse.y)
+                return
+            }
+            previewClickTimer.restart()
         }
     }
 }

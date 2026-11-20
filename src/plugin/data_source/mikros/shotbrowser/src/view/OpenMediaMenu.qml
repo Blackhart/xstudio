@@ -5,9 +5,11 @@ import xStudio 1.0
 import xstudio.qml.helpers 1.0
 import xstudio.qml.models 1.0
 
-// Context menu for a version card. Writes OpenVersion for the view model.
+// Context menu for a version card. Writes OpenVersion / PreviewVersion for the view model.
 Item {
     id: menu
+
+    readonly property string previewPlaylistName: "preview"
 
     XsModuleData {
         id: attributes
@@ -17,6 +19,12 @@ Item {
     XsAttributeValue {
         id: openVersionRequest
         attributeTitle: "OpenVersion"
+        model: attributes
+    }
+
+    XsAttributeValue {
+        id: previewVersionRequest
+        attributeTitle: "PreviewVersion"
         model: attributes
     }
 
@@ -37,7 +45,11 @@ Item {
     }
 
     function currentPlaylistName() {
-        return playlistNameOf(theSessionData.currentMediaContainerIndex)
+        const name = playlistNameOf(theSessionData.currentMediaContainerIndex)
+        // Durable open must not target the ephemeral preview playlist.
+        if (name === menu.previewPlaylistName)
+            return ""
+        return name
     }
 
     function sessionPlaylists() {
@@ -49,7 +61,7 @@ Item {
         for (let i = 0; i < count; i++) {
             const idx = theSessionData.index(i, 0, root)
             const name = playlistNameOf(idx)
-            if (!name)
+            if (!name || name === menu.previewPlaylistName)
                 continue
             rows.push({ name: name })
         }
@@ -72,6 +84,17 @@ Item {
 
     function openInCurrent(row) {
         openVersion(row, currentPlaylistName())
+    }
+
+    function previewVersion(row) {
+        if (!row || !row.versionId)
+            return
+        previewVersionRequest.value = ""
+        previewVersionRequest.value = JSON.stringify({
+            versionId: row.versionId,
+            name: row.label || "",
+            frameRange: row.frameRange || ""
+        })
     }
 
     XsPopupMenu {

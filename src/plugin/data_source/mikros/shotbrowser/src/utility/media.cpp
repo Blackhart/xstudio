@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file utility/media.cpp
- * @brief Resolve version media paths and the detached retrieve actor.
+ * @brief Resolve version media paths, open/preview playlists, and the retrieve actors.
  */
 
 #include "utility/media.hpp"
@@ -45,6 +45,17 @@ namespace xstudio::mikros_shotbrowser {
 namespace {
 
 constexpr const char *kMikrosVersionMetaPath = "/metadata/mikros/version";
+
+/**
+ * @brief Live ephemeral preview playlist (single-click, session-hidden).
+ */
+struct PreviewState {
+    std::int64_t version_id = 0; ///< ShotGrid version currently in preview. 0 = none.
+    utility::UuidActor playlist; ///< Hidden preview playlist actor.
+    std::uint64_t generation = 0; ///< Bumped on each preview / clear to drop stale work.
+};
+
+PreviewState g_preview; ///< One preview playlist per process for this plugin.
 
 /**
  * @brief Writes the ShotGrid version id on the media actor JSON store.
@@ -542,6 +553,321 @@ void selectAddedMedia(
         then_err);
 }
 
+/**
+ * @brief Removes every media item from `playlist`, then runs `then_ok`.
+ */
+void clearPlaylistMedia(
+    plugin::StandardPlugin &panel,
+    caf::actor playlist,
+    std::function<void()> then_ok,
+    std::function<void(const caf::error &)> then_err) {
+    panel.mail(playlist::get_media_atom_v)
+        .request(playlist, caf::infinite)
+        .then(
+            [&panel, playlist, then_ok = std::move(then_ok), then_err = std::move(then_err)](
+                const std::vector<utility::UuidActor> &media) {
+                if (media.empty()) {
+                    if (then_ok) {
+                        then_ok();
+                    }
+                    return;
+                }
+                utility::UuidVector ids;
+                ids.reserve(media.size());
+                for (const utility::UuidActor &ua : media) {
+                    ids.push_back(ua.uuid());
+                }
+                panel.mail(playlist::remove_media_atom_v, ids)
+                    .request(playlist, caf::infinite)
+                    .then(
+                        [then_ok = std::move(then_ok)](bool) {
+                            if (then_ok) {
+                                then_ok();
+                            }
+                        },
+                        [then_err = std::move(then_err)](const caf::error &err) {
+                            if (then_err) {
+                                then_err(err);
+                            } else {
+                                log::error("clearPlaylistMedia " + caf::to_string(err));
+                            }
+                        });
+            },
+            [then_err = std::move(then_err)](const caf::error &err) {
+                if (then_err) {
+                    then_err(err);
+                } else {
+                    log::error("clearPlaylistMedia list " + caf::to_string(err));
+                }
+            });
+}
+
+/**
+ * @brief Resolves session, then runs `then_ok` with it.
+ */
+void withSession(
+    plugin::StandardPlugin &panel,
+    std::function<void(caf::actor)> then_ok,
+    std::function<void(const caf::error &)> then_err) {
+    auto global = panel.system().registry().template get<caf::actor>(global_registry);
+    if (!global) {
+        log::error("withSession session missing");
+        if (then_err) {
+            then_err(caf::make_error(xstudio_error::error, "session missing"));
+        }
+        return;
+    }
+    panel.mail(session::session_atom_v)
+        .request(global, caf::infinite)
+        .then(
+            [then_ok = std::move(then_ok), then_err = std::move(then_err)](caf::actor session) {
+                if (!session) {
+                    if (then_err) {
+                        then_err(caf::make_error(xstudio_error::error, "session missing"));
+                    }
+                    return;
+                }
+                if (then_ok) {
+                    then_ok(session);
+                }
+            },
+            [then_err = std::move(then_err)](const caf::error &err) {
+                if (then_err) {
+                    then_err(err);
+                } else {
+                    log::error("withSession " + caf::to_string(err));
+                }
+            });
+}
+
+/**
+ * @brief Shows `playlist` in the viewport only (does not change the inspected list).
+ */
+void activatePreviewViewport(caf::actor session, const utility::UuidActor &playlist) {
+    anon_mail(session::viewport_active_media_container_atom_v, playlist).send(session);
+}
+
+/**
+ * @brief Gets or creates the hidden `preview` playlist, then runs `then_ok`.
+ */
+void ensurePreviewPlaylist(
+    plugin::StandardPlugin &panel,
+    std::function<void(utility::UuidActor)> then_ok,
+    std::function<void(const caf::error &)> then_err) {
+    if (g_preview.playlist) {
+        withSession(
+            panel,
+            [then_ok = std::move(then_ok)](caf::actor session) {
+                activatePreviewViewport(session, g_preview.playlist);
+                if (then_ok) {
+                    then_ok(g_preview.playlist);
+                }
+            },
+            then_err);
+        return;
+    }
+    withSession(
+        panel,
+        [&panel, then_ok = std::move(then_ok), then_err = std::move(then_err)](
+            caf::actor session) {
+            // Hidden: not inserted in the session playlist tree.
+            panel.mail(session::add_playlist_atom_v, std::string(kPreviewPlaylistName), true)
+                .request(session, caf::infinite)
+                .then(
+                    [session, then_ok](const utility::UuidActor &created) {
+                        g_preview.playlist = created;
+                        activatePreviewViewport(session, created);
+                        if (then_ok) {
+                            then_ok(created);
+                        }
+                    },
+                    [then_err](const caf::error &err) {
+                        if (then_err) {
+                            then_err(err);
+                        } else {
+                            log::error(
+                                "ensurePreviewPlaylist add " + caf::to_string(err));
+                        }
+                    });
+        },
+        then_err);
+}
+
+/**
+ * @brief Starts playback on the current viewport playhead after a successful select.
+ */
+void playPreview(plugin::StandardPlugin &panel) {
+    auto events =
+        panel.system().registry().template get<caf::actor>(global_playhead_events_actor);
+    if (!events) {
+        return;
+    }
+    panel.mail(ui::viewport::viewport_playhead_atom_v)
+        .request(events, caf::infinite)
+        .then(
+            [](caf::actor playhead) {
+                if (playhead) {
+                    anon_mail(playhead::play_atom_v, true).send(playhead);
+                }
+            },
+            [](const caf::error &) {});
+}
+
+void clear_preview(plugin::StandardPlugin &panel) {
+    ++g_preview.generation; ///< Drop any in-flight preview_version callbacks.
+    g_preview.version_id = 0;
+    if (!g_preview.playlist) {
+        return;
+    }
+    const utility::UuidActor preview = g_preview.playlist;
+    // Keep the hidden playlist: it is linked to the session, so send_exit would
+    // propagate user_shutdown and break open_version / the viewport.
+    withSession(
+        panel,
+        [&panel, preview](caf::actor session) {
+            panel.mail(session::viewport_active_media_container_atom_v)
+                .request(session, caf::infinite)
+                .then(
+                    [&panel, session, preview](const utility::UuidActor &viewed) {
+                        const bool viewing_preview = viewed.uuid() == preview.uuid();
+                        auto clear_media = [&panel, preview]() {
+                            clearPlaylistMedia(
+                                panel, preview.actor(), [] {}, [](const caf::error &) {});
+                        };
+                        if (!viewing_preview) {
+                            clear_media(); ///< Durable open already moved the viewport.
+                            return;
+                        }
+                        panel.mail(session::active_media_container_atom_v)
+                            .request(session, caf::infinite)
+                            .then(
+                                [session, preview, clear_media](
+                                    const utility::UuidActor &inspected) {
+                                    if (inspected && inspected.uuid() != preview.uuid()) {
+                                        anon_mail(
+                                            session::viewport_active_media_container_atom_v,
+                                            inspected)
+                                            .send(session);
+                                    }
+                                    clear_media();
+                                },
+                                [clear_media](const caf::error &) { clear_media(); });
+                    },
+                    [&panel, preview](const caf::error &) {
+                        clearPlaylistMedia(
+                            panel, preview.actor(), [] {}, [](const caf::error &) {});
+                    });
+        },
+        [](const caf::error &err) {
+            log::error("clear_preview session " + caf::to_string(err));
+        });
+}
+
+void on_preview_viewport_container_changed(
+    plugin::StandardPlugin &panel, const utility::UuidActor &viewed) {
+    if (!g_preview.playlist) {
+        return;
+    }
+    if (viewed.uuid() == g_preview.playlist.uuid()) {
+        return; ///< Still viewing the preview playlist.
+    }
+    clear_preview(panel);
+}
+
+void preview_version(
+    plugin::StandardPlugin &panel,
+    std::int64_t versionId,
+    std::int64_t projectId,
+    const std::string &name,
+    const std::string &frameRange) {
+    if (versionId == 0) {
+        return;
+    }
+    if (versionId == g_preview.version_id && g_preview.playlist) {
+        return; ///< Same version already previewed.
+    }
+    const std::uint64_t gen = ++g_preview.generation;
+    retrieveVersionMedia(
+        panel,
+        versionId,
+        projectId,
+        frameRange,
+        [&panel, versionId, name, gen](ResolvedVersionPaths paths) {
+            if (gen != g_preview.generation) {
+                return;
+            }
+            ensurePreviewPlaylist(
+                panel,
+                [&panel, versionId, name, paths = std::move(paths), gen](
+                    utility::UuidActor playlist) {
+                    if (gen != g_preview.generation) {
+                        return;
+                    }
+                    clearPlaylistMedia(
+                        panel,
+                        playlist.actor(),
+                        [&panel, playlist, versionId, name, paths, gen]() {
+                            if (gen != g_preview.generation) {
+                                return;
+                            }
+                            add_version_to_playlist(
+                                panel,
+                                playlist,
+                                paths,
+                                name,
+                                versionId,
+                                [&panel, playlist, versionId, name, paths, gen](
+                                    utility::UuidActor) {
+                                    if (gen != g_preview.generation) {
+                                        return;
+                                    }
+                                    selectAddedMedia(
+                                        panel,
+                                        playlist,
+                                        versionId,
+                                        [&panel, versionId, name, paths](
+                                            utility::UuidActor) {
+                                            g_preview.version_id = versionId;
+                                            playPreview(panel);
+                                            log::info(
+                                                "preview_version version=" + name + "|" +
+                                                std::to_string(versionId) + " frames=" +
+                                                paths.frames_spec +
+                                                " movie=" + paths.movie_path);
+                                        },
+                                        [versionId](const caf::error &err) {
+                                            log::error(
+                                                "preview_version select versionId=" +
+                                                std::to_string(versionId) + " " +
+                                                caf::to_string(err));
+                                        });
+                                },
+                                [versionId](const caf::error &err) {
+                                    log::error(
+                                        "preview_version add versionId=" +
+                                        std::to_string(versionId) + " " +
+                                        caf::to_string(err));
+                                });
+                        },
+                        [versionId](const caf::error &err) {
+                            log::error(
+                                "preview_version clear media versionId=" +
+                                std::to_string(versionId) + " " + caf::to_string(err));
+                        });
+                },
+                [versionId](const caf::error &err) {
+                    log::error(
+                        "preview_version playlist versionId=" +
+                        std::to_string(versionId) + " " + caf::to_string(err));
+                });
+        },
+        [versionId](const caf::error &err) {
+            log::error(
+                "preview_version retrieve versionId=" + std::to_string(versionId) + " " +
+                caf::to_string(err));
+        });
+}
+
 void open_version(
     plugin::StandardPlugin &panel,
     std::int64_t versionId,
@@ -552,6 +878,7 @@ void open_version(
     if (versionId == 0) {
         return;
     }
+    clear_preview(panel);
     retrieveVersionMedia(
         panel,
         versionId,

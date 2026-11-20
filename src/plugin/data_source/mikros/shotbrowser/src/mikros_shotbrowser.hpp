@@ -47,6 +47,11 @@ class MikrosShotBrowser : public plugin::StandardPlugin {
      */
     void attribute_changed(const utility::Uuid &attr_uuid, const int role) override;
 
+    /**
+     * @brief Joins the session event group to watch viewport playlist changes.
+     */
+    void joinPreviewFocusEvents();
+
     std::unique_ptr<ShotBrowser> shot_browser_; ///< Tabs, screens, and their signals.
 };
 

@@ -6,13 +6,18 @@
 
 #include "mikros_shotbrowser.hpp"
 #include "utility/catalog.hpp"
+#include "utility/media.hpp"
 #include "utility/thumbnails.hpp"
 #include "viewModel/shot_browser.hpp"
 
 #include "model/constants.hpp"
 
+#include "xstudio/atoms.hpp"
 #include "xstudio/plugin_manager/plugin_factory.hpp"
+#include "xstudio/session/session.hpp"
 #include "xstudio/utility/helpers.hpp"
+
+#include <caf/actor_registry.hpp>
 
 #include <filesystem>
 
@@ -114,6 +119,7 @@ MikrosShotBrowser::MikrosShotBrowser(
     logWriteLocations(); ///< Preferences file and thumbnail directory, resolved now.
     make_behavior(); ///< Sets the actor address the attributes already use.
     connect_to_ui();
+    joinPreviewFocusEvents(); ///< Drop `preview` when the viewport leaves that playlist.
     register_ui_panel_qml(
         "Mikros Shot Browser",
         R"(
@@ -141,11 +147,33 @@ void MikrosShotBrowser::attribute_changed(
     plugin::StandardPlugin::attribute_changed(attr_uuid, role);
 }
 
-caf::message_handler MikrosShotBrowser::message_handler_extensions() {
-    if (!shot_browser_) {
-        return {}; ///< Construction has not stored the screens yet.
+void MikrosShotBrowser::joinPreviewFocusEvents() {
+    auto global = system().registry().template get<caf::actor>(global_registry);
+    if (!global) {
+        return;
     }
-    return shot_browser_->message_handler_extensions();
+    mail(session::session_atom_v)
+        .request(global, caf::infinite)
+        .then(
+            [=](caf::actor session) {
+                if (session) {
+                    utility::join_event_group(this, session);
+                }
+            },
+            [=](const caf::error &) {});
+}
+
+caf::message_handler MikrosShotBrowser::message_handler_extensions() {
+    caf::message_handler preview_focus{
+        [=](utility::event_atom,
+            session::viewport_active_media_container_atom,
+            const utility::UuidActor &viewed) {
+            on_preview_viewport_container_changed(*this, viewed);
+        }};
+    if (!shot_browser_) {
+        return preview_focus;
+    }
+    return preview_focus.or_else(shot_browser_->message_handler_extensions());
 }
 
 XSTUDIO_PLUGIN_DECLARE_BEGIN()

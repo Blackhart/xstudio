@@ -13,6 +13,7 @@ Item {
     property int switcherSpacing: 2
 
     signal resultChosen(string mode)
+    signal previewRequested(var row)
     signal openRequested(var row)
     signal menuRequested(var row, var item, real x, real y)
 
@@ -129,6 +130,7 @@ Item {
 
         VersionCard {
             id: card
+            onPreviewCurrent: versions.previewRequested(card.payload())
             onOpenCurrent: versions.openRequested(card.payload())
             onMenuRequested: function(x, y) {
                 versions.menuRequested(card.payload(), card, x, y)

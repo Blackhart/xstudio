@@ -15,6 +15,7 @@ Item {
     property var openPlaylists: ({})
 
     signal resultChosen(string mode)
+    signal previewRequested(var row)
     signal openRequested(var row)
     signal menuRequested(var row, var item, real x, real y)
     signal openPlaylistRequested(var row)
@@ -281,6 +282,7 @@ Item {
                 modelData: row.modelData
                 indent: XsStyleSheet.widgetStdHeight / 1.2
                 chosen: false
+                onPreviewCurrent: playlists.previewRequested(versionCard.payload())
                 onOpenCurrent: playlists.openRequested(versionCard.payload())
                 onMenuRequested: function(x, y) {
                     playlists.menuRequested(versionCard.payload(), versionCard, x, y)

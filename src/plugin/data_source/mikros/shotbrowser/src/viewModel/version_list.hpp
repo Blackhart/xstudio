@@ -86,7 +86,7 @@ class VersionList : public QObject {
      *
      * `LoadMoreVersions` starts the next page. `VersionSearch` clears then reloads
      * with the name-or-id filter. `OpenVersion` calls `open_version`.
-     * Other attributes are ignored.
+     * `PreviewVersion` calls `preview_version`. Other attributes are ignored.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed. Only Value is a request.
      */
@@ -101,6 +101,12 @@ class VersionList : public QObject {
      * @param text Attribute value: versionId, name, playlistName, frameRange.
      */
     void open_version(const std::string &text);
+
+    /**
+     * @brief Parses a QML JSON preview request and forwards it to `preview_version`.
+     * @param text Attribute value: versionId, name, frameRange.
+     */
+    void preview_version(const std::string &text);
 
     /**
      * @brief Applies local thumb URLs on matching cards and republishes JSON once.
@@ -196,6 +202,7 @@ class VersionList : public QObject {
     module::StringAttribute *load_more_versions_ = nullptr; ///< QML bump that requests the next page.
     module::StringAttribute *version_search_ = nullptr; ///< QML Enter on the result search bar.
     module::StringAttribute *open_version_ = nullptr; ///< JSON request from a double-click or the menu.
+    module::StringAttribute *preview_version_ = nullptr; ///< JSON request from a single-click preview.
 };
 
 } // namespace xstudio::mikros_shotbrowser

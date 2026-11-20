@@ -278,6 +278,7 @@ Item {
                 switcherHeight: panel.tabHeight
                 switcherSpacing: panel.buttonSpacing * 2
                 onResultChosen: function(mode) { panel.chooseResult(mode) }
+                onPreviewRequested: function(row) { openMenu.previewVersion(row) }
                 onOpenRequested: function(row) { openMenu.openInCurrent(row) }
                 onMenuRequested: function(row, item, x, y) { openMenu.showFor(row, item, x, y) }
             }
@@ -290,6 +291,7 @@ Item {
                 switcherHeight: panel.tabHeight
                 switcherSpacing: panel.buttonSpacing * 2
                 onResultChosen: function(mode) { panel.chooseResult(mode) }
+                onPreviewRequested: function(row) { openMenu.previewVersion(row) }
                 onOpenRequested: function(row) { openMenu.openInCurrent(row) }
                 onMenuRequested: function(row, item, x, y) { openMenu.showFor(row, item, x, y) }
                 onOpenPlaylistRequested: function(row) { openPlaylistMenu.openPlaylist(row) }

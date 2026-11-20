@@ -149,6 +149,8 @@ void VersionList::initQmlAttributes(plugin::StandardPlugin &panel) {
     version_search_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     open_version_ = panel.add_string_attribute("OpenVersion", "OpenVersion", "");
     open_version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    preview_version_ = panel.add_string_attribute("PreviewVersion", "PreviewVersion", "");
+    preview_version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 std::optional<std::string> VersionList::activeSearchQuery() const {
@@ -437,6 +439,28 @@ void VersionList::open_version(const std::string &text) {
         panel_, versionId, projectId, name, playlistName, frameRange);
 }
 
+void VersionList::preview_version(const std::string &text) {
+    if (text.empty()) {
+        return;
+    }
+    nlohmann::json body;
+    try {
+        body = nlohmann::json::parse(text);
+    } catch (const std::exception &) {
+        log::error("preview_version request is not json");
+        return;
+    }
+    if (!body.is_object()) {
+        return;
+    }
+    const std::int64_t versionId = body.value("versionId", std::int64_t{0});
+    const std::string name = body.value("name", std::string());
+    const std::string frameRange = body.value("frameRange", std::string());
+    const std::int64_t projectId =
+        dal::selectedProject() == -1 ? std::int64_t{0} : dal::selectedProject();
+    mikros_shotbrowser::preview_version(panel_, versionId, projectId, name, frameRange);
+}
+
 void VersionList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
     if (role != module::Attribute::Value) {
         return;
@@ -452,6 +476,10 @@ void VersionList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
     }
     if (open_version_ && attr_uuid == open_version_->uuid()) {
         open_version(open_version_->value());
+        return;
+    }
+    if (preview_version_ && attr_uuid == preview_version_->uuid()) {
+        preview_version(preview_version_->value());
     }
 }
 

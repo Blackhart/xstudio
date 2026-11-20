@@ -179,6 +179,8 @@ void selectAddedMedia(
 /**
  * @brief Resolves media, gets or creates a playlist, adds the version, then selects it.
  *
+ * Clears the ephemeral `preview` playlist first.
+ *
  * @param panel Panel actor used for retrieve, session, and media spawn.
  * @param versionId ShotGrid version id.
  * @param projectId Project id for the movie cache folder.
@@ -197,7 +199,8 @@ void open_version(
 /**
  * @brief Loads playlist version links, creates one xSTUDIO playlist, then adds and selects each.
  *
- * For each version: `add_version_to_playlist` then `selectAddedMedia`, one at a time.
+ * Clears the ephemeral `preview` playlist first. For each version:
+ * `add_version_to_playlist` then `selectAddedMedia`, one at a time.
  *
  * @param panel Panel actor used for retrieve, session, and media spawn.
  * @param playlistId ShotGrid playlist id.
@@ -209,6 +212,56 @@ void open_playlist(
     std::int64_t playlistId,
     std::int64_t projectId,
     const std::string &playlistName);
+
+/**
+ * @brief Name of the ephemeral single-click preview playlist (session-hidden).
+ */
+inline constexpr const char *kPreviewPlaylistName = "preview";
+
+/**
+ * @brief Loads one version into a hidden `preview` playlist and plays it in the viewport.
+ *
+ * Uses a session-hidden playlist (not in the playlist tree). Reuses one instance: clears
+ * its media, adds the version, selects it, activates the viewport only (does not change
+ * the inspected media list), then starts playback. A second call with the same version
+ * id is a no-op. Bumps an internal generation so a slower earlier request cannot
+ * overwrite a newer click.
+ *
+ * @param panel Panel actor used for retrieve, session, and media spawn.
+ * @param versionId ShotGrid version id.
+ * @param projectId Project id for the movie cache folder.
+ * @param name Version display name (media label).
+ * @param frameRange Optional sequence range override.
+ */
+void preview_version(
+    plugin::StandardPlugin &panel,
+    std::int64_t versionId,
+    std::int64_t projectId,
+    const std::string &name,
+    const std::string &frameRange);
+
+/**
+ * @brief Deactivates the hidden `preview` playlist without destroying it.
+ *
+ * Restores the viewport to the inspected playlist, clears preview media, and
+ * resets the previewed version id. The hidden playlist actor is kept for reuse:
+ * it is linked to the session, so `send_exit` would propagate `user_shutdown`.
+ * Idempotent. Aborts any in-flight `preview_version` by bumping the generation.
+ *
+ * @param panel Panel actor used to reach the session and clear media.
+ */
+void clear_preview(plugin::StandardPlugin &panel);
+
+/**
+ * @brief Drops `preview` when the viewport leaves that playlist.
+ *
+ * No-op when there is no preview, or when `viewed` is still the preview playlist.
+ *
+ * @param panel Panel actor used to clear.
+ * @param viewed Current viewport media container.
+ */
+void on_preview_viewport_container_changed(
+    plugin::StandardPlugin &panel, const utility::UuidActor &viewed);
 
 /**
  * @brief True when `path` is a regular file.
