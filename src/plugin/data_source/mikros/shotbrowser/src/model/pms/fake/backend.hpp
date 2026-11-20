@@ -21,7 +21,8 @@ namespace pms {
  * and may also belong to one or more playlists. In(playlist) uses that weak
  * membership. Shot version counts are sized so one project spans about four
  * pages at the default page size. Returned sequence, shot,
- * asset, playlist, and version records expose only `id` and `name`. When
+ * asset records expose `id` and `name`; playlists and versions also expose
+ * their card fields. When
  * `ir.limit` is set, find() keysets on `id`. count() uses the same filters and
  * returns the match total. When `simulate_latency` is true, find() and count()
  * sleep 1.5–2.5 s before returning (long enough to see Loading… in the UI).

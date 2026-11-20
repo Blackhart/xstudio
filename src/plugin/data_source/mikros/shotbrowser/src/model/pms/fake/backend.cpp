@@ -155,9 +155,20 @@ Records makePlaylists() {
             const std::string playlistNumber =
                 (index < 10 ? "0" : "") + std::to_string(index);
             Record row;
-            row.fields["id"] = playlistId++;
+            const std::int64_t id = playlistId++;
+            row.fields["id"] = id;
             row.fields["name"] = "paw" + projectNumber + "_pl" + playlistNumber;
             row.fields["project"] = std::int64_t{projectId};
+            static const char *authors[] = {"Ada", "Lin", "Sam", "Kai", "Noa"};
+            static const char *departments[] = {"Animation", "Lighting", "Comp", "FX"};
+            static const char *categories[] = {"Dailies", "Client", "Internal", "Temp"};
+            row.fields["author"] = std::string(authors[id % 5]);
+            row.fields["departments"] = std::string(departments[id % 4]);
+            row.fields["category"] = std::string(categories[id % 4]);
+            row.fields["created_at"] =
+                "2024-0" + std::to_string(1 + (id % 9)) + "-15T1" +
+                std::to_string(id % 8) + ":30:00Z";
+            row.fields["open_notes_count"] = std::int64_t{(id % 3) == 0 ? 2 : 0};
             rows.push_back(std::move(row));
         }
     }
@@ -850,6 +861,21 @@ Record publicVersion(const Record &row) {
     return out;
 }
 
+/**
+ * @brief Returns a playlist without its private project link.
+ * @param row Catalog playlist, including the header card fields.
+ * @return Id, name, and every PlaylistCard field already filled.
+ */
+Record publicPlaylist(const Record &row) {
+    Record out = publicNamed(row);
+    copyPresent(out, row, "open_notes_count");
+    copyPresent(out, row, "departments");
+    copyPresent(out, row, "created_at");
+    copyPresent(out, row, "category");
+    copyPresent(out, row, "author");
+    return out;
+}
+
 Records selectWhere(const Records &catalog, const std::shared_ptr<const ExprNode> &where) {
     if (!where) {
         return catalog;
@@ -1013,7 +1039,7 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(playlist, *ir.where)) {
                 continue;
             }
-            Record row = publicNamed(playlist);
+            Record row = publicPlaylist(playlist);
             const auto playlistId = std::get<std::int64_t>(playlist.fields.at("id"));
             std::vector<Link> versions;
             for (const auto &[versionId, playlistIds] : version_playlists_) {

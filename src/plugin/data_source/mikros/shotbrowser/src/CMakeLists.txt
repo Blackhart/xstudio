@@ -24,6 +24,7 @@ set(SOURCES
 	viewModel/asset_list.cpp
 	viewModel/version_card.cpp
 	viewModel/version_list.cpp
+	viewModel/playlist_card.cpp
 	viewModel/playlist_tree.cpp
 	view/resources/mikros_shotbrowser.qrc
 )

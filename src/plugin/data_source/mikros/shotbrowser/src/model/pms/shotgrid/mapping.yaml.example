@@ -37,9 +37,14 @@ entities:
   playlist:
     shotgrid: Playlist
     fields:
-      id:       { shotgrid: id }
-      name:     { shotgrid: code }
-      versions: { shotgrid: versions }
+      id:               { shotgrid: id }
+      name:             { shotgrid: code }
+      versions:         { shotgrid: versions }
+      open_notes_count: { shotgrid: open_notes_count }
+      departments:      { shotgrid: sg_departments }
+      created_at:       { shotgrid: created_at }
+      category:         { shotgrid: sg_category }
+      author:           { shotgrid: created_by }
     links:
       project: { shotgrid: project, target: project }
 

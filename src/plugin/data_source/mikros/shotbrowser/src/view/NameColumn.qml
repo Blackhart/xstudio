@@ -177,6 +177,10 @@ ColumnLayout {
             model: column.names
             delegate: column.rowDelegate
 
+            // Leave room for the vertical scrollbar so cards are not clipped.
+            property int rightSpacing: height < contentHeight ? 12 : 0
+            Behavior on rightSpacing { NumberAnimation { duration: 150 } }
+
             property real heldContentY: 0
             property bool holdPending: false
 

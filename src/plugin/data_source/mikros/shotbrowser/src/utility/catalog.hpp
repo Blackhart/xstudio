@@ -309,7 +309,14 @@ inline xstudio::utility::JsonStore rowsToJson<poco::Playlist>(
     nlohmann::json out = nlohmann::json::array();
     for (const poco::Playlist &row : rows) {
         out.push_back(
-            {{"id", row.id}, {"name", row.name}, {"version_count", row.version_count}});
+            {{"id", row.id},
+             {"name", row.name},
+             {"version_count", row.version_count},
+             {"open_notes_count", row.open_notes_count},
+             {"departments", row.departments},
+             {"created_at", row.created_at},
+             {"category", row.category},
+             {"author", row.author}});
     }
     return xstudio::utility::JsonStore(out);
 }
@@ -332,6 +339,11 @@ inline std::vector<poco::Playlist> rowsFromJson<poco::Playlist>(
         row.id = entry.at("id").get<std::int64_t>();
         row.name = entry.at("name").get<std::string>();
         row.version_count = entry.value("version_count", static_cast<std::size_t>(0));
+        row.open_notes_count = entry.value("open_notes_count", static_cast<std::int64_t>(0));
+        row.departments = entry.value("departments", std::string());
+        row.created_at = entry.value("created_at", std::string());
+        row.category = entry.value("category", std::string());
+        row.author = entry.value("author", std::string());
         rows.push_back(std::move(row));
     }
     return rows;

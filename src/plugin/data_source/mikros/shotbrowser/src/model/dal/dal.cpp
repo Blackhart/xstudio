@@ -359,6 +359,20 @@ bool optionalFlag(const pms::Record &record, const std::string &key) {
 }
 
 /**
+ * @brief Reads one optional integer field.
+ * @param record Domain row.
+ * @param key Field name, such as `"open_notes_count"`.
+ * @return The value, or zero when the field is absent or not an integer.
+ */
+std::int64_t optionalInt64(const pms::Record &record, const std::string &key) {
+    const auto found = record.fields.find(key);
+    if (found == record.fields.end() || !std::holds_alternative<std::int64_t>(found->second)) {
+        return 0;
+    }
+    return std::get<std::int64_t>(found->second);
+}
+
+/**
  * @brief Maps version list records (no image or media).
  * @param records Domain rows.
  * @return List elements in the same order.
@@ -603,6 +617,11 @@ RowPage<poco::Playlist> findPlaylists(
             row.id = std::get<std::int64_t>(record.at("id"));
             row.name = std::get<std::string>(record.at("name"));
             row.version_count = versionCountFromPlaylist(record);
+            row.open_notes_count = optionalInt64(record, "open_notes_count");
+            row.departments = optionalString(record, "departments");
+            row.created_at = optionalString(record, "created_at");
+            row.category = optionalString(record, "category");
+            row.author = optionalString(record, "author");
             out.rows.push_back(std::move(row));
         }
         return out;

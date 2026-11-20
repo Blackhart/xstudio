@@ -51,8 +51,9 @@ class PlaylistTree : public QObject {
     void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
     /**
-     * @brief Clears the tree, then loads the first name page when Playlist tab and project are set.
+     * @brief Loads the first name page when Playlist tab and project are set.
      *
+     * Does not clear the tree; the panel calls `clearPlaylists` first when needed.
      * The request id always moves. Reads `dal::resultView`. Returns before the pages arrive.
      */
     void loadPlaylistListAsync();
@@ -68,7 +69,8 @@ class PlaylistTree : public QObject {
     /**
      * @brief Clears the playlist tree and stops a name fetch that is still running.
      *
-     * The panel calls this when the selected project changes or the versions tab is showing.
+     * The panel calls this before a reload, when the project changes, or when the versions
+     * tab is showing.
      */
     void clearPlaylists();
 
@@ -108,11 +110,6 @@ class PlaylistTree : public QObject {
      * @return True when `dal::resultView` is `Playlist`.
      */
     bool checkResultViewIsPlaylist() const;
-
-    /**
-     * @brief Empties the playlist tree and the unfolded name.
-     */
-    void clearPlaylistUi();
 
     /**
      * @brief Sets `PlaylistsLoaded` to false (loading / cleared).

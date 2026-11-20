@@ -68,13 +68,22 @@ Item {
         const nodes = playlistTreeNodes()
         const rows = []
         for (let i = 0; i < nodes.length; i++) {
-            const name = String(nodes[i].name)
-            const versionCount = nodes[i].versionCount !== undefined
-                    ? Number(nodes[i].versionCount) : 0
-            const entries = nodes[i].versions && nodes[i].versions.length ? nodes[i].versions : []
+            const node = nodes[i]
+            const name = String(node.name)
+            const versionCount = node.versionCount !== undefined
+                    ? Number(node.versionCount) : 0
+            const entries = node.versions && node.versions.length ? node.versions : []
             const expanded = !!openPlaylists[name]
             rows.push({
                 name: name,
+                id: node.id !== undefined ? node.id : 0,
+                versionCount: versionCount,
+                openNotesCount: node.openNotesCount !== undefined
+                        ? Number(node.openNotesCount) : 0,
+                departments: field(node, "departments"),
+                createdAt: field(node, "createdAt"),
+                category: field(node, "category"),
+                author: field(node, "author"),
                 depth: 0,
                 parent: versionCount > 0,
                 open: expanded,
@@ -161,7 +170,12 @@ Item {
 
     // Watch the attribute without putting contentY in the `names:` binding (binding loop).
     property var treeSource: playlistTreeAttr.value
-    onTreeSourceChanged: reloadTreeRows()
+    onTreeSourceChanged: {
+        // clearPlaylists publishes []; reset chevrons (openPlaylists is not ExpandedPlaylist).
+        if (playlistTreeNodes().length === 0)
+            openPlaylists = ({})
+        reloadTreeRows()
+    }
     onOpenPlaylistsChanged: reloadTreeRows()
 
     // Hold scroll on append / thumbs; reset to top on clear or first page.
@@ -221,156 +235,30 @@ Item {
             }
             readonly property bool isParent: modelData && modelData.parent !== undefined ? modelData.parent : false
             readonly property bool isOpen: modelData && modelData.open !== undefined ? modelData.open : false
-            readonly property int childCount: modelData && modelData.childCount !== undefined
-                    ? modelData.childCount : 0
 
-            width: ListView.view.width
+            width: ListView.view.width - (ListView.view.rightSpacing || 0)
             height: versionLine
                     ? (XsStyleSheet.widgetStdHeight + 1) * 4
                     : XsStyleSheet.widgetStdHeight * 2
 
             PlaylistCard {
-                id: card
-                visible: row.versionLine
-                modelData: row.modelData
-                onOpenCurrent: playlists.openRequested(card.payload())
-                onMenuRequested: function(x, y) {
-                    playlists.menuRequested(card.payload(), card, x, y)
-                }
-            }
-
-            Rectangle {
-                id: header
                 visible: !row.versionLine
                 width: row.width
-                height: XsStyleSheet.widgetStdHeight * 2
-                color: XsStyleSheet.widgetBgNormalColor
-                border.width: 1
-                border.color: rowHover.hovered ? XsStyleSheet.accentColor : "transparent"
+                modelData: row.modelData
+                expandable: row.isParent
+                expanded: row.isOpen
+                onToggleRequested: playlists.togglePlaylist(row.label)
+            }
 
-                GridLayout {
-                    anchors.fill: parent
-                    anchors.margins: XsStyleSheet.panelPadding
-                    rows: 2
-                    columns: 7
-                    rowSpacing: 1
-                    columnSpacing: 3
-
-                    XsPrimaryButton {
-                        Layout.preferredWidth: 20
-                        Layout.fillHeight: true
-                        Layout.rowSpan: 2
-                        imgSrc: "qrc:/icons/chevron_right.svg"
-                        imageDiv.rotation: row.isOpen ? 90 : 0
-                        enabled: row.isParent
-                        opacity: enabled ? 1 : 0.5
-                        isActiveViaIndicator: false
-                        isActive: row.isOpen
-                        onClicked: playlists.togglePlaylist(row.label)
-                    }
-
-                    XsPrimaryButton {
-                        Layout.preferredWidth: 20
-                        Layout.fillHeight: true
-                        Layout.rowSpan: 2
-                        text: "N"
-                        font.pixelSize: XsStyleSheet.fontSize * 1.2
-                        textDiv.color: XsStyleSheet.hintColor
-                        enabled: false
-                        bgDiv.opacity: 0.5
-                        isActiveViaIndicator: false
-                        isUnClickable: true
-                    }
-
-                    XsText {
-                        Layout.preferredWidth: XsStyleSheet.widgetStdHeight
-                        Layout.fillHeight: true
-                        Layout.rowSpan: 2
-                        text: row.childCount
-                        color: row.childCount === 0
-                               ? XsStyleSheet.hintColor
-                               : XsStyleSheet.secondaryTextColor
-                        font.pixelSize: XsStyleSheet.fontSize * 1.2
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-
-                    XsText {
-                        Layout.columnSpan: 3
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        text: row.label
-                        elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignLeft
-                        verticalAlignment: Text.AlignTop
-                        topPadding: 2
-                    }
-
-                    XsText {
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 20
-                        Layout.preferredWidth: 60
-                        Layout.maximumWidth: 190
-                        Layout.fillHeight: true
-                        text: "N/A"
-                        elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignRight
-                        verticalAlignment: Text.AlignTop
-                        topPadding: 2
-                        rightPadding: 2
-                    }
-
-                    XsText {
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 40
-                        Layout.preferredWidth: 60
-                        Layout.maximumWidth: 92
-                        text: "N/A"
-                        elide: Text.ElideRight
-                        color: XsStyleSheet.hintColor
-                        horizontalAlignment: Text.AlignLeft
-                        verticalAlignment: Text.AlignBottom
-                        bottomPadding: 2
-                    }
-
-                    XsText {
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 40
-                        Layout.preferredWidth: 60
-                        Layout.maximumWidth: 85
-                        text: "N/A"
-                        elide: Text.ElideRight
-                        color: XsStyleSheet.hintColor
-                        horizontalAlignment: Text.AlignLeft
-                        verticalAlignment: Text.AlignBottom
-                        bottomPadding: 2
-                    }
-
-                    XsText {
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 60
-                        text: "N/A"
-                        elide: Text.ElideRight
-                        color: XsStyleSheet.hintColor
-                        horizontalAlignment: Text.AlignLeft
-                        verticalAlignment: Text.AlignBottom
-                        bottomPadding: 2
-                    }
-
-                    XsText {
-                        Layout.fillWidth: true
-                        text: "N/A"
-                        elide: Text.ElideRight
-                        color: XsStyleSheet.hintColor
-                        horizontalAlignment: Text.AlignRight
-                        verticalAlignment: Text.AlignBottom
-                        bottomPadding: 2
-                        rightPadding: 2
-                    }
-                }
-
-                HoverHandler {
-                    id: rowHover
+            VersionCard {
+                id: versionCard
+                visible: row.versionLine
+                modelData: row.modelData
+                indent: XsStyleSheet.widgetStdHeight / 1.2
+                chosen: false
+                onOpenCurrent: playlists.openRequested(versionCard.payload())
+                onMenuRequested: function(x, y) {
+                    playlists.menuRequested(versionCard.payload(), versionCard, x, y)
                 }
             }
         }

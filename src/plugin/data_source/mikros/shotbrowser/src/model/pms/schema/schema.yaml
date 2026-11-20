@@ -39,9 +39,14 @@ entities:
   playlist:
     creatable: false
     fields:
-      id:       { type: int,    filter: true,  set: false }
-      name:     { type: string, filter: true,  set: true }
-      versions: { type: links,  filter: false, set: false }
+      id:               { type: int,    filter: true,  set: false }
+      name:             { type: string, filter: true,  set: true }
+      versions:         { type: links,  filter: false, set: false }
+      open_notes_count: { type: int,    filter: false, set: false }
+      departments:      { type: string, filter: false, set: false }
+      created_at:       { type: string, filter: false, set: false }
+      category:         { type: string, filter: false, set: false }
+      author:           { type: string, filter: false, set: false }
     scope: [project]
 
   version:

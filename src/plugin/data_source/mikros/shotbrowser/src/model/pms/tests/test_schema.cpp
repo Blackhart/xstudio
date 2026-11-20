@@ -91,6 +91,13 @@ TEST_CASE("schema loads the playlist entity") {
     CHECK(versions->type == "links");
     CHECK_FALSE(versions->filter);
     CHECK(versions->ops.empty());
+    const FieldSpec *openNotes = playlist->field("open_notes_count");
+    REQUIRE(openNotes != nullptr);
+    CHECK(openNotes->type == "int");
+    CHECK(playlist->field("departments") != nullptr);
+    CHECK(playlist->field("created_at") != nullptr);
+    CHECK(playlist->field("category") != nullptr);
+    CHECK(playlist->field("author") != nullptr);
     CHECK(schema.allowsInParent(*playlist, "project"));
 }
 
@@ -180,6 +187,8 @@ TEST_CASE("generated proxies use the schema keys") {
 
     CHECK(std::string(playlist::id.key) == "id");
     CHECK(std::string(playlist::name.key) == "name");
+    CHECK(std::string(playlist::author.key) == "author");
+    CHECK(std::string(playlist::openNotesCount.key) == "open_notes_count");
     CHECK(Playlist().ir().entity == "playlist");
 
     CHECK(std::string(version::id.key) == "id");

@@ -357,10 +357,10 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
         }
         return;
     }
-    if (field.domain == "sites" && value.is_array()) {
+    if ((field.domain == "sites" || field.domain == "departments") && value.is_array()) {
         const std::string names = joinNames(value);
         if (!names.empty()) {
-            out.fields["sites"] = names; ///< Paris, Montreal, Bangalore, as ShotGrid sent them.
+            out.fields[field.domain] = names; ///< Joined labels the card shows.
         }
         return;
     }

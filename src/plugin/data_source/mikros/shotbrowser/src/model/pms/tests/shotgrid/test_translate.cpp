@@ -278,6 +278,35 @@ TEST_CASE("playlist versions become a list of links") {
     CHECK(versions[1].id == 702);
 }
 
+TEST_CASE("playlist header fields map from ShotGrid") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *playlist = mapping.findSchema("playlist");
+    REQUIRE(playlist != nullptr);
+    const nlohmann::json row = {
+        {"type", "Playlist"},
+        {"id", 3},
+        {"attributes",
+         {{"code", "pl01"},
+          {"created_at", "2024-03-01T12:30:00Z"},
+          {"sg_category", "Dailies"},
+          {"open_notes_count", 2}}},
+        {"relationships",
+         {{"created_by",
+           {{"data", {{"type", "HumanUser"}, {"id", 7}, {"name", "Ada"}}}}},
+          {"sg_departments",
+           {{"data",
+             nlohmann::json::array(
+                 {{{"id", 1}, {"name", "Animation"}, {"type", "Department"}},
+                  {{"id", 2}, {"name", "Lighting"}, {"type", "Department"}}})}}}}}};
+    const Record record = shotgridRecordFromJson(row, *playlist);
+    CHECK(std::get<std::string>(record.at("name")) == "pl01");
+    CHECK(std::get<std::string>(record.at("author")) == "Ada");
+    CHECK(std::get<std::string>(record.at("created_at")) == "2024-03-01T12:30:00Z");
+    CHECK(std::get<std::string>(record.at("category")) == "Dailies");
+    CHECK(std::get<std::int64_t>(record.at("open_notes_count")) == 2);
+    CHECK(std::get<std::string>(record.at("departments")) == "Animation,Lighting");
+}
+
 TEST_CASE("version author is read from relationships data") {
     const ShotGridMapping mapping = filledMapping();
     const ShotGridSchema *version = mapping.findSchema("version");

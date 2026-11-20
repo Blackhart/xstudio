@@ -5,6 +5,7 @@
  */
 
 #include "viewModel/playlist_tree.hpp"
+#include "viewModel/playlist_card.hpp"
 #include "utility/thumbnails.hpp"
 
 #include <caf/actor_cast.hpp>
@@ -292,13 +293,12 @@ bool PlaylistTree::checkResultViewIsPlaylist() const {
 }
 
 void PlaylistTree::loadPlaylistListAsync() {
-    const std::uint64_t requestId = ++(*playlist_request_id_); ///< Stop the name fetch already running.
+    if (!checkResultViewIsPlaylist() || dal::selectedProject() == -1) {
+        return; ///< Versions is showing, or no project is selected. Leave whatever clearPlaylists emptied.
+    }
     next_cursor_.reset(); ///< A new first page replaces any pending continuation.
     more_incoming_ = false;
-    clearPlaylistUi();
-    if (!checkResultViewIsPlaylist() || dal::selectedProject() == -1) {
-        return; ///< Versions is showing, or no project is selected.
-    }
+    const std::uint64_t requestId = ++(*playlist_request_id_); ///< Stop the name fetch already running.
     const std::int64_t projectId = dal::selectedProject();
     CatalogLoadRequest request =
         makeCatalogRequest(&panel_, CatalogKind::PlaylistTree, requestId, projectId);
@@ -327,10 +327,6 @@ void PlaylistTree::clearPlaylists() {
     ++(*playlist_request_id_); ///< Drop pages that still belong to the previous project.
     next_cursor_.reset();
     more_incoming_ = false;
-    clearPlaylistUi();
-}
-
-void PlaylistTree::clearPlaylistUi() {
     versions_by_playlist_.clear();
     clearFooterValue();
     sendPlaylistTreeToQml(nlohmann::json::array());
@@ -462,11 +458,9 @@ void PlaylistTree::updatePlaylistList(
             tree.push_back(*kept); ///< Keep versions already unfolded on this playlist.
             continue;
         }
-        tree.push_back(
-            {{"name", row.name},
-             {"id", row.id},
-             {"versionCount", row.version_count},
-             {"versions", nlohmann::json::array()}});
+        nlohmann::json node = PlaylistCard(row).toJson();
+        node["versions"] = nlohmann::json::array(); ///< Children arrive when the row unfolds.
+        tree.push_back(std::move(node));
     }
     sortPlaylistsByName(tree);
     sendPlaylistTreeToQml(tree);

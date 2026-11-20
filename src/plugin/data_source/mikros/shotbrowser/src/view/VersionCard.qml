@@ -84,8 +84,11 @@ Rectangle {
         return Number(row.id)
     }
 
+    readonly property int scrollGutter: ListView.view && ListView.view.rightSpacing !== undefined
+            ? ListView.view.rightSpacing : 0
+
     x: indent
-    width: (ListView.view ? ListView.view.width : parent.width) - x
+    width: (ListView.view ? ListView.view.width : parent.width) - x - scrollGutter
     height: (XsStyleSheet.widgetStdHeight + 1) * 4
     color: chosen ? Qt.darker(XsStyleSheet.accentColor, 5) : "transparent"
     border.width: 1

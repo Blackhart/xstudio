@@ -190,6 +190,7 @@ void ShotBrowser::initSignals() {
         [this](ResultView view) {
             if (view == ResultView::Playlist) {
                 version_list_->clearVersions(); ///< Versions and playlist are mutually exclusive.
+                playlist_tree_->clearPlaylists();
                 playlist_tree_->loadPlaylistListAsync();
             } else {
                 playlist_tree_->clearPlaylists();

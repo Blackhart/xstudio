@@ -109,7 +109,7 @@ Item {
             readonly property real chevronWidth: XsStyleSheet.widgetStdHeight / 1.2
             readonly property bool chosen: label === asset.value
 
-            width: ListView.view.width
+            width: ListView.view.width - (ListView.view.rightSpacing || 0)
             height: XsStyleSheet.widgetStdHeight
             color: chosen
                    ? Qt.darker(XsStyleSheet.accentColor, 2)

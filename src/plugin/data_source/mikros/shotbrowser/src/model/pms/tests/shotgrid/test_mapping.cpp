@@ -17,6 +17,12 @@ TEST_CASE("filled fixture parses and names are present") {
     CHECK(mapping.findSchema("shot")->findLink("sequence")->shotgrid == "sg_sequence");
     CHECK(mapping.findSchema("sequence")->findField("shots")->shotgrid == "shots");
     CHECK(mapping.findSchema("playlist")->findField("versions")->shotgrid == "versions");
+    CHECK(mapping.findSchema("playlist")->findField("departments")->shotgrid == "sg_departments");
+    CHECK(mapping.findSchema("playlist")->findField("category")->shotgrid == "sg_category");
+    CHECK(mapping.findSchema("playlist")->findField("author")->shotgrid == "created_by");
+    CHECK(
+        mapping.findSchema("playlist")->findField("open_notes_count")->shotgrid ==
+        "open_notes_count");
 }
 
 TEST_CASE("example mapping stores version images over http") {

@@ -229,6 +229,11 @@ TEST_CASE("the fake backend lists playlists in a project") {
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_pl01");
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw20_pl02");
     CHECK(rows[0].fields.count("project") == 0);
+    CHECK(rows[0].fields.count("author") == 1);
+    CHECK(rows[0].fields.count("departments") == 1);
+    CHECK(rows[0].fields.count("category") == 1);
+    CHECK(rows[0].fields.count("created_at") == 1);
+    CHECK(rows[0].fields.count("open_notes_count") == 1);
 }
 
 TEST_CASE("the fake backend attaches version links on each playlist") {
