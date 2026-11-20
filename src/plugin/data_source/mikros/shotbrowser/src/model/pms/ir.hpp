@@ -27,11 +27,12 @@ enum class Op {
  * @brief Operator stored on an expression node.
  */
 enum class ExprOp {
-    Eq,  ///< Field equals the leaf value.
-    Ne,  ///< Field differs from the leaf value.
-    And, ///< Group that requires every child.
-    Or,  ///< Group that requires one child.
-    Not, ///< Group with exactly one child.
+    Eq,       ///< Field equals the leaf value.
+    Ne,       ///< Field differs from the leaf value.
+    Contains, ///< String field contains the leaf substring (case-insensitive).
+    And,      ///< Group that requires every child.
+    Or,       ///< Group that requires one child.
+    Not,      ///< Group with exactly one child.
 };
 
 /**
@@ -46,10 +47,11 @@ enum class ExprKind {
 /**
  * @brief One immutable node of an In or Where tree.
  *
- * A field node has `key`, `op` (`eq` or `ne`), and `value`. A scope node has
- * the parent entity name as `key` and either the parent `id` (int) or `name`
- * (string) as `value`. A group node has `op` (`and`, `or`, or `not`) and
- * `args`. Nodes are shared and never mutated after the builder returns them.
+ * A field node has `key`, `op` (`eq`, `ne`, or `contains`), and `value`. A
+ * scope node has the parent entity name as `key` and either the parent `id`
+ * (int) or `name` (string) as `value`. A group node has `op` (`and`, `or`, or
+ * `not`) and `args`. Nodes are shared and never mutated after the builder
+ * returns them.
  */
 struct ExprNode {
     ExprOp op = ExprOp::Eq;    ///< Comparison or group operator.

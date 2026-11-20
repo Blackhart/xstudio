@@ -220,8 +220,17 @@ void PlaylistTree::initQmlAttributes(plugin::StandardPlugin &panel) {
     load_more_playlists_ =
         panel.add_string_attribute("LoadMorePlaylists", "LoadMorePlaylists", "");
     load_more_playlists_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    playlist_search_ = panel.add_string_attribute("PlaylistSearch", "PlaylistSearch", "");
+    playlist_search_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     footer_ = panel.add_string_attribute("PlaylistTreeFooter", "PlaylistTreeFooter", "");
     footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+}
+
+std::optional<std::string> PlaylistTree::activeSearchQuery() const {
+    if (search_query_.empty()) {
+        return std::nullopt;
+    }
+    return search_query_;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +243,11 @@ void PlaylistTree::attribute_changed(const utility::Uuid &attr_uuid, int role) {
     }
     if (load_more_playlists_ && attr_uuid == load_more_playlists_->uuid()) {
         loadMorePlaylistsAsync(); ///< QML bumped the attribute near the bottom of the list.
+        return;
+    }
+    if (playlist_search_ && attr_uuid == playlist_search_->uuid()) {
+        clearPlaylists(); ///< Drop the previous filter result before the new first page.
+        loadPlaylistsFromNameOrIdAsync(playlist_search_->value());
         return;
     }
     if (!expanded_ || attr_uuid != expanded_->uuid()) {
@@ -300,14 +314,22 @@ void PlaylistTree::loadPlaylistListAsync() {
     more_incoming_ = false;
     const std::uint64_t requestId = ++(*playlist_request_id_); ///< Stop the name fetch already running.
     const std::int64_t projectId = dal::selectedProject();
+    const std::optional<std::string> nameOrId = activeSearchQuery();
     CatalogLoadRequest request =
         makeCatalogRequest(&panel_, CatalogKind::PlaylistTree, requestId, projectId);
+    request.name_or_id = nameOrId;
     request.generation = playlist_request_id_; ///< The worker stops before the next find when this moves.
     launchCatalogLoad(panel_.system(), std::move(request));
     CatalogLoadRequest counts =
         makeCatalogRequest(&panel_, CatalogKind::PlaylistCount, requestId, projectId);
+    counts.name_or_id = nameOrId;
     counts.generation = playlist_request_id_; ///< Drop a stale footer with the pages.
     launchCatalogLoad(panel_.system(), std::move(counts));
+}
+
+void PlaylistTree::loadPlaylistsFromNameOrIdAsync(const std::string &text) {
+    search_query_ = text; ///< Empty clears the filter; the DAL trims before Where.
+    loadPlaylistListAsync();
 }
 
 void PlaylistTree::loadMorePlaylistsAsync() {
@@ -319,6 +341,7 @@ void PlaylistTree::loadMorePlaylistsAsync() {
     CatalogLoadRequest request = makeCatalogRequest(
         &panel_, CatalogKind::PlaylistTree, requestId, dal::selectedProject());
     request.cursor = next_cursor_;
+    request.name_or_id = activeSearchQuery();
     request.generation = playlist_request_id_; ///< Drop the page when clearPlaylists moves the id.
     launchCatalogLoad(panel_.system(), std::move(request));
 }

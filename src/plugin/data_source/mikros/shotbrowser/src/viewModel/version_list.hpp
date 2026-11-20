@@ -59,15 +59,26 @@ class VersionList : public QObject {
      *
      * Does not clear the list; the panel calls `clearVersions` first when needed.
      * The request id always moves. Resets the continuation cursor. Parents are the
-     * sequence, shot, and asset stored by the DAL. Returns before the pages arrive.
+     * sequence, shot, and asset stored by the DAL. Applies `search_query_` when set.
+     * Returns before the pages arrive.
      */
     void loadVersionsAsync();
+
+    /**
+     * @brief Stores a name-or-id filter and loads the first matching page.
+     *
+     * Empty text clears the filter and loads the unfiltered list. Does not clear the
+     * cards; the caller runs `clearVersions` first. Returns before the pages arrive.
+     * @param text Exact id (all digits) or name substring. Trimmed by the DAL.
+     */
+    void loadVersionsFromNameOrIdAsync(const std::string &text);
 
     /**
      * @brief Loads the next version page when the list still has a continuation cursor.
      *
      * No-op when there is no cursor, a more-page is already incoming, or no project is
-     * selected. Keeps the current request id. Returns before the page arrives.
+     * selected. Keeps the current request id and the active search filter. Returns before
+     * the page arrives.
      */
     void loadMoreVersionsAsync();
 
@@ -75,6 +86,7 @@ class VersionList : public QObject {
      * @brief Clears the cards and the JSON attribute.
      *
      * The panel calls this before a reload, when the project changes, or when the playlist tab is showing.
+     * Does not clear `search_query_`.
      */
     void clearVersions();
 
@@ -85,9 +97,10 @@ class VersionList : public QObject {
     caf::message_handler message_handler_extensions();
 
     /**
-     * @brief Starts an open or a load-more when QML writes the matching attribute.
+     * @brief Starts an open, a load-more, or a search when QML writes the matching attribute.
      *
      * `OpenVersion` starts the disk check. `LoadMoreVersions` starts the next page.
+     * `VersionSearch` clears then reloads with the name-or-id filter.
      * Other attributes are ignored. An empty open value does nothing.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed. Only Value is a request.
@@ -184,6 +197,12 @@ class VersionList : public QObject {
     void addOpenedSources(
         const OpenReady &ready, caf::actor playlist, const utility::FrameRate &rate);
 
+    /**
+     * @brief Active search text for catalog loads, or empty when unfiltered.
+     * @return `search_query_` when set, otherwise nullopt.
+     */
+    [[nodiscard]] std::optional<std::string> activeSearchQuery() const;
+
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
     std::vector<std::unique_ptr<VersionCard>> versions_; ///< Cards published as JSON.
     module::JsonAttribute *version_cards_ = nullptr; ///< Array of card objects for QML.
@@ -191,10 +210,12 @@ class VersionList : public QObject {
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale version fetches and pages.
     std::optional<std::string> next_cursor_; ///< Continuation for the next page. Empty when finished.
     bool more_incoming_ = false; ///< True while a load-more page is still on the way.
+    std::string search_query_; ///< Name-or-id filter. Empty means no Where on name/id.
     module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
     int version_total_ = -1; ///< Server match count for the footer. -1 until the count arrives.
     module::BooleanAttribute *versions_loaded_ = nullptr; ///< True once the current request has delivered a page.
     module::StringAttribute *load_more_versions_ = nullptr; ///< QML bump that requests the next page.
+    module::StringAttribute *version_search_ = nullptr; ///< QML Enter on the result search bar.
     module::StringAttribute *open_version_ = nullptr; ///< JSON request from a double-click or the menu.
     module::StringAttribute *opened_media_ = nullptr; ///< JSON result the panel selects when asked.
 };

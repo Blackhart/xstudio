@@ -70,6 +70,12 @@ Item {
         model: attributes
     }
 
+    XsAttributeValue {
+        id: versionSearch
+        attributeTitle: "VersionSearch"
+        model: attributes
+    }
+
     property int loadMoreToken: 0
     property var cardRows: []
 
@@ -106,6 +112,9 @@ Item {
         onLoadMoreRequested: {
             versions.loadMoreToken += 1
             loadMoreVersions.value = String(versions.loadMoreToken)
+        }
+        onSearchSubmitted: function(text) {
+            versionSearch.value = text
         }
         placeholder: {
             selectedProject.value

@@ -456,10 +456,19 @@ void VersionList::initQmlAttributes(plugin::StandardPlugin &panel) {
     load_more_versions_ =
         panel.add_string_attribute("LoadMoreVersions", "LoadMoreVersions", "");
     load_more_versions_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    version_search_ = panel.add_string_attribute("VersionSearch", "VersionSearch", "");
+    version_search_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     open_version_ = panel.add_string_attribute("OpenVersion", "OpenVersion", "");
     open_version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     opened_media_ = panel.add_string_attribute("OpenedMedia", "OpenedMedia", "");
     opened_media_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+}
+
+std::optional<std::string> VersionList::activeSearchQuery() const {
+    if (search_query_.empty()) {
+        return std::nullopt;
+    }
+    return search_query_;
 }
 
 // ---------------------------------------------------------------------------
@@ -475,11 +484,13 @@ void VersionList::loadVersionsAsync() {
     const std::uint64_t requestId = ++(*version_request_id_); ///< Stop the version fetch already running.
     const std::int64_t projectId = dal::selectedProject();
     const VersionParents parents = readVersionParents();
+    const std::optional<std::string> nameOrId = activeSearchQuery();
     CatalogLoadRequest request = makeCatalogRequest(
         &panel_, CatalogKind::Version, requestId, projectId);
     request.sequence = parents.sequenceId;
     request.shot = parents.shotId;
     request.asset = parents.assetId;
+    request.name_or_id = nameOrId;
     request.generation = version_request_id_; ///< The worker stops before the next find when this moves.
     launchCatalogLoad(panel_.system(), std::move(request));
     CatalogLoadRequest counts =
@@ -487,8 +498,14 @@ void VersionList::loadVersionsAsync() {
     counts.sequence = parents.sequenceId;
     counts.shot = parents.shotId;
     counts.asset = parents.assetId;
+    counts.name_or_id = nameOrId;
     counts.generation = version_request_id_; ///< Drop a stale footer with the pages.
     launchCatalogLoad(panel_.system(), std::move(counts));
+}
+
+void VersionList::loadVersionsFromNameOrIdAsync(const std::string &text) {
+    search_query_ = text; ///< Empty clears the filter; the DAL trims before Where.
+    loadVersionsAsync();
 }
 
 void VersionList::loadMoreVersionsAsync() {
@@ -505,6 +522,7 @@ void VersionList::loadMoreVersionsAsync() {
     request.shot = parents.shotId;
     request.asset = parents.assetId;
     request.cursor = next_cursor_;
+    request.name_or_id = activeSearchQuery();
     request.generation = version_request_id_; ///< Drop the page when clearVersions moves the id.
     launchCatalogLoad(panel_.system(), std::move(request));
 }
@@ -866,6 +884,11 @@ void VersionList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
     }
     if (load_more_versions_ && attr_uuid == load_more_versions_->uuid()) {
         loadMoreVersionsAsync(); ///< QML bumped the attribute near the bottom of the list.
+        return;
+    }
+    if (version_search_ && attr_uuid == version_search_->uuid()) {
+        clearVersions(); ///< Drop the previous filter result before the new first page.
+        loadVersionsFromNameOrIdAsync(version_search_->value());
         return;
     }
     if (!open_version_ || attr_uuid != open_version_->uuid()) {

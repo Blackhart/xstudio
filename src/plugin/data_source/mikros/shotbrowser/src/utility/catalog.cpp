@@ -218,7 +218,9 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             request.cursor,
             parents.sequenceId,
             parents.shotId,
-            parents.assetId);
+            parents.assetId,
+            std::nullopt,
+            request.name_or_id);
         nlohmann::json body;
         body["rows"] = static_cast<nlohmann::json>(rowsToJson(page.rows));
         if (page.next_cursor) {
@@ -243,7 +245,12 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         }
         utility::JsonStore counts;
         counts["versions"] = dal::getNumberOfVersions(
-            request.project_id, parents.sequenceId, parents.shotId, parents.assetId);
+            request.project_id,
+            parents.sequenceId,
+            parents.shotId,
+            parents.assetId,
+            std::nullopt,
+            request.name_or_id);
         sendCatalog(
             request.panel,
             request.request_id,
@@ -258,8 +265,8 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         if (request.generation && request.generation->load() != request.request_id) {
             return; ///< A newer load started before this find.
         }
-        const dal::RowPage<poco::Playlist> page =
-            dal::findPlaylists(request.project_id, dal::readPageLimit(), request.cursor);
+        const dal::RowPage<poco::Playlist> page = dal::findPlaylists(
+            request.project_id, dal::readPageLimit(), request.cursor, request.name_or_id);
         nlohmann::json body;
         body["rows"] = static_cast<nlohmann::json>(rowsToJson(page.rows));
         if (page.next_cursor) {
@@ -282,7 +289,8 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             return; ///< A newer load started. Do not call the DAL.
         }
         utility::JsonStore counts;
-        counts["playlists"] = dal::getNumberOfPlaylists(request.project_id);
+        counts["playlists"] =
+            dal::getNumberOfPlaylists(request.project_id, request.name_or_id);
         sendCatalog(
             request.panel,
             request.request_id,

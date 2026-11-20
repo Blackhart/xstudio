@@ -14,6 +14,8 @@
 #include "pms/pms.hpp"
 #include "pms/shotgrid/backend.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <iomanip>
 #include <optional>
@@ -427,6 +429,64 @@ decltype(pms::Version()) versionScopeQuery(
 }
 
 /**
+ * @brief Trims leading and trailing ASCII whitespace.
+ * @param text Raw search box value.
+ * @return Trimmed copy.
+ */
+std::string trimAscii(std::string text) {
+    const auto notSpace = [](unsigned char ch) { return !std::isspace(ch); };
+    text.erase(text.begin(), std::find_if(text.begin(), text.end(), notSpace));
+    text.erase(std::find_if(text.rbegin(), text.rend(), notSpace).base(), text.end());
+    return text;
+}
+
+/**
+ * @brief True when every character is an ASCII digit.
+ * @param text Non-empty trimmed text.
+ * @return True when the text is an integer id candidate.
+ */
+bool isAllDigits(const std::string &text) {
+    return !text.empty() &&
+           std::all_of(text.begin(), text.end(), [](unsigned char ch) {
+               return std::isdigit(ch) != 0;
+           });
+}
+
+/**
+ * @brief Adds a name-or-id Where when the search box is not empty.
+ * @tparam QueryT Fluent query type.
+ * @tparam IdField `Field<Entity, int64_t>` for `id`.
+ * @tparam NameField `Field<Entity, string>` for `name`.
+ * @param query Query with In already applied.
+ * @param idField Entity id proxy.
+ * @param nameField Entity name proxy.
+ * @param nameOrId Search text, or empty.
+ * @return Query with an optional Where on id or name contains.
+ */
+template <typename QueryT, typename IdField, typename NameField>
+QueryT applyNameOrId(
+    QueryT query,
+    const IdField &idField,
+    const NameField &nameField,
+    const std::optional<std::string> &nameOrId) {
+    if (!nameOrId) {
+        return query;
+    }
+    const std::string text = trimAscii(*nameOrId);
+    if (text.empty()) {
+        return query;
+    }
+    if (isAllDigits(text)) {
+        try {
+            return query.Where(idField == static_cast<std::int64_t>(std::stoll(text)));
+        } catch (const std::exception &) {
+            return query.Where(pms::contains(nameField, text)); ///< Too large for an id: treat as name.
+        }
+    }
+    return query.Where(pms::contains(nameField, text));
+}
+
+/**
  * @brief Turns one pms page into a POCO page.
  * @tparam Row POCO type with `id` and `name`.
  * @param page Domain page from `find`.
@@ -605,10 +665,17 @@ RowPage<poco::Asset> findAssets(
 }
 
 RowPage<poco::Playlist> findPlaylists(
-    std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
+    std::int64_t projectId,
+    std::size_t limit,
+    std::optional<std::string> cursor,
+    std::optional<std::string> nameOrId) {
     try {
-        const pms::Page page = findLimitedPage(
-            pms::Playlist().In(pms::scope::project == projectId), limit, cursor);
+        auto query = applyNameOrId(
+            pms::Playlist().In(pms::scope::project == projectId),
+            pms::playlist::id,
+            pms::playlist::name,
+            nameOrId);
+        const pms::Page page = findLimitedPage(std::move(query), limit, cursor);
         RowPage<poco::Playlist> out;
         out.next_cursor = page.next_cursor;
         out.rows.reserve(page.rows.size());
@@ -638,9 +705,14 @@ RowPage<poco::VersionListElement> findVersionListElements(
     std::optional<std::int64_t> sequenceId,
     std::optional<std::int64_t> shotId,
     std::optional<std::int64_t> assetId,
-    std::optional<std::int64_t> playlistId) {
+    std::optional<std::int64_t> playlistId,
+    std::optional<std::string> nameOrId) {
     using namespace pms::version;
-    auto query = versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId)
+    auto query = applyNameOrId(
+                     versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId),
+                     id,
+                     name,
+                     nameOrId)
                      .Fields(
                          id,
                          name,
@@ -756,8 +828,12 @@ int getNumberOfAssets(std::int64_t projectId) {
     return fetchCount(pms::Asset().In(pms::scope::project == projectId));
 }
 
-int getNumberOfPlaylists(std::int64_t projectId) {
-    return fetchCount(pms::Playlist().In(pms::scope::project == projectId));
+int getNumberOfPlaylists(std::int64_t projectId, std::optional<std::string> nameOrId) {
+    return fetchCount(applyNameOrId(
+        pms::Playlist().In(pms::scope::project == projectId),
+        pms::playlist::id,
+        pms::playlist::name,
+        nameOrId));
 }
 
 int getNumberOfVersions(
@@ -765,8 +841,13 @@ int getNumberOfVersions(
     std::optional<std::int64_t> sequenceId,
     std::optional<std::int64_t> shotId,
     std::optional<std::int64_t> assetId,
-    std::optional<std::int64_t> playlistId) {
-    return fetchCount(versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId));
+    std::optional<std::int64_t> playlistId,
+    std::optional<std::string> nameOrId) {
+    return fetchCount(applyNameOrId(
+        versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId),
+        pms::version::id,
+        pms::version::name,
+        nameOrId));
 }
 
 } // namespace xstudio::mikros_shotbrowser::dal

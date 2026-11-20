@@ -50,6 +50,10 @@ TEST_CASE("the fake backend applies a where clause") {
 
     const Records none = Project().Where(name == "missing").find(session).rows;
     CHECK(none.empty());
+
+    const Records part = Project().Where(contains(name, "AW07")).find(session).rows;
+    REQUIRE(part.size() == 1);
+    CHECK(std::get<std::string>(part[0].at("name")) == "paw07");
 }
 
 TEST_CASE("the fake backend lists sequences in a project") {

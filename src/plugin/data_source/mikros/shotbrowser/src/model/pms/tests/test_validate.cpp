@@ -35,6 +35,17 @@ TEST_CASE("validate accepts a project filter and an empty where") {
 
     const Ir byId = fieldIr("id", ExprOp::Eq, std::int64_t{42});
     CHECK_NOTHROW(validate(byId, loaded));
+
+    const Ir byNamePart = fieldIr("name", ExprOp::Contains, std::string("paw"));
+    CHECK_NOTHROW(validate(byNamePart, loaded));
+}
+
+TEST_CASE("validate rejects contains on an int field") {
+    const Schema loaded = schema();
+    CHECK_THROWS_WITH_AS(
+        validate(fieldIr("id", ExprOp::Contains, std::string("42")), loaded),
+        "where: operator not allowed on \"id\"",
+        Error);
 }
 
 TEST_CASE("validate rejects a broken tree") {

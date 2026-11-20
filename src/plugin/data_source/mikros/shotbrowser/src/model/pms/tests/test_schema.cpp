@@ -4,6 +4,8 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+
 using namespace pms;
 
 TEST_CASE("schema loads the project entity") {
@@ -27,6 +29,8 @@ TEST_CASE("schema loads the project entity") {
     CHECK(name->type == "string");
     CHECK(name->filter);
     CHECK(name->canSet);
+    CHECK(name->ops.size() == 3);
+    CHECK(std::find(name->ops.begin(), name->ops.end(), "contains") != name->ops.end());
 
     const FieldSpec *code = project->field("code");
     REQUIRE(code != nullptr);

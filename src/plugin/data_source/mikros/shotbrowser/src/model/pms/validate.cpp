@@ -16,7 +16,7 @@ namespace {
 /**
  * @brief Maps a leaf operator to the YAML name stored on a type.
  * @param op Operator on the expression node.
- * @return `"eq"` or `"ne"`, or null when `op` is a group operator.
+ * @return `"eq"`, `"ne"`, or `"contains"`, or null when `op` is a group operator.
  */
 const char *comparisonName(ExprOp op) {
     switch (op) {
@@ -24,6 +24,8 @@ const char *comparisonName(ExprOp op) {
         return "eq";
     case ExprOp::Ne:
         return "ne";
+    case ExprOp::Contains:
+        return "contains";
     case ExprOp::And:
     case ExprOp::Or:
     case ExprOp::Not:

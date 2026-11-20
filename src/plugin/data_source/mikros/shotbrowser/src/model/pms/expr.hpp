@@ -28,7 +28,7 @@ template <typename T> struct NonDeduced {
  * @brief Compile-time name of one domain field.
  *
  * The proxy is not the value. Comparing it builds a FieldExpr and leaves the
- * proxy unchanged. `==` and `!=` are the only operators in this slice.
+ * proxy unchanged. `==`, `!=`, and `contains()` are the field operators.
  *
  * @tparam Entity Entity tag that owns the field.
  * @tparam T C++ type of the field value.
@@ -61,7 +61,7 @@ template <typename Entity> struct FieldExpr {
  * @tparam Entity Entity tag that owns the field.
  * @tparam T C++ type of the field value.
  * @param field Proxy that supplies the YAML key.
- * @param op `Eq` or `Ne`.
+ * @param op `Eq`, `Ne`, or `Contains`.
  * @param value Scalar stored on the leaf.
  * @return Expression holding the new node.
  */
@@ -101,6 +101,18 @@ template <typename Entity, typename T>
 FieldExpr<Entity> operator!=(
     const Field<Entity, T> &field, const typename NonDeduced<T>::type &value) {
     return makeComparison(field, ExprOp::Ne, Value{value});
+}
+
+/**
+ * @brief Tests whether a string field contains a substring.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field String proxy on the left.
+ * @param text Substring to look for (case-insensitive on the backends).
+ * @return A field leaf with `op` Contains.
+ */
+template <typename Entity>
+FieldExpr<Entity> contains(const Field<Entity, std::string> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::Contains, Value{text});
 }
 
 /**

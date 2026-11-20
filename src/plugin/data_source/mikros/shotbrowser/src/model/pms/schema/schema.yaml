@@ -1,6 +1,6 @@
 # Domain schema for this slice. Project, sequence, shot, asset, playlist, version.
 types:
-  string: { ops: [eq, ne] }
+  string: { ops: [eq, ne, contains] }
   int:    { ops: [eq, ne] }
   date:   { ops: [eq, ne] }
   links:  { ops: [] }

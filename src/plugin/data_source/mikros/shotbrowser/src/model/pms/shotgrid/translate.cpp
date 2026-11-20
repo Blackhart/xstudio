@@ -23,6 +23,8 @@ const char *comparisonOp(ExprOp op) {
         return "is";
     case ExprOp::Ne:
         return "is_not";
+    case ExprOp::Contains:
+        return "contains";
     default:
         return nullptr;
     }

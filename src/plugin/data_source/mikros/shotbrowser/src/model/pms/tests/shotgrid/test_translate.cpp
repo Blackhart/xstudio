@@ -39,6 +39,17 @@ TEST_CASE("filters for project where code") {
     CHECK(filters[2] == "PAW01");
 }
 
+TEST_CASE("filters for version where name contains") {
+    const ShotGridMapping mapping = filledMapping();
+    Ir ir = Version().Where(contains(pms::version::name, "comp")).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
+    REQUIRE(filters.is_array());
+    CHECK(filters[0] == "code");
+    CHECK(filters[1] == "contains");
+    CHECK(filters[2] == "comp");
+}
+
 TEST_CASE("filters for sequence in project by id") {
     const ShotGridMapping mapping = filledMapping();
     Ir ir = Sequence().In(scope::project == std::int64_t{7}).ir();

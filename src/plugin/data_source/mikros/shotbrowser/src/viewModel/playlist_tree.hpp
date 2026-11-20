@@ -41,9 +41,10 @@ class PlaylistTree : public QObject {
     explicit PlaylistTree(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Loads more playlist names, or the versions of the playlist the user unfolded.
+     * @brief Loads more playlist names, expands a playlist, or runs a search.
      *
      * `LoadMorePlaylists` starts the next name page. `ExpandedPlaylist` starts a version load.
+     * `PlaylistSearch` clears then reloads with the name-or-id filter.
      * Other attributes are ignored.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed. Only Value is a request.
@@ -54,15 +55,26 @@ class PlaylistTree : public QObject {
      * @brief Loads the first name page when Playlist tab and project are set.
      *
      * Does not clear the tree; the panel calls `clearPlaylists` first when needed.
-     * The request id always moves. Reads `dal::resultView`. Returns before the pages arrive.
+     * The request id always moves. Applies `search_query_` when set. Reads `dal::resultView`.
+     * Returns before the pages arrive.
      */
     void loadPlaylistListAsync();
+
+    /**
+     * @brief Stores a name-or-id filter and loads the first matching name page.
+     *
+     * Empty text clears the filter and loads the unfiltered list. Does not clear the
+     * tree; the caller runs `clearPlaylists` first. Returns before the pages arrive.
+     * @param text Exact id (all digits) or name substring. Trimmed by the DAL.
+     */
+    void loadPlaylistsFromNameOrIdAsync(const std::string &text);
 
     /**
      * @brief Loads the next playlist-name page when a continuation cursor remains.
      *
      * No-op when there is no cursor, a more-page is already incoming, or no project is
-     * selected. Keeps the current request id. Returns before the page arrives.
+     * selected. Keeps the current request id and the active search filter. Returns before
+     * the page arrives.
      */
     void loadMorePlaylistsAsync();
 
@@ -70,7 +82,7 @@ class PlaylistTree : public QObject {
      * @brief Clears the playlist tree and stops a name fetch that is still running.
      *
      * The panel calls this before a reload, when the project changes, or when the versions
-     * tab is showing.
+     * tab is showing. Does not clear `search_query_`.
      */
     void clearPlaylists();
 
@@ -209,11 +221,18 @@ class PlaylistTree : public QObject {
      */
     std::size_t playlistNodeCount() const;
 
+    /**
+     * @brief Active search text for catalog loads, or empty when unfiltered.
+     * @return `search_query_` when set, otherwise nullopt.
+     */
+    [[nodiscard]] std::optional<std::string> activeSearchQuery() const;
+
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
     RequestGeneration playlist_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale playlist-name fetches and pages.
     std::optional<std::string> next_cursor_; ///< Continuation for the next name page. Empty when finished.
     bool more_incoming_ = false; ///< True while a load-more name page is still on the way.
+    std::string search_query_; ///< Name-or-id filter. Empty means no Where on name/id.
     int playlist_total_ = -1; ///< Server match count for the footer. -1 until the count arrives.
     std::map<std::int64_t, std::vector<poco::VersionListElement>>
         versions_by_playlist_; ///< List elements accumulated per playlist.
@@ -221,6 +240,7 @@ class PlaylistTree : public QObject {
     module::StringAttribute *expanded_ = nullptr; ///< Playlist the user unfolded.
     module::BooleanAttribute *playlists_loaded_ = nullptr; ///< True once the current request has delivered a page.
     module::StringAttribute *load_more_playlists_ = nullptr; ///< QML bump that requests the next name page.
+    module::StringAttribute *playlist_search_ = nullptr; ///< QML Enter on the result search bar.
     module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
 };
 

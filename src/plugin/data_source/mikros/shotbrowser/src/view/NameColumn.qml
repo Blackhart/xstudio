@@ -32,6 +32,7 @@ ColumnLayout {
 
     signal resultChosen(string mode)
     signal loadMoreRequested()
+    signal searchSubmitted(string text)
 
     readonly property int count: {
         if (!names)
@@ -152,6 +153,30 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.preferredHeight: 2
         color: XsStyleSheet.panelBgColor
+    }
+
+    Bar {
+        visible: column.resultSwitcher
+        barHeight: column.switcherHeight
+
+        XsSearchBar {
+            id: resultSearch
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            placeholderText: "Search name or id…"
+
+            Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    column.searchSubmitted(text)
+                    event.accepted = true
+                }
+            }
+
+            function clearSearch() {
+                text = ""
+                column.searchSubmitted("") ///< Clear also reloads without a filter.
+            }
+        }
     }
 
     Rectangle {

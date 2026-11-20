@@ -157,6 +157,12 @@ Item {
         model: attributes
     }
 
+    XsAttributeValue {
+        id: playlistSearch
+        attributeTitle: "PlaylistSearch"
+        model: attributes
+    }
+
     CatalogValue { id: footer; title: "PlaylistTreeFooter"; source: attributes }
 
     Connections {
@@ -210,6 +216,9 @@ Item {
         onLoadMoreRequested: {
             playlists.loadMoreToken += 1
             loadMorePlaylists.value = String(playlists.loadMoreToken)
+        }
+        onSearchSubmitted: function(text) {
+            playlistSearch.value = text
         }
         placeholder: {
             selectedProject.value

@@ -12,6 +12,7 @@
 #include <OpenImageIO/imagebufalgo.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -680,6 +681,26 @@ bool matchesWhere(const Record &row, const ExprNode &node) {
         throw Error("fake backend: field \"" + node.key + "\" has no value");
     }
     const auto found = row.fields.find(node.key);
+    if (node.op == ExprOp::Contains) {
+        const auto *needle = std::get_if<std::string>(&*node.value);
+        if (!needle) {
+            throw Error("fake backend: contains expects a string on \"" + node.key + "\"");
+        }
+        if (found == row.fields.end()) {
+            return false;
+        }
+        const auto *haystack = std::get_if<std::string>(&found->second);
+        if (!haystack) {
+            return false;
+        }
+        auto lower = [](std::string text) {
+            std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return text;
+        };
+        return lower(*haystack).find(lower(*needle)) != std::string::npos;
+    }
     const bool equal = found != row.fields.end() && found->second == *node.value;
     if (node.op == ExprOp::Eq) {
         return equal;

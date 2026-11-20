@@ -56,7 +56,7 @@ std::string dumpValue(const Value &value) {
 /**
  * @brief Returns the dump token of an expression operator.
  * @param op Comparison or group operator.
- * @return `eq`, `ne`, `and`, `or`, or `not`.
+ * @return `eq`, `ne`, `contains`, `and`, `or`, or `not`.
  */
 const char *exprOpName(ExprOp op) {
     switch (op) {
@@ -64,6 +64,8 @@ const char *exprOpName(ExprOp op) {
         return "eq";
     case ExprOp::Ne:
         return "ne";
+    case ExprOp::Contains:
+        return "contains";
     case ExprOp::And:
         return "and";
     case ExprOp::Or:

@@ -170,12 +170,14 @@ RowPage<poco::Asset> findAssets(
  * @param projectId Domain project `id`.
  * @param limit Maximum rows in the page. Must be greater than zero.
  * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
+ * @param nameOrId Optional exact id (all digits) or name substring.
  * @return Page of playlists. Empty when none match or the lookup fails.
  */
 RowPage<poco::Playlist> findPlaylists(
     std::int64_t projectId,
     std::size_t limit,
-    std::optional<std::string> cursor = std::nullopt);
+    std::optional<std::string> cursor = std::nullopt,
+    std::optional<std::string> nameOrId = std::nullopt);
 
 /**
  * @brief One page of version list rows for a project.
@@ -192,6 +194,7 @@ RowPage<poco::Playlist> findPlaylists(
  * @param shotId Optional shot `id`.
  * @param assetId Optional asset `id`.
  * @param playlistId Optional playlist `id`.
+ * @param nameOrId Optional exact id (all digits) or name substring.
  * @return Page of list elements. Empty when none match or the lookup fails.
  */
 RowPage<poco::VersionListElement> findVersionListElements(
@@ -201,7 +204,8 @@ RowPage<poco::VersionListElement> findVersionListElements(
     std::optional<std::int64_t> sequenceId = std::nullopt,
     std::optional<std::int64_t> shotId = std::nullopt,
     std::optional<std::int64_t> assetId = std::nullopt,
-    std::optional<std::int64_t> playlistId = std::nullopt);
+    std::optional<std::int64_t> playlistId = std::nullopt,
+    std::optional<std::string> nameOrId = std::nullopt);
 
 /**
  * @brief Image URL or path for one version (`Fields(image)` only).
@@ -254,9 +258,11 @@ int getNumberOfAssets(std::int64_t projectId);
 /**
  * @brief How many playlists belong to a project.
  * @param projectId Domain project `id`.
+ * @param nameOrId Optional exact id (all digits) or name substring.
  * @return Match count, or `0` when the lookup fails.
  */
-int getNumberOfPlaylists(std::int64_t projectId);
+int getNumberOfPlaylists(
+    std::int64_t projectId, std::optional<std::string> nameOrId = std::nullopt);
 
 /**
  * @brief How many versions match the same parents as `findVersionListElements`.
@@ -269,6 +275,7 @@ int getNumberOfPlaylists(std::int64_t projectId);
  * @param shotId Optional shot `id`.
  * @param assetId Optional asset `id`.
  * @param playlistId Optional playlist `id`.
+ * @param nameOrId Optional exact id (all digits) or name substring.
  * @return Match count, or `0` when the lookup fails.
  */
 int getNumberOfVersions(
@@ -276,6 +283,7 @@ int getNumberOfVersions(
     std::optional<std::int64_t> sequenceId = std::nullopt,
     std::optional<std::int64_t> shotId = std::nullopt,
     std::optional<std::int64_t> assetId = std::nullopt,
-    std::optional<std::int64_t> playlistId = std::nullopt);
+    std::optional<std::int64_t> playlistId = std::nullopt,
+    std::optional<std::string> nameOrId = std::nullopt);
 
 } // namespace xstudio::mikros_shotbrowser::dal
