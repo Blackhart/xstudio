@@ -204,16 +204,17 @@ std::string fetchMovie(const std::string &url) {
     return body;
 }
 
-bool framesLocallyUsable(const std::string &framesPath) {
-    return !sequenceSpec(framesPath, std::string()).empty();
+bool framesLocallyUsable(const std::string &framesPath, const std::string &frameRange) {
+    return !sequenceSpec(framesPath, frameRange).empty();
 }
 
 bool needsSignedMovieUrl(
     const std::string &frames,
     const std::string &movie,
+    const std::string &frameRange,
     std::int64_t versionId,
     std::int64_t projectId) {
-    if (framesLocallyUsable(frames)) {
+    if (framesLocallyUsable(frames, frameRange)) {
         return false;
     }
     if (regularFile(movie)) {
@@ -233,8 +234,12 @@ void scheduleVersionTranscodedResolve(
     std::vector<std::int64_t> missing;
     missing.reserve(rows.size());
     for (const poco::VersionListElement &row : rows) {
-        if (needsSignedMovieUrl(row.frames, row.movie, row.id, projectId)) {
+        if (needsSignedMovieUrl(row.frames, row.movie, row.frame_range, row.id, projectId)) {
             missing.push_back(row.id);
+        } else {
+            log::info(
+                "transcoded skip versionId=" + std::to_string(row.id) +
+                " reason=local_or_cache");
         }
     }
     if (missing.empty()) {
@@ -265,6 +270,8 @@ ResolvedVersionPaths resolveVersionPaths(
     const std::string &uploadedMovie) {
     const std::string frames = sequenceSpec(framesPath, frameRange);
     const bool movieOnDisk = regularFile(movie);
+    const std::filesystem::path cache = movieCachePath(projectId, versionId);
+    const bool cacheOnDisk = regularFile(cache.string());
     const bool hasUrl = !uploadedMovie.empty();
     const SourceChoice choice = chooseSources(!frames.empty(), movieOnDisk, hasUrl);
 
@@ -274,11 +281,10 @@ ResolvedVersionPaths resolveVersionPaths(
     }
     if (choice.movieFile) {
         ready.movie_path = movie;
+    } else if (cacheOnDisk) {
+        ready.movie_path = cache.string(); ///< Reuse a previous download without a new signed URL.
     } else if (choice.movieUrl) {
-        const std::filesystem::path cache = movieCachePath(projectId, versionId);
-        if (!cache.empty() && !regularFile(cache.string())) {
-            writeMovie(cache, fetchMovie(uploadedMovie));
-        }
+        writeMovie(cache, fetchMovie(uploadedMovie));
         if (regularFile(cache.string())) {
             ready.movie_path = cache.string();
         }
@@ -1127,7 +1133,8 @@ caf::behavior RetrieveVersionMediaActor::make_behavior() {
                 std::string frames = request.value("frames", std::string());
                 std::string movie = request.value("movie", std::string());
                 std::string uploaded = request.value("uploadedMovie", std::string());
-                if (frames.empty() && movie.empty()) {
+                const bool pathsKnown = request.value("pathsKnown", false);
+                if (!pathsKnown && frames.empty() && movie.empty()) {
                     const std::vector<poco::VersionListElement> rows =
                         dal::findVersionListElementsByIds({versionId});
                     if (!rows.empty()) {
@@ -1138,7 +1145,7 @@ caf::behavior RetrieveVersionMediaActor::make_behavior() {
                         }
                     }
                 }
-                if (needsSignedMovieUrl(frames, movie, versionId, projectId) &&
+                if (needsSignedMovieUrl(frames, movie, frameRange, versionId, projectId) &&
                     uploaded.empty()) {
                     const std::vector<poco::VersionTranscodedMedia> rows =
                         dal::findVersionTranscodedMovies({versionId});

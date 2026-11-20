@@ -553,6 +553,7 @@ void VersionList::open_version(const std::string &text) {
     std::string frames;
     std::string movie;
     std::string uploadedMovie;
+    bool pathsKnown = false;
     if (const VersionCard *card = findCard(versionId)) {
         if (frameRange.empty()) {
             frameRange = card->frameRange();
@@ -560,6 +561,7 @@ void VersionList::open_version(const std::string &text) {
         frames = card->frames();
         movie = card->movie();
         uploadedMovie = card->uploadedMovie();
+        pathsKnown = true; ///< Card already carries list paths (possibly empty).
     }
     mikros_shotbrowser::open_version(
         panel_,
@@ -571,7 +573,8 @@ void VersionList::open_version(const std::string &text) {
              {"frameRange", frameRange},
              {"frames", frames},
              {"movie", movie},
-             {"uploadedMovie", uploadedMovie}}));
+             {"uploadedMovie", uploadedMovie},
+             {"pathsKnown", pathsKnown}}));
 }
 
 void VersionList::preview_version(const std::string &text) {
@@ -595,6 +598,7 @@ void VersionList::preview_version(const std::string &text) {
     std::string frames;
     std::string movie;
     std::string uploadedMovie;
+    bool pathsKnown = false;
     if (const VersionCard *card = findCard(versionId)) {
         if (frameRange.empty()) {
             frameRange = card->frameRange();
@@ -602,6 +606,7 @@ void VersionList::preview_version(const std::string &text) {
         frames = card->frames();
         movie = card->movie();
         uploadedMovie = card->uploadedMovie();
+        pathsKnown = true; ///< Card already carries list paths (possibly empty).
     }
     mikros_shotbrowser::preview_version(
         panel_,
@@ -612,7 +617,8 @@ void VersionList::preview_version(const std::string &text) {
              {"frameRange", frameRange},
              {"frames", frames},
              {"movie", movie},
-             {"uploadedMovie", uploadedMovie}}));
+             {"uploadedMovie", uploadedMovie},
+             {"pathsKnown", pathsKnown}}));
 }
 
 void VersionList::attribute_changed(const utility::Uuid &attr_uuid, int role) {

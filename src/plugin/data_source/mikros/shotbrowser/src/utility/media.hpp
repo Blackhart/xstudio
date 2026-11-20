@@ -85,9 +85,11 @@ void retrieveVersionMedia(
 /**
  * @brief True when the frames path resolves to at least one file on disk.
  * @param framesPath ShotGrid frames path (may use FileSeq syntax).
+ * @param frameRange Optional sequence range (same as `resolveVersionPaths`).
  * @return True when a local sequence is usable.
  */
-bool framesLocallyUsable(const std::string &framesPath);
+bool framesLocallyUsable(
+    const std::string &framesPath, const std::string &frameRange = {});
 
 /**
  * @brief True when a signed uploaded-movie URL is still required for this version.
@@ -97,6 +99,7 @@ bool framesLocallyUsable(const std::string &framesPath);
  *
  * @param frames ShotGrid frames path.
  * @param movie ShotGrid movie path.
+ * @param frameRange Optional sequence range used for the frames disk check.
  * @param versionId Version id for the movie cache folder.
  * @param projectId Project id for the movie cache folder.
  * @return True when the batch / one-shot signed URL fetch is still needed.
@@ -104,6 +107,7 @@ bool framesLocallyUsable(const std::string &framesPath);
 bool needsSignedMovieUrl(
     const std::string &frames,
     const std::string &movie,
+    const std::string &frameRange,
     std::int64_t versionId,
     std::int64_t projectId);
 
