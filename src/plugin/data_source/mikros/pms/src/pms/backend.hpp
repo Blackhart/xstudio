@@ -16,8 +16,8 @@ namespace pms {
  * @brief Receives a domain query and returns domain rows or a match count.
  *
  * RecordingBackend is the unit-test double. FakeBackend lives under
- * model/pms/fake/ (see model/pms/dev/). ShotGridBackend lives under
- * model/pms/shotgrid/. This interface never sees ShotGrid names.
+ * src/pms/fake/ (see pms/dev/). ShotGridBackend lives under src/pms/shotgrid/.
+ * This interface never sees ShotGrid names.
  *
  * When `ir.limit` is set, find() returns one keyset page and may set
  * `next_cursor`. When `limit` is absent, find() returns every matching row and

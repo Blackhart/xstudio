@@ -10,18 +10,19 @@
 #include "model/context/shotbrowser_state.hpp"
 #include "model/log.hpp"
 
-#include "pms/fake/backend.hpp"
+#include "pms/env.hpp"
 #include "pms/pms.hpp"
-#include "pms/shotgrid/backend.hpp"
+#include "pms/shared_session.hpp"
+
+#include "xstudio/utility/helpers.hpp"
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
-#include <iomanip>
+#include <cstdlib>
 #include <map>
 #include <optional>
-#include <sstream>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -38,274 +39,6 @@ namespace trace = ::xstudio::mikros_shotbrowser::log;
     static ::xstudio::mikros_shotbrowser::ShotbrowserState state;
     return state;
 }
-
-/**
- * @brief True when the process asked for the ShotGrid backend.
- * @return True when `MIKROS_PMS_BACKEND` is `shotgrid`.
- */
-bool useShotGrid() { return constants::backend().value == "shotgrid"; }
-
-/**
- * @brief Path to schema.yaml at runtime.
- *
- * Prefer `PMS_SCHEMA_PATH`, else `xstudio_root("/mikros_shotbrowser/schema.yaml")`
- * (installed via add_resource; launcher sets XSTUDIO_ROOT to share/xstudio).
- *
- * @return Absolute or override path of the domain schema.
- */
-std::string readSchemaPath() { return constants::schemaPath().value; }
-
-/**
- * @brief Escapes a name so it can sit inside a quoted log field.
- * @param text Raw domain name.
- * @return Text with quotes and backslashes escaped.
- */
-std::string escapeQuoted(const std::string &text) {
-    std::string out;
-    out.reserve(text.size());
-    for (const char ch : text) {
-        if (ch == '\\' || ch == '"') {
-            out.push_back('\\');
-        }
-        out.push_back(ch);
-    }
-    return out;
-}
-
-/**
- * @brief ShotGrid site values read from the environment.
- */
-struct ShotGridEnv {
-    std::string url;         ///< `SHOTGRID_URL`.
-    std::string scriptName;  ///< `SHOTGRID_CLIENT_ID`.
-    std::string scriptKey;   ///< `SHOTGRID_CLIENT_SECRET`.
-    std::string mappingPath; ///< `SHOTGRID_MAPPING`.
-};
-
-/**
- * @brief Reads the four ShotGrid environment variables.
- * @return Site URL, script credentials, and mapping path.
- * @throw pms::Error When one of them is missing or empty.
- */
-ShotGridEnv readShotGridEnv() {
-    const constants::TextSetting url = constants::shotGridUrl();
-    const constants::TextSetting script = constants::shotGridClientId();
-    const constants::TextSetting key = constants::shotGridClientSecret();
-    const constants::TextSetting mapping = constants::shotGridMapping();
-    if (!url.set || !script.set || !key.set || !mapping.set) {
-        throw pms::Error(
-            "shotgrid DAL: set SHOTGRID_URL, SHOTGRID_CLIENT_ID, "
-            "SHOTGRID_CLIENT_SECRET, SHOTGRID_MAPPING");
-    }
-    return ShotGridEnv{url.value, script.value, key.value, mapping.value};
-}
-
-/**
- * @brief Logs the site URL, script name, redacted key, and mapping path.
- * @param env Values from `readShotGridEnv`.
- */
-void logShotGridSite(const ShotGridEnv &env) {
-    trace::info(
-        "shotgrid site url=\"" + escapeQuoted(env.url) + "\" script=\"" +
-        escapeQuoted(env.scriptName) + "\" key=" + constants::keyHint(env.scriptKey) +
-        " mapping=\"" + escapeQuoted(env.mappingPath) + "\"");
-}
-
-/**
- * @brief Builds a ShotGrid backend and attaches the DAL log sinks.
- * @param env Site values already checked.
- * @return Backend ready to wrap in the cache.
- */
-pms::ShotGridBackend openShotGridBackend(const ShotGridEnv &env) {
-    pms::ShotGridSite site;
-    site.base_url = env.url;
-    site.auth = pms::ShotGridScriptAuth{env.scriptName, env.scriptKey};
-    pms::ShotGridBackend backend(std::move(site), env.mappingPath);
-    backend.setSearchLog([](const std::string &payload) {
-        trace::info("shotgrid payload " + payload);
-    });
-    backend.setAuthLog([](const std::string &line) { trace::info("shotgrid " + line); });
-    return backend;
-}
-
-/**
- * @brief Drops a trailing newline so the IR block does not end blank.
- * @param text dump() output.
- * @return The same text without a final newline.
- */
-std::string trimNewline(std::string text) {
-    if (!text.empty() && text.back() == '\n') {
-        text.pop_back();
-    }
-    return text;
-}
-
-/**
- * @brief Renders one record field value for the page log.
- * @param value String, int, date, or list of links.
- * @return Text that fits inside a `{ key: … }` line.
- */
-std::string formatFieldValue(const pms::Value &value) {
-    if (const auto *text = std::get_if<std::string>(&value)) {
-        return "\"" + escapeQuoted(*text) + "\"";
-    }
-    if (const auto *number = std::get_if<std::int64_t>(&value)) {
-        return std::to_string(*number);
-    }
-    if (const auto *links = std::get_if<std::vector<pms::Link>>(&value)) {
-        std::ostringstream out;
-        out << "[ ";
-        for (std::size_t i = 0; i < links->size(); ++i) {
-            if (i != 0) {
-                out << ", ";
-            }
-            const pms::Link &link = (*links)[i];
-            out << "{ id: " << link.id << ", name: \"" << escapeQuoted(link.name) << "\" }";
-        }
-        out << " ]";
-        return out.str();
-    }
-    const pms::Date &date = std::get<pms::Date>(value);
-    std::ostringstream out;
-    out << std::setfill('0') << std::setw(4) << date.year << '-' << std::setw(2) << date.month
-        << '-' << std::setw(2) << date.day;
-    return out.str();
-}
-
-/**
- * @brief Renders the domain page the caller receives.
- * @param source `cache` or `backend`.
- * @param entity Queried entity name.
- * @param page Rows and continuation cursor.
- * @return One `[mikros] page` body, with every field on each row.
- */
-std::string formatPage(const char *source, const std::string &entity, const pms::Page &page) {
-    std::ostringstream out;
-    out << "page source=" << source << " entity=" << entity << " rows=" << page.rows.size()
-        << " next_cursor=";
-    if (page.next_cursor) {
-        out << '"' << escapeQuoted(*page.next_cursor) << '"';
-    } else {
-        out << '-';
-    }
-    for (const pms::Record &row : page.rows) {
-        out << "\n  { ";
-        bool first = true;
-        for (const auto &[key, value] : row.fields) {
-            if (!first) {
-                out << ", ";
-            }
-            first = false;
-            out << key << ": " << formatFieldValue(value);
-        }
-        out << " }";
-    }
-    return out.str();
-}
-
-/**
- * @brief Cache trace hooks, lifetime, and byte budget.
- *
- * Defaults are five minutes and 64 MiB. `MIKROS_PMS_CACHE_TTL_SECONDS` and
- * `MIKROS_PMS_CACHE_BYTES` replace them. Eviction follows the byte budget only.
- *
- * @param backendName `shotgrid` or `fake`.
- * @return Options passed to `CachingBackend`.
- */
-pms::CacheOptions buildCacheOptions(const std::string &backendName) {
-    pms::CacheOptions options;
-    options.ttl = std::chrono::seconds(constants::cacheTtlSeconds().value);
-    options.max_bytes = static_cast<std::size_t>(constants::cacheMaxBytes().value);
-    options.backend_name = backendName;
-    trace::info(
-        "cache ttl_seconds=" + std::to_string(options.ttl.count()) +
-        " max_bytes=" + std::to_string(options.max_bytes));
-    options.trace_ir = [](const pms::Ir &ir) {
-        trace::info("request intermediate representation\n" + trimNewline(pms::dump(ir)));
-    };
-    options.trace_cache = [](const char *verdict, const std::string &entity) {
-        trace::info(std::string("cache ") + verdict + " entity=" + entity);
-    };
-    options.trace_fallback = [](const std::string &name, const std::string &entity) {
-        trace::info("fallback backend=" + name + " entity=" + entity);
-    };
-    options.trace_page = [](const char *source, const std::string &entity, const pms::Page &page) {
-        trace::info(formatPage(source, entity, page));
-    };
-    return options;
-}
-
-/**
- * @brief Shared backend + CachingBackend + Session for the plugin process.
- *
- * Backend selected by `MIKROS_PMS_BACKEND` (`fake` default, or `shotgrid`).
- * CachingBackend serializes access. Trace lines are formatted by the DAL.
- */
-class SharedPms {
-  public:
-    /**
-     * @brief Returns the process-wide pms session holder.
-     * @return The single shared instance.
-     */
-    static SharedPms &getInstance() {
-        static SharedPms shared;
-        return shared;
-    }
-
-    /**
-     * @brief Returns the session used by every catalog find.
-     * @return Session bound to the schema and the cache.
-     */
-    pms::Session &getSession() { return session_; }
-
-  private:
-    SharedPms()
-        : fake_(buildFakeBackend()),
-          shotgrid_(buildShotGridBackend()),
-          cache_(getActiveBackend(), buildCacheOptions(shotgrid_ ? "shotgrid" : "fake")),
-          session_(pms::Schema::load(readSchemaPath()), cache_) {}
-
-    /**
-     * @brief Builds the fake backend when ShotGrid is not selected.
-     * @return A fake backend with no simulated latency, or empty in ShotGrid mode.
-     */
-    static std::optional<pms::FakeBackend> buildFakeBackend() {
-        if (useShotGrid()) {
-            return std::nullopt;
-        }
-        return pms::FakeBackend(/*simulate_latency=*/false);
-    }
-
-    /**
-     * @brief Builds the ShotGrid backend when that mode is selected.
-     * @return A connected-on-demand backend, or empty in fake mode.
-     * @throw pms::Error When a ShotGrid environment variable is missing.
-     */
-    static std::optional<pms::ShotGridBackend> buildShotGridBackend() {
-        if (!useShotGrid()) {
-            return std::nullopt;
-        }
-        const ShotGridEnv env = readShotGridEnv(); ///< URL, script, key, and mapping.
-        logShotGridSite(env);                      ///< Recognise the site without printing the key.
-        return openShotGridBackend(env);
-    }
-
-    /**
-     * @brief Returns the backend selected at construction.
-     * @return ShotGrid when present, otherwise the fake backend.
-     */
-    pms::Backend &getActiveBackend() {
-        if (shotgrid_) {
-            return *shotgrid_;
-        }
-        return *fake_;
-    }
-
-    std::optional<pms::FakeBackend> fake_;       ///< Set when ShotGrid mode is off.
-    std::optional<pms::ShotGridBackend> shotgrid_; ///< Set when ShotGrid mode is on.
-    pms::CachingBackend cache_;                  ///< Serializes finds and traces them.
-    pms::Session session_;                       ///< Schema plus the cache.
-};
 
 /**
  * @brief Reads one optional string field.
@@ -399,6 +132,10 @@ std::vector<poco::VersionListElement> mapRecordsToRows<poco::VersionListElement>
         row.sites = optionalString(record, "sites");
         row.open_notes_count = optionalInt64(record, "open_notes_count");
         row.synced_to_client = optionalFlag(record, "synced_to_client");
+        row.frames = optionalString(record, "frames");
+        row.frames_provider = optionalString(record, "frames_provider");
+        row.movie = optionalString(record, "movie");
+        row.movie_provider = optionalString(record, "movie_provider");
         rows.push_back(std::move(row));
     }
     return rows;
@@ -512,7 +249,7 @@ pms::Page findLimitedPage(
     if (cursor && !cursor->empty()) {
         limited = limited.After(*cursor);
     }
-    return limited.find(SharedPms::getInstance().getSession());
+    return limited.find(pms::sharedSession());
 }
 
 /**
@@ -578,6 +315,14 @@ std::size_t versionCountFromPlaylist(const pms::Record &record) {
 } // namespace
 
 void initialize() {
+    pms::setSharedInfoLog([](std::string_view message) {
+        ::xstudio::mikros_shotbrowser::log::info(message);
+    });
+    // Host resolves the installed schema; pms only reads PMS_SCHEMA_PATH.
+    if (!pms::schemaPath().set) {
+        const std::string path = utility::xstudio_root("/mikros_pms/schema.yaml");
+        ::setenv(pms::kSchemaPath, path.c_str(), /*overwrite=*/0);
+    }
     shotbrowserContext(); ///< Create the context at plugin launch.
 }
 
@@ -726,7 +471,9 @@ RowPage<poco::VersionListElement> findVersionListElements(
                          artisticStatus,
                          sites,
                          openNotesCount,
-                         syncedToClient);
+                         syncedToClient,
+                         frames,
+                         movie);
     return fetchPage<poco::VersionListElement>(std::move(query), limit, cursor);
 }
 
@@ -736,7 +483,7 @@ std::vector<poco::PlaylistVersionLink> findPlaylistVersionLinks(std::int64_t pla
         const pms::Page page = pms::Playlist()
                                    .Where(id == playlistId)
                                    .Limit(1)
-                                   .find(SharedPms::getInstance().getSession());
+                                   .find(pms::sharedSession());
         if (page.rows.empty()) {
             return {};
         }
@@ -786,9 +533,11 @@ findVersionListElementsByIds(const std::vector<std::int64_t> &versionIds) {
                                        artisticStatus,
                                        sites,
                                        openNotesCount,
-                                       syncedToClient)
+                                       syncedToClient,
+                                       frames,
+                                       movie)
                                    .Limit(versionIds.size())
-                                   .find(SharedPms::getInstance().getSession());
+                                   .find(pms::sharedSession());
         const std::vector<poco::VersionListElement> found =
             mapRecordsToRows<poco::VersionListElement>(page.rows);
         std::map<std::int64_t, poco::VersionListElement> byId;
@@ -825,7 +574,7 @@ std::vector<poco::VersionThumb> findVersionThumbs(const std::vector<std::int64_t
                 .Where(std::move(idFilter))
                 .Fields(id, name, image)
                 .Limit(versionIds.size())
-                .find(SharedPms::getInstance().getSession());
+                .find(pms::sharedSession());
         std::vector<poco::VersionThumb> rows;
         rows.reserve(page.rows.size());
         for (const pms::Record &record : page.rows) {
@@ -850,30 +599,32 @@ poco::VersionThumb findVersionThumb(std::int64_t versionId) {
     return rows.front();
 }
 
-poco::VersionMedia findVersionMedia(std::int64_t versionId) {
+std::vector<poco::VersionTranscodedMedia>
+findVersionTranscodedMovies(const std::vector<std::int64_t> &versionIds) {
+    if (versionIds.empty()) {
+        return {};
+    }
     try {
         using namespace pms::version;
-        const pms::Page page =
-            pms::Version()
-                .Where(id == versionId)
-                .Fields(id, name, frameRange, frames, movie, uploadedMovie)
-                .Limit(1)
-                .find(SharedPms::getInstance().getSession());
-        if (page.rows.empty()) {
-            return {};
+        auto idFilter = (id == versionIds.front());
+        for (std::size_t index = 1; index < versionIds.size(); ++index) {
+            idFilter = idFilter || (id == versionIds[index]);
         }
-        const pms::Record &record = page.rows.front();
-        poco::VersionMedia row;
-        row.id = std::get<std::int64_t>(record.at("id"));
-        row.name = optionalString(record, "name");
-        row.frame_range = optionalString(record, "frame_range");
-        row.frames = optionalString(record, "frames");
-        row.frames_provider = optionalString(record, "frames_provider");
-        row.movie = optionalString(record, "movie");
-        row.movie_provider = optionalString(record, "movie_provider");
-        row.uploaded_movie = optionalString(record, "uploaded_movie");
-        row.uploaded_movie_provider = optionalString(record, "uploaded_movie_provider");
-        return row;
+        const pms::Page page = pms::Version()
+                                   .Where(std::move(idFilter))
+                                   .Fields(id, uploadedMovie)
+                                   .Limit(versionIds.size())
+                                   .find(pms::sharedSession());
+        std::vector<poco::VersionTranscodedMedia> rows;
+        rows.reserve(page.rows.size());
+        for (const pms::Record &record : page.rows) {
+            poco::VersionTranscodedMedia row;
+            row.id = std::get<std::int64_t>(record.at("id"));
+            row.uploaded_movie = optionalString(record, "uploaded_movie");
+            row.uploaded_movie_provider = optionalString(record, "uploaded_movie_provider");
+            rows.push_back(std::move(row));
+        }
+        return rows;
     } catch (const std::exception &error) {
         trace::failure(error);
         return {};
@@ -888,7 +639,7 @@ poco::VersionMedia findVersionMedia(std::int64_t versionId) {
  */
 template <typename QueryT> int fetchCount(QueryT query) {
     try {
-        const std::size_t total = std::move(query).count(SharedPms::getInstance().getSession());
+        const std::size_t total = std::move(query).count(pms::sharedSession());
         return static_cast<int>(total);
     } catch (const std::exception &error) {
         trace::failure(error);

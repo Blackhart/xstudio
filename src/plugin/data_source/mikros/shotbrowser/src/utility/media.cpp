@@ -35,6 +35,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <utility>
 
 using namespace xstudio;
@@ -203,14 +204,68 @@ std::string fetchMovie(const std::string &url) {
     return body;
 }
 
-ResolvedVersionPaths resolveVersionPaths(
-    const poco::VersionMedia &media,
+bool framesLocallyUsable(const std::string &framesPath) {
+    return !sequenceSpec(framesPath, std::string()).empty();
+}
+
+bool needsSignedMovieUrl(
+    const std::string &frames,
+    const std::string &movie,
+    std::int64_t versionId,
+    std::int64_t projectId) {
+    if (framesLocallyUsable(frames)) {
+        return false;
+    }
+    if (regularFile(movie)) {
+        return false;
+    }
+    const std::filesystem::path cache = movieCachePath(projectId, versionId);
+    return !regularFile(cache.string());
+}
+
+void scheduleVersionTranscodedResolve(
     std::int64_t projectId,
-    const std::string &frameRange) {
-    const std::string range = frameRange.empty() ? media.frame_range : frameRange;
-    const std::string frames = sequenceSpec(media.frames, range);
-    const bool movieOnDisk = regularFile(media.movie);
-    const bool hasUrl = !media.uploaded_movie.empty();
+    const std::vector<poco::VersionListElement> &rows,
+    std::function<void(std::vector<poco::VersionTranscodedMedia>)> onBatchReady) {
+    if (!onBatchReady || rows.empty() || projectId == -1) {
+        return;
+    }
+    std::vector<std::int64_t> missing;
+    missing.reserve(rows.size());
+    for (const poco::VersionListElement &row : rows) {
+        if (needsSignedMovieUrl(row.frames, row.movie, row.id, projectId)) {
+            missing.push_back(row.id);
+        }
+    }
+    if (missing.empty()) {
+        return;
+    }
+    std::thread([missing = std::move(missing), onBatchReady = std::move(onBatchReady)]() mutable {
+        const std::vector<poco::VersionTranscodedMedia> found =
+            dal::findVersionTranscodedMovies(missing);
+        std::vector<poco::VersionTranscodedMedia> ready;
+        ready.reserve(found.size());
+        for (const poco::VersionTranscodedMedia &row : found) {
+            if (!row.uploaded_movie.empty()) {
+                ready.push_back(row);
+            }
+        }
+        if (!ready.empty()) {
+            onBatchReady(std::move(ready));
+        }
+    }).detach();
+}
+
+ResolvedVersionPaths resolveVersionPaths(
+    std::int64_t versionId,
+    std::int64_t projectId,
+    const std::string &frameRange,
+    const std::string &framesPath,
+    const std::string &movie,
+    const std::string &uploadedMovie) {
+    const std::string frames = sequenceSpec(framesPath, frameRange);
+    const bool movieOnDisk = regularFile(movie);
+    const bool hasUrl = !uploadedMovie.empty();
     const SourceChoice choice = chooseSources(!frames.empty(), movieOnDisk, hasUrl);
 
     ResolvedVersionPaths ready;
@@ -218,11 +273,11 @@ ResolvedVersionPaths resolveVersionPaths(
         ready.frames_spec = frames;
     }
     if (choice.movieFile) {
-        ready.movie_path = media.movie;
+        ready.movie_path = movie;
     } else if (choice.movieUrl) {
-        const std::filesystem::path cache = movieCachePath(projectId, media.id);
+        const std::filesystem::path cache = movieCachePath(projectId, versionId);
         if (!cache.empty() && !regularFile(cache.string())) {
-            writeMovie(cache, fetchMovie(media.uploaded_movie));
+            writeMovie(cache, fetchMovie(uploadedMovie));
         }
         if (regularFile(cache.string())) {
             ready.movie_path = cache.string();
@@ -776,10 +831,9 @@ void on_preview_viewport_container_changed(
 
 void preview_version(
     plugin::StandardPlugin &panel,
-    std::int64_t versionId,
-    std::int64_t projectId,
-    const std::string &name,
-    const std::string &frameRange) {
+    const utility::JsonStore &request) {
+    const std::int64_t versionId = request.value("versionId", std::int64_t{0});
+    const std::string name = request.value("name", std::string());
     if (versionId == 0) {
         return;
     }
@@ -789,9 +843,7 @@ void preview_version(
     const std::uint64_t gen = ++g_preview.generation;
     retrieveVersionMedia(
         panel,
-        versionId,
-        projectId,
-        frameRange,
+        request,
         [&panel, versionId, name, gen](ResolvedVersionPaths paths) {
             if (gen != g_preview.generation) {
                 return;
@@ -868,22 +920,17 @@ void preview_version(
         });
 }
 
-void open_version(
-    plugin::StandardPlugin &panel,
-    std::int64_t versionId,
-    std::int64_t projectId,
-    const std::string &name,
-    const std::string &playlistName,
-    const std::string &frameRange) {
+void open_version(plugin::StandardPlugin &panel, const utility::JsonStore &request) {
+    const std::int64_t versionId = request.value("versionId", std::int64_t{0});
+    const std::string name = request.value("name", std::string());
+    const std::string playlistName = request.value("playlistName", std::string());
     if (versionId == 0) {
         return;
     }
     clear_preview(panel);
     retrieveVersionMedia(
         panel,
-        versionId,
-        projectId,
-        frameRange,
+        request,
         [&panel, versionId, name, playlistName](ResolvedVersionPaths paths) {
             create_playlist(
                 panel,
@@ -976,11 +1023,16 @@ void open_playlist(
                             }
                             const poco::PlaylistVersionLink link = (*versionsPtr)[*index];
                             ++(*index);
+                            const utility::JsonStore mediaRequest({
+                                {"versionId", link.id},
+                                {"projectId", projectId},
+                                {"frameRange", std::string()},
+                                {"frames", std::string()},
+                                {"movie", std::string()},
+                                {"uploadedMovie", std::string()}});
                             retrieveVersionMedia(
                                 panel,
-                                link.id,
-                                projectId,
-                                std::string(),
+                                mediaRequest,
                                 [&panel, playlist, link, addNext](ResolvedVersionPaths paths) {
                                     add_version_to_playlist(
                                         panel,
@@ -1036,15 +1088,9 @@ void open_playlist(
 
 void retrieveVersionMedia(
     plugin::StandardPlugin &panel,
-    std::int64_t versionId,
-    std::int64_t projectId,
-    const std::string &frameRange,
+    const utility::JsonStore &request,
     std::function<void(ResolvedVersionPaths)> then_ok,
     std::function<void(const caf::error &)> then_err) {
-    const utility::JsonStore request({
-        {"versionId", versionId},
-        {"projectId", projectId},
-        {"frameRange", frameRange}});
     auto worker = panel.system().spawn<RetrieveVersionMediaActor, caf::detached>();
     panel.mail(request)
         .request(worker, caf::infinite)
@@ -1077,9 +1123,31 @@ caf::behavior RetrieveVersionMediaActor::make_behavior() {
             try {
                 const std::int64_t versionId = request.value("versionId", std::int64_t{0});
                 const std::int64_t projectId = request.value("projectId", std::int64_t{0});
-                const std::string frameRange = request.value("frameRange", std::string());
-                const poco::VersionMedia media = dal::findVersionMedia(versionId);
-                paths = resolveVersionPaths(media, projectId, frameRange);
+                std::string frameRange = request.value("frameRange", std::string());
+                std::string frames = request.value("frames", std::string());
+                std::string movie = request.value("movie", std::string());
+                std::string uploaded = request.value("uploadedMovie", std::string());
+                if (frames.empty() && movie.empty()) {
+                    const std::vector<poco::VersionListElement> rows =
+                        dal::findVersionListElementsByIds({versionId});
+                    if (!rows.empty()) {
+                        frames = rows.front().frames;
+                        movie = rows.front().movie;
+                        if (frameRange.empty()) {
+                            frameRange = rows.front().frame_range;
+                        }
+                    }
+                }
+                if (needsSignedMovieUrl(frames, movie, versionId, projectId) &&
+                    uploaded.empty()) {
+                    const std::vector<poco::VersionTranscodedMedia> rows =
+                        dal::findVersionTranscodedMovies({versionId});
+                    if (!rows.empty()) {
+                        uploaded = rows.front().uploaded_movie;
+                    }
+                }
+                paths = resolveVersionPaths(
+                    versionId, projectId, frameRange, frames, movie, uploaded);
             } catch (const std::exception &caught) {
                 log::failure(caught); ///< A failed retrieve must not take the panel down.
             }

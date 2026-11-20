@@ -6,5 +6,5 @@
 #pragma once
 
 #include "model/poco/version_list_element.hpp"
-#include "model/poco/version_media.hpp"
 #include "model/poco/version_thumb.hpp"
+#include "model/poco/version_transcoded_media.hpp"

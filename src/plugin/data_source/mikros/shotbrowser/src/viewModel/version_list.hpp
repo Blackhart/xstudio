@@ -76,7 +76,7 @@ class VersionList : public QObject {
     void clearVersions();
 
     /**
-     * @brief Handles `version`, `version_count`, and `version_thumbs`.
+     * @brief Handles `version`, `version_count`, `version_thumbs`, and `version_transcoded`.
      * @return The handlers for those catalogs.
      */
     caf::message_handler message_handler_extensions();
@@ -95,15 +95,16 @@ class VersionList : public QObject {
   private:
     friend class VersionPageHandler;
     friend class VersionThumbHandler;
+    friend class VersionTranscodedHandler;
 
     /**
-     * @brief Parses a QML JSON open request and forwards it to `open_version` in utility/media.
+     * @brief Parses a QML JSON open request, merges card paths, and calls `open_version`.
      * @param text Attribute value: versionId, name, playlistName, frameRange.
      */
     void open_version(const std::string &text);
 
     /**
-     * @brief Parses a QML JSON preview request and forwards it to `preview_version`.
+     * @brief Parses a QML JSON preview request, merges card paths, and calls `preview_version`.
      * @param text Attribute value: versionId, name, frameRange.
      */
     void preview_version(const std::string &text);
@@ -113,6 +114,12 @@ class VersionList : public QObject {
      * @param payload Array of `{versionId, image}` from the `version_thumbs` mail.
      */
     void applyCardImages(const utility::JsonStore &payload);
+
+    /**
+     * @brief Applies signed uploaded-movie URLs on matching cards and republishes JSON once.
+     * @param payload Array of `{versionId, uploadedMovie}` from the `version_transcoded` mail.
+     */
+    void applyCardTranscoded(const utility::JsonStore &payload);
 
     /**
      * @brief Publishes the version cards and list attributes.
@@ -154,6 +161,21 @@ class VersionList : public QObject {
      * @param versionIds Ids of the new cards.
      */
     void scheduleVersionThumbs(std::int64_t projectId, std::vector<std::int64_t> versionIds);
+
+    /**
+     * @brief Checks local paths then batches signed URLs for rows that still need them.
+     * @param projectId Project for the movie cache path.
+     * @param rows New list rows that just became cards.
+     */
+    void scheduleVersionTranscoded(
+        std::int64_t projectId, const std::vector<poco::VersionListElement> &rows);
+
+    /**
+     * @brief Finds the card for `versionId`, or null when missing.
+     * @param versionId Domain version id.
+     * @return Matching card, or nullptr.
+     */
+    [[nodiscard]] VersionCard *findCard(std::int64_t versionId) const;
 
     /**
      * @brief Drops a stale count, otherwise stores the total and refreshes the footer.

@@ -6,9 +6,11 @@
 #pragma once
 
 #include "model/poco/playlist_version_link.hpp"
-#include "model/poco/version_media.hpp"
+#include "model/poco/version_list_element.hpp"
+#include "model/poco/version_transcoded_media.hpp"
 
 #include "xstudio/plugin_manager/plugin_base.hpp"
+#include "xstudio/utility/json_store.hpp"
 
 #include <caf/error.hpp>
 #include <caf/event_based_actor.hpp>
@@ -56,7 +58,7 @@ class RetrieveVersionMediaActor : public caf::event_based_actor {
     const char *name() const override;
 
     /**
-     * @brief Runs find + resolve and answers with a JsonStore of paths.
+     * @brief Resolves paths from the request (card fields + optional one-shot fallback).
      * @return The one-shot behavior.
      */
     caf::behavior make_behavior() override;
@@ -65,22 +67,60 @@ class RetrieveVersionMediaActor : public caf::event_based_actor {
 /**
  * @brief Spawns a detached retrieve actor and chains success / error callbacks.
  *
- * Internally uses CAF `request` / `then` with `JsonStore` messages.
+ * Internally uses CAF `request` / `then` with `JsonStore` messages. The request
+ * carries frames / movie / uploadedMovie from the card when known.
  *
  * @param panel Panel actor that owns the request (must be an event-based actor).
- * @param versionId ShotGrid version id.
- * @param projectId Project id for the movie cache folder.
- * @param frameRange Optional sequence range override.
+ * @param request JsonStore with versionId, projectId, frameRange, frames, movie,
+ *                uploadedMovie (any path field may be empty).
  * @param then_ok Called on the panel actor with resolved paths.
  * @param then_err Called on the panel actor when the request fails.
  */
 void retrieveVersionMedia(
     plugin::StandardPlugin &panel,
-    std::int64_t versionId,
-    std::int64_t projectId,
-    const std::string &frameRange,
+    const utility::JsonStore &request,
     std::function<void(ResolvedVersionPaths)> then_ok,
     std::function<void(const caf::error &)> then_err = {});
+
+/**
+ * @brief True when the frames path resolves to at least one file on disk.
+ * @param framesPath ShotGrid frames path (may use FileSeq syntax).
+ * @return True when a local sequence is usable.
+ */
+bool framesLocallyUsable(const std::string &framesPath);
+
+/**
+ * @brief True when a signed uploaded-movie URL is still required for this version.
+ *
+ * False when local frames work, or the studio movie path exists, or the movie
+ * cache file already exists.
+ *
+ * @param frames ShotGrid frames path.
+ * @param movie ShotGrid movie path.
+ * @param versionId Version id for the movie cache folder.
+ * @param projectId Project id for the movie cache folder.
+ * @return True when the batch / one-shot signed URL fetch is still needed.
+ */
+bool needsSignedMovieUrl(
+    const std::string &frames,
+    const std::string &movie,
+    std::int64_t versionId,
+    std::int64_t projectId);
+
+/**
+ * @brief Checks which listed versions need a signed URL, then batches the DAL find.
+ *
+ * Mirrors `scheduleThumbs`. Does not download MP4 files. `onBatchReady` may run
+ * on a worker thread; the caller marshals to the UI.
+ *
+ * @param projectId Project id for the movie cache path.
+ * @param rows List rows that carry frames / movie paths.
+ * @param onBatchReady Called with transcoded rows that have a non-empty URL.
+ */
+void scheduleVersionTranscodedResolve(
+    std::int64_t projectId,
+    const std::vector<poco::VersionListElement> &rows,
+    std::function<void(std::vector<poco::VersionTranscodedMedia>)> onBatchReady);
 
 /**
  * @brief Loads the version membership of one ShotGrid playlist on a detached thread.
@@ -179,22 +219,13 @@ void selectAddedMedia(
 /**
  * @brief Resolves media, gets or creates a playlist, adds the version, then selects it.
  *
- * Clears the ephemeral `preview` playlist first.
+ * Clears the ephemeral `preview` playlist first. Path fields come from the card
+ * JsonStore (`frames`, `movie`, `uploadedMovie`, `frameRange`).
  *
  * @param panel Panel actor used for retrieve, session, and media spawn.
- * @param versionId ShotGrid version id.
- * @param projectId Project id for the movie cache folder.
- * @param name Version display name (media label).
- * @param playlistName Target playlist, or empty for the next `Playlist N`.
- * @param frameRange Optional sequence range override.
+ * @param request JsonStore with versionId, projectId, name, playlistName, and paths.
  */
-void open_version(
-    plugin::StandardPlugin &panel,
-    std::int64_t versionId,
-    std::int64_t projectId,
-    const std::string &name,
-    const std::string &playlistName,
-    const std::string &frameRange);
+void open_version(plugin::StandardPlugin &panel, const utility::JsonStore &request);
 
 /**
  * @brief Loads playlist version links, creates one xSTUDIO playlist, then adds and selects each.
@@ -228,17 +259,9 @@ inline constexpr const char *kPreviewPlaylistName = "preview";
  * overwrite a newer click.
  *
  * @param panel Panel actor used for retrieve, session, and media spawn.
- * @param versionId ShotGrid version id.
- * @param projectId Project id for the movie cache folder.
- * @param name Version display name (media label).
- * @param frameRange Optional sequence range override.
+ * @param request JsonStore with versionId, projectId, name, and path fields from the card.
  */
-void preview_version(
-    plugin::StandardPlugin &panel,
-    std::int64_t versionId,
-    std::int64_t projectId,
-    const std::string &name,
-    const std::string &frameRange);
+void preview_version(plugin::StandardPlugin &panel, const utility::JsonStore &request);
 
 /**
  * @brief Deactivates the hidden `preview` playlist without destroying it.
@@ -312,14 +335,20 @@ std::string fetchMovie(const std::string &url);
 
 /**
  * @brief Resolves frames and movie paths for one version (disk check + optional download).
- * @param media DAL row with frames / movie / signed URL.
+ * @param versionId Version id for the movie cache folder.
  * @param projectId Project id for the movie cache folder.
- * @param frameRange Optional override for the sequence range. Empty uses `media.frame_range`.
+ * @param frameRange Optional sequence range for `sequenceSpec`.
+ * @param frames ShotGrid frames path.
+ * @param movie ShotGrid movie path.
+ * @param uploadedMovie Signed movie URL, or empty.
  * @return Paths that exist locally after the call.
  */
 ResolvedVersionPaths resolveVersionPaths(
-    const poco::VersionMedia &media,
+    std::int64_t versionId,
     std::int64_t projectId,
-    const std::string &frameRange = {});
+    const std::string &frameRange,
+    const std::string &frames,
+    const std::string &movie,
+    const std::string &uploadedMovie);
 
 } // namespace xstudio::mikros_shotbrowser

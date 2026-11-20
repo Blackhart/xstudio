@@ -10,10 +10,12 @@
 
 #include "pms/backend.hpp"
 #include "pms/caching_backend.hpp"
+#include "pms/env.hpp"
 #include "pms/error.hpp"
 #include "pms/page.hpp"
 #include "pms/query.hpp"
 #include "pms/session.hpp"
+#include "pms/shared_session.hpp"
 #include "pms/shotgrid/backend.hpp"
 #include "pms/shotgrid/mapping.hpp"
 
@@ -22,7 +24,7 @@
  * @brief Domain query language for production tracking.
  *
  * A query is built from a generated function such as Project(), then executed
- * with find(). Limit() and After() on the same query select a page. The session
- * carries the schema and the backend. It is not a user login and nothing is
- * stored in a global.
+ * with find(). Limit() and After() on the same query select a page. Callers may
+ * use a local Session or the process-wide `sharedSession()` (schema + cache)
+ * that Mikros plugins share. It is not a user login.
  */

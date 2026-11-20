@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file model/poco/version_list_element.hpp
- * @brief Version card row for the list: metadata without image or media paths.
+ * @brief Version card row for the list: metadata plus local frames/movie paths.
  */
 #pragma once
 
@@ -13,8 +13,9 @@ namespace xstudio::mikros_shotbrowser::poco {
 /**
  * @brief One version as shown in the version list.
  *
- * Loaded with a find that omits `image` and media fields so ShotGrid does not
- * mint signed URLs for every row of the page.
+ * Loaded with a find that includes `frames` / `movie` path fields but omits
+ * `image` and `uploadedMovie` so ShotGrid does not mint signed URLs for every
+ * row of the page. Signed movie URLs arrive later via a batch resolve.
  */
 struct VersionListElement {
     std::int64_t id = 0;           ///< Domain version id.
@@ -29,6 +30,10 @@ struct VersionListElement {
     std::string sites;             ///< ShotGrid site names, joined by commas.
     std::int64_t open_notes_count = 0; ///< Open notes count for the N indicator.
     bool synced_to_client = false;     ///< True when the version was sent to the client.
+    std::string frames;                ///< Image-sequence path (`sg_path_to_frames`). Empty when none.
+    std::string frames_provider;       ///< `fileSeq`, or empty.
+    std::string movie;                 ///< On-disk movie path (`sg_path_to_movie`). Empty when none.
+    std::string movie_provider;        ///< `file`, or empty.
 };
 
 } // namespace xstudio::mikros_shotbrowser::poco

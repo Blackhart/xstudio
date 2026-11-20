@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file model/constants.cpp
- * @brief Reads each Shot Browser setting from the environment or its default.
+ * @brief Reads the Shot Browser catalog page size from the environment.
  */
 
 #include "model/constants.hpp"
 
 #include "pms/error.hpp"
-
-#include "xstudio/utility/helpers.hpp"
 
 #include <cerrno>
 #include <cstdlib>
@@ -27,20 +25,6 @@ std::string readEnv(const char *name) {
         return {};
     }
     return text;
-}
-
-/**
- * @brief Resolves one text setting.
- * @param name Variable name.
- * @param fallback Value used when `name` is absent or empty.
- * @return The environment value when set, otherwise `fallback`.
- */
-TextSetting textSetting(const char *name, const std::string &fallback) {
-    const std::string env = readEnv(name);
-    if (env.empty()) {
-        return TextSetting{fallback, false};
-    }
-    return TextSetting{env, true};
 }
 
 /**
@@ -66,38 +50,12 @@ NumberSetting numberSetting(const char *name, std::uint64_t fallback) {
 
 } // namespace
 
-TextSetting backend() { return textSetting(kBackend, kBackendDefault); }
-
-NumberSetting cacheTtlSeconds() { return numberSetting(kCacheTtlSeconds, kCacheTtlSecondsDefault); }
-
-NumberSetting cacheMaxBytes() { return numberSetting(kCacheBytes, kCacheBytesDefault); }
-
 NumberSetting pageSize() {
     const NumberSetting setting = numberSetting(kPageSize, kPageSizeDefault);
     if (setting.value > kPageSizeMax) {
         throw pms::Error(std::string(kPageSize) + " must be at most 500");
     }
     return setting;
-}
-
-TextSetting schemaPath() {
-    return textSetting(kSchemaPath, utility::xstudio_root("/mikros_shotbrowser/schema.yaml"));
-}
-
-TextSetting shotGridUrl() { return textSetting(kShotGridUrl, {}); }
-
-TextSetting shotGridClientId() { return textSetting(kShotGridClientId, {}); }
-
-TextSetting shotGridClientSecret() { return textSetting(kShotGridClientSecret, {}); }
-
-TextSetting shotGridMapping() { return textSetting(kShotGridMapping, {}); }
-
-std::string keyHint(const std::string &key) {
-    const std::string length = "length=" + std::to_string(key.size());
-    if (key.size() <= 8) {
-        return length;
-    }
-    return key.substr(0, 4) + "..." + key.substr(key.size() - 4) + " " + length;
 }
 
 } // namespace xstudio::mikros_shotbrowser::constants

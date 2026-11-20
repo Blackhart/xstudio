@@ -1,7 +1,5 @@
 project(mikros_shotbrowser VERSION ${XSTUDIO_GLOBAL_VERSION} LANGUAGES CXX)
 
-add_subdirectory(model/pms)
-
 find_package(Qt6 COMPONENTS Concurrent Core Gui Widgets Qml Quick Network REQUIRED)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/fileseq.cmake)
 
@@ -56,20 +54,16 @@ target_link_libraries(${PROJECT_NAME}
 		fileseq::fileseq
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS_NO_SHARED true)
+set_target_properties(${PROJECT_NAME} PROPERTIES
+	LINK_DEPENDS_NO_SHARED true
+	BUILD_RPATH "$ORIGIN"
+	INSTALL_RPATH "$ORIGIN"
+)
 
 add_preference(
 	plugin_data_source_mikros_shotbrowser.json
 	${CMAKE_CURRENT_SOURCE_DIR}/../share/preference
 	${PROJECT_NAME})
-
-# Install schema under share/xstudio/; dal.cpp resolves it via XSTUDIO_ROOT
-# (or PMS_SCHEMA_PATH) at runtime — never bake CMAKE_CURRENT_SOURCE_DIR.
-add_resource(
-	schema.yaml
-	${CMAKE_CURRENT_SOURCE_DIR}/model/pms/schema
-	${PROJECT_NAME}
-	mikros_shotbrowser)
 
 qt_add_qml_module(${PROJECT_NAME}
 	URI MikrosShotBrowser

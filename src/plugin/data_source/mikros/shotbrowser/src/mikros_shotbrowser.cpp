@@ -12,6 +12,8 @@
 
 #include "model/constants.hpp"
 
+#include "pms/env.hpp"
+
 #include "xstudio/atoms.hpp"
 #include "xstudio/plugin_manager/plugin_factory.hpp"
 #include "xstudio/session/session.hpp"
@@ -41,7 +43,7 @@ const char *settingOrigin(bool set) { return set ? "set" : "default"; }
  * @param setting Resolved value.
  * @return `name=value (set)`, `name=value (default)`, or `name=unset`.
  */
-std::string textSettingField(const char *name, const constants::TextSetting &setting) {
+std::string textSettingField(const char *name, const pms::TextSetting &setting) {
     if (!setting.set && setting.value.empty()) {
         return std::string(name) + "=unset";
     }
@@ -50,6 +52,17 @@ std::string textSettingField(const char *name, const constants::TextSetting &set
 
 /**
  * @brief Formats one numeric setting for the launch log.
+ * @param name Environment variable name.
+ * @param setting Resolved value.
+ * @return `name=value (set)` or `name=value (default)`.
+ */
+std::string numberSettingField(const char *name, const pms::NumberSetting &setting) {
+    return std::string(name) + "=" + std::to_string(setting.value) + " (" +
+           settingOrigin(setting.set) + ")";
+}
+
+/**
+ * @brief Formats one Shot Browser numeric setting for the launch log.
  * @param name Environment variable name.
  * @param setting Resolved value.
  * @return `name=value (set)` or `name=value (default)`.
@@ -64,12 +77,11 @@ std::string numberSettingField(const char *name, const constants::NumberSetting 
  * @return `SHOTGRID_CLIENT_SECRET=unset`, or the redacted key marked `set`.
  */
 std::string secretSettingField() {
-    const constants::TextSetting secret = constants::shotGridClientSecret();
+    const pms::TextSetting secret = pms::shotGridClientSecret();
     if (!secret.set) {
-        return std::string(constants::kShotGridClientSecret) + "=unset";
+        return std::string(pms::kShotGridClientSecret) + "=unset";
     }
-    return std::string(constants::kShotGridClientSecret) + "=" + constants::keyHint(secret.value) +
-           " (set)";
+    return std::string(pms::kShotGridClientSecret) + "=" + pms::keyHint(secret.value) + " (set)";
 }
 
 /**
@@ -77,14 +89,14 @@ std::string secretSettingField() {
  */
 void logSettings() {
     trace::info(
-        std::string("env ") + textSettingField(constants::kBackend, constants::backend()) + " " +
-        numberSettingField(constants::kCacheTtlSeconds, constants::cacheTtlSeconds()) + " " +
-        numberSettingField(constants::kCacheBytes, constants::cacheMaxBytes()) + " " +
+        std::string("env ") + textSettingField(pms::kBackend, pms::backend()) + " " +
+        numberSettingField(pms::kCacheTtlSeconds, pms::cacheTtlSeconds()) + " " +
+        numberSettingField(pms::kCacheBytes, pms::cacheMaxBytes()) + " " +
         numberSettingField(constants::kPageSize, constants::pageSize()) + " " +
-        textSettingField(constants::kSchemaPath, constants::schemaPath()) + " " +
-        textSettingField(constants::kShotGridUrl, constants::shotGridUrl()) + " " +
-        textSettingField(constants::kShotGridClientId, constants::shotGridClientId()) + " " +
-        textSettingField(constants::kShotGridMapping, constants::shotGridMapping()) + " " +
+        textSettingField(pms::kSchemaPath, pms::schemaPath()) + " " +
+        textSettingField(pms::kShotGridUrl, pms::shotGridUrl()) + " " +
+        textSettingField(pms::kShotGridClientId, pms::shotGridClientId()) + " " +
+        textSettingField(pms::kShotGridMapping, pms::shotGridMapping()) + " " +
         secretSettingField());
 }
 

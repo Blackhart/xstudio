@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/version_card.cpp
- * @brief Version card fields for one row. Thumbs are applied by the list owner.
+ * @brief Version card fields for one row. Thumbs and signed URLs are applied by the list owner.
  */
 
 #include "viewModel/version_card.hpp"
@@ -20,9 +20,15 @@ VersionCard::VersionCard(const poco::VersionListElement &row, const std::string 
       artistic_status_(row.artistic_status),
       sites_(row.sites),
       open_notes_count_(row.open_notes_count),
-      synced_to_client_(row.synced_to_client) {}
+      synced_to_client_(row.synced_to_client),
+      frames_(row.frames),
+      movie_(row.movie) {}
 
 void VersionCard::setImage(const std::string &path) { image_ = path; }
+
+void VersionCard::setTranscoded(const poco::VersionTranscodedMedia &media) {
+    uploaded_movie_ = media.uploaded_movie;
+}
 
 nlohmann::json VersionCard::toJson() const {
     return {
@@ -38,7 +44,10 @@ nlohmann::json VersionCard::toJson() const {
         {"artisticStatus", artistic_status_},
         {"sites", sites_},
         {"openNotesCount", open_notes_count_},
-        {"syncedToClient", synced_to_client_}};
+        {"syncedToClient", synced_to_client_},
+        {"frames", frames_},
+        {"movie", movie_},
+        {"uploadedMovie", uploaded_movie_}};
 }
 
 } // namespace xstudio::mikros_shotbrowser

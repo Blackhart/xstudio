@@ -113,6 +113,18 @@ class PlaylistTree : public QObject {
     void schedulePlaylistThumbs(const std::vector<poco::VersionListElement> &rows);
 
     /**
+     * @brief Checks local paths then batches signed URLs for one playlist page.
+     * @param rows Versions that just arrived for an unfolded playlist.
+     */
+    void schedulePlaylistTranscoded(const std::vector<poco::VersionListElement> &rows);
+
+    /**
+     * @brief Stores signed uploaded-movie URLs and stamps them onto the tree.
+     * @param payload Array of `{versionId, uploadedMovie}` from the catalog mail.
+     */
+    void applyPlaylistTranscoded(const utility::JsonStore &payload);
+
+    /**
      * @brief Publishes the playlist tree and the unfolded name.
      * @param panel Panel actor that owns the attributes.
      */
@@ -243,6 +255,8 @@ class PlaylistTree : public QObject {
     int playlist_total_ = -1; ///< Server match count for the footer. -1 until the count arrives.
     std::map<std::int64_t, std::vector<poco::VersionListElement>>
         versions_by_playlist_; ///< List elements accumulated per playlist.
+    std::map<std::int64_t, std::string>
+        uploaded_movie_by_id_; ///< Signed movie URLs keyed by version id.
     module::JsonAttribute *tree_ = nullptr; ///< Playlists with their version rows.
     module::StringAttribute *expanded_ = nullptr; ///< Playlist the user unfolded.
     module::BooleanAttribute *playlists_loaded_ = nullptr; ///< True once the current request has delivered a page.

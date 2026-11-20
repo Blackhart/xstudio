@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file model/dal/dal.hpp
- * @brief Data-access layer: sole plugin gateway to the pms library.
+ * @brief Data-access layer: sole Shot Browser gateway to the shared pms library.
  */
 #pragma once
 
@@ -242,11 +242,12 @@ poco::VersionThumb findVersionThumb(std::int64_t versionId);
 std::vector<poco::VersionThumb> findVersionThumbs(const std::vector<std::int64_t> &versionIds);
 
 /**
- * @brief Frames and movie paths for opening one version.
- * @param versionId Domain version `id`.
- * @return Media row, or empty id when missing.
+ * @brief Signed uploaded-movie URLs for many versions in one find.
+ * @param versionIds Domain version ids. Empty yields an empty vector.
+ * @return Transcoded rows that matched. Missing ids are omitted.
  */
-poco::VersionMedia findVersionMedia(std::int64_t versionId);
+std::vector<poco::VersionTranscodedMedia>
+findVersionTranscodedMovies(const std::vector<std::int64_t> &versionIds);
 
 /**
  * @brief How many sequences belong to a project.

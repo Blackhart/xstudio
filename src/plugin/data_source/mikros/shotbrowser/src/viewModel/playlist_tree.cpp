@@ -39,7 +39,10 @@ namespace {
  * @return Object with the card keys.
  */
 nlohmann::json versionFacts(
-    const poco::VersionListElement &row, const std::string &label, const std::string &image) {
+    const poco::VersionListElement &row,
+    const std::string &label,
+    const std::string &image,
+    const std::string &uploadedMovie) {
     return {
         {"name", label},
         {"id", row.id},
@@ -53,7 +56,10 @@ nlohmann::json versionFacts(
         {"artisticStatus", row.artistic_status},
         {"sites", row.sites},
         {"openNotesCount", row.open_notes_count},
-        {"syncedToClient", row.synced_to_client}};
+        {"syncedToClient", row.synced_to_client},
+        {"frames", row.frames},
+        {"movie", row.movie},
+        {"uploadedMovie", uploadedMovie}};
 }
 
 
@@ -106,7 +112,8 @@ class PlaylistPageHandler : public caf::detail::behavior_impl {
         }
         const std::string catalog = caf::get<2>(view);
         if (catalog != "playlist_tree" && catalog != "playlist_count" &&
-            catalog != "playlist_versions" && catalog != "playlist_version_thumbs") {
+            catalog != "playlist_versions" && catalog != "playlist_version_thumbs" &&
+            catalog != "playlist_version_transcoded") {
             return false; ///< Another catalog: the next handler continues.
         }
         apply_(
@@ -379,6 +386,7 @@ void PlaylistTree::clearPlaylists() {
     next_cursor_.reset();
     more_incoming_ = false;
     versions_by_playlist_.clear();
+    uploaded_movie_by_id_.clear();
     clearFooterValue();
     sendPlaylistTreeToQml(nlohmann::json::array());
     clearPlaylistsLoadedFlag();
@@ -527,9 +535,15 @@ void PlaylistTree::updateVersionsForPlaylist(
     const std::vector<std::string> labels = buildUniqueLabels(stored);
     nlohmann::json entries = nlohmann::json::array();
     for (std::size_t index = 0; index < stored.size(); ++index) {
-        entries.push_back(versionFacts(stored[index], labels[index], std::string()));
+        const auto uploaded = uploaded_movie_by_id_.find(stored[index].id);
+        entries.push_back(versionFacts(
+            stored[index],
+            labels[index],
+            std::string(),
+            uploaded == uploaded_movie_by_id_.end() ? std::string() : uploaded->second));
     }
     schedulePlaylistThumbs(rows);
+    schedulePlaylistTranscoded(rows);
     nlohmann::json tree = treeValue();
     for (auto &node : tree) {
         if (!node.is_object() || !node.contains("id") || node["id"].get<std::int64_t>() != playlistId) {
@@ -622,6 +636,82 @@ void PlaylistTree::schedulePlaylistThumbs(const std::vector<poco::VersionListEle
         });
 }
 
+void PlaylistTree::schedulePlaylistTranscoded(const std::vector<poco::VersionListElement> &rows) {
+    const std::int64_t projectId = dal::selectedProject();
+    if (projectId == -1 || rows.empty()) {
+        return;
+    }
+    const caf::weak_actor_ptr panel = caf::actor_cast<caf::weak_actor_ptr>(&panel_);
+    scheduleVersionTranscodedResolve(
+        projectId,
+        rows,
+        [panel, projectId](std::vector<poco::VersionTranscodedMedia> ready) {
+            if (ready.empty()) {
+                return;
+            }
+            nlohmann::json body = nlohmann::json::array();
+            for (poco::VersionTranscodedMedia &row : ready) {
+                body.push_back(
+                    {{"versionId", row.id},
+                     {"uploadedMovie", std::move(row.uploaded_movie)}});
+            }
+            sendCatalog(
+                panel,
+                0,
+                "playlist_version_transcoded",
+                projectId,
+                {},
+                false,
+                utility::JsonStore(std::move(body)));
+        });
+}
+
+void PlaylistTree::applyPlaylistTranscoded(const utility::JsonStore &payload) {
+    if (!payload.is_array() || payload.empty()) {
+        return;
+    }
+    bool changed = false;
+    for (const auto &entry : payload) {
+        if (!entry.contains("versionId") || !entry.contains("uploadedMovie")) {
+            continue;
+        }
+        const std::int64_t id = entry["versionId"].get<std::int64_t>();
+        const std::string uploaded = entry["uploadedMovie"].get<std::string>();
+        if (uploaded.empty()) {
+            continue;
+        }
+        uploaded_movie_by_id_[id] = uploaded;
+        changed = true;
+    }
+    if (!changed) {
+        return;
+    }
+    nlohmann::json tree = treeValue();
+    bool treeChanged = false;
+    for (auto &node : tree) {
+        if (!node.is_object() || !node.contains("versions") || !node["versions"].is_array()) {
+            continue;
+        }
+        for (auto &entry : node["versions"]) {
+            if (!entry.is_object() || !entry.contains("id")) {
+                continue;
+            }
+            const auto found = uploaded_movie_by_id_.find(entry["id"].get<std::int64_t>());
+            if (found == uploaded_movie_by_id_.end()) {
+                continue;
+            }
+            if (entry.value("uploadedMovie", std::string()) == found->second) {
+                continue;
+            }
+            entry["uploadedMovie"] = found->second;
+            treeChanged = true;
+        }
+    }
+    if (treeChanged) {
+        sendPlaylistTreeToQml(tree);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Pages. The worker mail is accepted here, then handed to the tree.
 // ---------------------------------------------------------------------------
@@ -649,6 +739,10 @@ caf::message_handler PlaylistTree::message_handler_extensions() {
         if (catalog == "playlist_version_thumbs") {
             rememberThumbs(projectId, payload); ///< Cards can reuse these URLs via thumbFor.
             stampPlaylistThumbs();
+            return;
+        }
+        if (catalog == "playlist_version_transcoded") {
+            applyPlaylistTranscoded(payload);
             return;
         }
         updateVersionsForPlaylist(

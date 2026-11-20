@@ -1,8 +1,3 @@
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    cmake_minimum_required(VERSION 3.26)
-    project(pms LANGUAGES CXX)
-endif()
-
 include(CTest)
 include(FetchContent)
 
@@ -38,6 +33,10 @@ endif()
 
 find_package(OpenSSL REQUIRED)
 
+set(PMS_SRC_DIR "${PMS_ROOT}/src")
+set(PMS_CONFIG_DIR "${PMS_ROOT}/config")
+set(PMS_TEST_DIR "${PMS_ROOT}/tests")
+
 set(PMS_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(PMS_GEN_ENTITIES "${PMS_GEN_DIR}/pms/gen/entities.hpp")
 set(PMS_GEN_FACTORIES "${PMS_GEN_DIR}/pms/gen/query_factories.hpp")
@@ -46,43 +45,45 @@ add_custom_command(
     OUTPUT "${PMS_GEN_ENTITIES}" "${PMS_GEN_FACTORIES}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${PMS_GEN_DIR}/pms/gen"
     COMMAND Python3::Interpreter
-        "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_entities.py"
-        "${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.yaml"
+        "${PMS_SRC_DIR}/tools/gen_entities.py"
+        "${PMS_CONFIG_DIR}/schema.yaml"
         "${PMS_GEN_DIR}/pms/gen"
     DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_entities.py"
-        "${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.yaml"
+        "${PMS_SRC_DIR}/tools/gen_entities.py"
+        "${PMS_CONFIG_DIR}/schema.yaml"
     VERBATIM
 )
 add_custom_target(pms_codegen DEPENDS "${PMS_GEN_ENTITIES}" "${PMS_GEN_FACTORIES}")
 
 set(PMS_LIB_SOURCES
-    schema.cpp
-    validate.cpp
-    session.cpp
-    dump.cpp
-    caching_backend.cpp
-    shotgrid/mapping.cpp
-    shotgrid/translate.cpp
-    shotgrid/backend.cpp
+    "${PMS_SRC_DIR}/pms/schema.cpp"
+    "${PMS_SRC_DIR}/pms/validate.cpp"
+    "${PMS_SRC_DIR}/pms/session.cpp"
+    "${PMS_SRC_DIR}/pms/dump.cpp"
+    "${PMS_SRC_DIR}/pms/caching_backend.cpp"
+    "${PMS_SRC_DIR}/pms/env.cpp"
+    "${PMS_SRC_DIR}/pms/shared_session.cpp"
+    "${PMS_SRC_DIR}/pms/shotgrid/mapping.cpp"
+    "${PMS_SRC_DIR}/pms/shotgrid/translate.cpp"
+    "${PMS_SRC_DIR}/pms/shotgrid/backend.cpp"
 )
-# Local-only FakeBackend (gitignored). Copy from model/pms/dev/ when needed.
+# Local-only FakeBackend (gitignored). Copy from pms/dev/ when needed.
 set(PMS_HAS_FAKE OFF)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fake/backend.cpp")
-    list(APPEND PMS_LIB_SOURCES fake/backend.cpp)
+if(EXISTS "${PMS_SRC_DIR}/pms/fake/backend.cpp")
+    list(APPEND PMS_LIB_SOURCES "${PMS_SRC_DIR}/pms/fake/backend.cpp")
     set(PMS_HAS_FAKE ON)
 endif()
 
-add_library(pms STATIC ${PMS_LIB_SOURCES})
+add_library(pms SHARED ${PMS_LIB_SOURCES})
 add_library(pms::pms ALIAS pms)
 add_dependencies(pms pms_codegen)
 
-# Parent of this dir is model/, so #include "pms/…" resolves here.
+# ${PMS_SRC_DIR} so #include "pms/…" resolves to src/pms/.
 target_include_directories(pms
     PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        "${PMS_SRC_DIR}"
         "${PMS_GEN_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../../../extern/include"
+        "${PMS_ROOT}/../../../../../extern/include"
 )
 target_compile_features(pms PUBLIC cxx_std_17)
 target_compile_definitions(pms PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
@@ -95,8 +96,29 @@ target_link_libraries(pms PUBLIC
 if(PMS_HAS_FAKE)
     find_package(OpenImageIO REQUIRED)
     target_link_libraries(pms PRIVATE OpenImageIO::OpenImageIO) #< Fake thumbs use ImageBufAlgo.
+    target_compile_definitions(pms PUBLIC PMS_HAS_FAKE=1)
 endif()
-set_target_properties(pms PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+set_target_properties(pms PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+)
+
+if(NOT PMS_STANDALONE)
+    # Same folder as Mikros plugins so $ORIGIN resolves libpms.so.
+    set_target_properties(pms PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/plugin"
+    )
+    install(TARGETS pms LIBRARY DESTINATION share/xstudio/plugin)
+    if(COMMAND add_resource)
+        add_resource(
+            schema.yaml
+            ${PMS_CONFIG_DIR}
+            pms
+            mikros_pms)
+    endif()
+endif()
 
 if(BUILD_TESTING)
     FetchContent_Declare(
@@ -107,27 +129,27 @@ if(BUILD_TESTING)
     FetchContent_MakeAvailable(doctest)
 
     set(PMS_TEST_SOURCES
-        tests/test_main.cpp
-        tests/test_schema.cpp
-        tests/test_query.cpp
-        tests/test_validate.cpp
-        tests/test_session.cpp
-        tests/test_caching_backend.cpp
-        tests/shotgrid/test_mapping.cpp
-        tests/shotgrid/test_translate.cpp
+        "${PMS_TEST_DIR}/test_main.cpp"
+        "${PMS_TEST_DIR}/test_schema.cpp"
+        "${PMS_TEST_DIR}/test_query.cpp"
+        "${PMS_TEST_DIR}/test_validate.cpp"
+        "${PMS_TEST_DIR}/test_session.cpp"
+        "${PMS_TEST_DIR}/test_caching_backend.cpp"
+        "${PMS_TEST_DIR}/shotgrid/test_mapping.cpp"
+        "${PMS_TEST_DIR}/shotgrid/test_translate.cpp"
     )
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fake/test_fake_backend.cpp"
-       AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fake/backend.cpp")
-        list(APPEND PMS_TEST_SOURCES tests/fake/test_fake_backend.cpp)
+    if(EXISTS "${PMS_TEST_DIR}/fake/test_fake_backend.cpp"
+       AND EXISTS "${PMS_SRC_DIR}/pms/fake/backend.cpp")
+        list(APPEND PMS_TEST_SOURCES "${PMS_TEST_DIR}/fake/test_fake_backend.cpp")
     endif()
 
     add_executable(pms_tests ${PMS_TEST_SOURCES})
     target_link_libraries(pms_tests PRIVATE pms doctest::doctest)
-    target_include_directories(pms_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+    target_include_directories(pms_tests PRIVATE "${PMS_TEST_DIR}")
     target_compile_definitions(pms_tests PRIVATE
-        PMS_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.yaml"
-        PMS_SHOTGRID_MAPPING_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/shotgrid/fixtures/mapping_filled.yaml"
-        PMS_SHOTGRID_MAPPING_EXAMPLE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shotgrid/mapping.yaml.example"
+        PMS_SCHEMA_PATH="${PMS_CONFIG_DIR}/schema.yaml"
+        PMS_SHOTGRID_MAPPING_FIXTURE_PATH="${PMS_TEST_DIR}/shotgrid/fixtures/mapping_filled.yaml"
+        PMS_SHOTGRID_MAPPING_EXAMPLE_PATH="${PMS_CONFIG_DIR}/shotgrid/mapping.yaml.example"
     )
     add_test(NAME pms_tests COMMAND pms_tests)
     set_tests_properties(pms_tests PROPERTIES TIMEOUT 30)

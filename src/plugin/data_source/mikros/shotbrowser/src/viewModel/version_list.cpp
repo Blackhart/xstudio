@@ -126,6 +126,50 @@ class VersionThumbHandler : public caf::detail::behavior_impl {
     VersionList *list_ = nullptr; ///< Receives ready thumb URL batches.
 };
 
+/**
+ * @brief Routes a `version_transcoded` batch to `VersionList::applyCardTranscoded`.
+ *
+ * `or_else` tries the next handler only when `invoke` returns false.
+ */
+class VersionTranscodedHandler : public caf::detail::behavior_impl {
+  public:
+    /**
+     * @brief Stores the list that owns the cards.
+     * @param list Version list on the panel actor.
+     */
+    explicit VersionTranscodedHandler(VersionList *list) : list_(list) {}
+
+    /**
+     * @brief Applies a signed-URL batch, or declines the message.
+     * @param visitor Receives an empty result when the mail was ours.
+     * @param message Transcoded batch mail.
+     * @return False when this handler does not take the message.
+     */
+    bool invoke(caf::detail::invoke_result_visitor &visitor, caf::message &message) override {
+        CatalogView view{message};
+        if (!view) {
+            return false;
+        }
+        if (caf::get<2>(view) != "version_transcoded") {
+            return false; ///< Another catalog: the next handler continues.
+        }
+        const std::uint64_t requestId = caf::get<1>(view);
+        if (requestId != list_->version_request_id_->load()) {
+            visitor(caf::unit);
+            return true; ///< clearVersions bumped the id; drop the stale batch.
+        }
+        const std::int64_t projectId = caf::get<3>(view);
+        if (dal::selectedProject() == projectId) {
+            list_->applyCardTranscoded(caf::get<13>(view));
+        }
+        visitor(caf::unit);
+        return true;
+    }
+
+  private:
+    VersionList *list_ = nullptr; ///< Receives ready signed-URL batches.
+};
+
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
@@ -329,6 +373,16 @@ void VersionList::appendVersions(const std::vector<poco::VersionListElement> &ne
         versionIds.push_back(row.id);
     }
     scheduleVersionThumbs(projectId, std::move(versionIds));
+    scheduleVersionTranscoded(projectId, newRows);
+}
+
+VersionCard *VersionList::findCard(std::int64_t versionId) const {
+    for (const std::unique_ptr<VersionCard> &card : versions_) {
+        if (card->id() == versionId) {
+            return card.get();
+        }
+    }
+    return nullptr;
 }
 
 void VersionList::sendVersionCardsToQml() {
@@ -370,6 +424,37 @@ void VersionList::scheduleVersionThumbs(
         });
 }
 
+void VersionList::scheduleVersionTranscoded(
+    std::int64_t projectId, const std::vector<poco::VersionListElement> &rows) {
+    if (projectId == -1 || rows.empty()) {
+        return;
+    }
+    const caf::weak_actor_ptr panel = caf::actor_cast<caf::weak_actor_ptr>(&panel_);
+    const std::uint64_t requestId = version_request_id_->load();
+    scheduleVersionTranscodedResolve(
+        projectId,
+        rows,
+        [panel, projectId, requestId](std::vector<poco::VersionTranscodedMedia> ready) {
+            if (ready.empty()) {
+                return;
+            }
+            nlohmann::json body = nlohmann::json::array();
+            for (poco::VersionTranscodedMedia &row : ready) {
+                body.push_back(
+                    {{"versionId", row.id},
+                     {"uploadedMovie", std::move(row.uploaded_movie)}});
+            }
+            sendCatalog(
+                panel,
+                requestId,
+                "version_transcoded",
+                projectId,
+                {},
+                false,
+                utility::JsonStore(std::move(body)));
+        });
+}
+
 void VersionList::applyCardImages(const utility::JsonStore &payload) {
     if (!payload.is_array() || payload.empty()) {
         return;
@@ -398,6 +483,35 @@ void VersionList::applyCardImages(const utility::JsonStore &payload) {
     }
 }
 
+void VersionList::applyCardTranscoded(const utility::JsonStore &payload) {
+    if (!payload.is_array() || payload.empty()) {
+        return;
+    }
+    bool changed = false;
+    for (const auto &entry : payload) {
+        if (!entry.contains("versionId") || !entry.contains("uploadedMovie")) {
+            continue;
+        }
+        const std::int64_t id = entry["versionId"].get<std::int64_t>();
+        const std::string uploaded = entry["uploadedMovie"].get<std::string>();
+        if (uploaded.empty()) {
+            continue;
+        }
+        VersionCard *card = findCard(id);
+        if (!card) {
+            continue;
+        }
+        poco::VersionTranscodedMedia media;
+        media.id = id;
+        media.uploaded_movie = uploaded;
+        card->setTranscoded(media);
+        changed = true;
+    }
+    if (changed) {
+        sendVersionCardsToQml(); ///< One republish for the whole batch.
+    }
+}
+
 void VersionList::markVersionsLoaded() {
     if (versions_loaded_) {
         versions_loaded_->set_value(true); ///< Zero rows is still a finished load.
@@ -411,8 +525,11 @@ void VersionList::markVersionsLoaded() {
 caf::message_handler VersionList::message_handler_extensions() {
     caf::detail::behavior_impl::pointer pages = caf::make_counted<VersionPageHandler>(this);
     caf::detail::behavior_impl::pointer thumbs = caf::make_counted<VersionThumbHandler>(this);
-    return caf::message_handler{std::move(pages)}.or_else(
-        caf::message_handler{std::move(thumbs)});
+    caf::detail::behavior_impl::pointer transcoded =
+        caf::make_counted<VersionTranscodedHandler>(this);
+    return caf::message_handler{std::move(pages)}
+        .or_else(caf::message_handler{std::move(thumbs)})
+        .or_else(caf::message_handler{std::move(transcoded)});
 }
 
 void VersionList::open_version(const std::string &text) {
@@ -430,13 +547,31 @@ void VersionList::open_version(const std::string &text) {
         return;
     }
     const std::int64_t versionId = body.value("versionId", std::int64_t{0});
-    const std::string name = body.value("name", std::string());
-    const std::string playlistName = body.value("playlistName", std::string());
-    const std::string frameRange = body.value("frameRange", std::string());
     const std::int64_t projectId =
         dal::selectedProject() == -1 ? std::int64_t{0} : dal::selectedProject();
+    std::string frameRange = body.value("frameRange", std::string());
+    std::string frames;
+    std::string movie;
+    std::string uploadedMovie;
+    if (const VersionCard *card = findCard(versionId)) {
+        if (frameRange.empty()) {
+            frameRange = card->frameRange();
+        }
+        frames = card->frames();
+        movie = card->movie();
+        uploadedMovie = card->uploadedMovie();
+    }
     mikros_shotbrowser::open_version(
-        panel_, versionId, projectId, name, playlistName, frameRange);
+        panel_,
+        utility::JsonStore(
+            {{"versionId", versionId},
+             {"projectId", projectId},
+             {"name", body.value("name", std::string())},
+             {"playlistName", body.value("playlistName", std::string())},
+             {"frameRange", frameRange},
+             {"frames", frames},
+             {"movie", movie},
+             {"uploadedMovie", uploadedMovie}}));
 }
 
 void VersionList::preview_version(const std::string &text) {
@@ -454,11 +589,30 @@ void VersionList::preview_version(const std::string &text) {
         return;
     }
     const std::int64_t versionId = body.value("versionId", std::int64_t{0});
-    const std::string name = body.value("name", std::string());
-    const std::string frameRange = body.value("frameRange", std::string());
     const std::int64_t projectId =
         dal::selectedProject() == -1 ? std::int64_t{0} : dal::selectedProject();
-    mikros_shotbrowser::preview_version(panel_, versionId, projectId, name, frameRange);
+    std::string frameRange = body.value("frameRange", std::string());
+    std::string frames;
+    std::string movie;
+    std::string uploadedMovie;
+    if (const VersionCard *card = findCard(versionId)) {
+        if (frameRange.empty()) {
+            frameRange = card->frameRange();
+        }
+        frames = card->frames();
+        movie = card->movie();
+        uploadedMovie = card->uploadedMovie();
+    }
+    mikros_shotbrowser::preview_version(
+        panel_,
+        utility::JsonStore(
+            {{"versionId", versionId},
+             {"projectId", projectId},
+             {"name", body.value("name", std::string())},
+             {"frameRange", frameRange},
+             {"frames", frames},
+             {"movie", movie},
+             {"uploadedMovie", uploadedMovie}}));
 }
 
 void VersionList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
