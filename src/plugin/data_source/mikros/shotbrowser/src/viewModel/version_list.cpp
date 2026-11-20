@@ -372,8 +372,11 @@ void VersionList::appendVersions(const std::vector<poco::VersionListElement> &ne
         versions_.push_back(std::make_unique<VersionCard>(row, row.name));
         versionIds.push_back(row.id);
     }
-    scheduleVersionThumbs(projectId, std::move(versionIds));
-    scheduleVersionTranscoded(projectId, newRows);
+    // Timing test: cards only (no thumbs / media).
+    // scheduleVersionThumbs(projectId, std::move(versionIds));
+    // scheduleVersionTranscoded(projectId, newRows);
+    (void)projectId;
+    (void)versionIds;
 }
 
 VersionCard *VersionList::findCard(std::int64_t versionId) const {
