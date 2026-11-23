@@ -367,7 +367,7 @@ void ensureNamedPlaylist(
             });
 }
 
-void create_playlist(
+void createPlaylist(
     plugin::StandardPlugin &panel,
     const std::string &name,
     std::function<void(utility::UuidActor, std::string)> then_ok,
@@ -511,7 +511,7 @@ void placeVersionMedia(
             });
 }
 
-void add_version_to_playlist(
+void addVersionToPlaylist(
     plugin::StandardPlugin &panel,
     const utility::UuidActor &playlist,
     const ResolvedVersionPaths &paths,
@@ -754,27 +754,7 @@ void ensurePreviewPlaylist(
         then_err);
 }
 
-/**
- * @brief Starts playback on the current viewport playhead after a successful select.
- */
-void playPreview(plugin::StandardPlugin &panel) {
-    auto events =
-        panel.system().registry().template get<caf::actor>(global_playhead_events_actor);
-    if (!events) {
-        return;
-    }
-    panel.mail(ui::viewport::viewport_playhead_atom_v)
-        .request(events, caf::infinite)
-        .then(
-            [](caf::actor playhead) {
-                if (playhead) {
-                    anon_mail(playhead::play_atom_v, true).send(playhead);
-                }
-            },
-            [](const caf::error &) {});
-}
-
-void clear_preview(plugin::StandardPlugin &panel) {
+void clearPreview(plugin::StandardPlugin &panel) {
     ++g_preview.generation; ///< Drop any in-flight preview_version callbacks.
     g_preview.version_id = 0;
     if (!g_preview.playlist) {
@@ -824,7 +804,7 @@ void clear_preview(plugin::StandardPlugin &panel) {
         });
 }
 
-void on_preview_viewport_container_changed(
+void onPreviewViewportContainerChanged(
     plugin::StandardPlugin &panel, const utility::UuidActor &viewed) {
     if (!g_preview.playlist) {
         return;
@@ -832,10 +812,10 @@ void on_preview_viewport_container_changed(
     if (viewed.uuid() == g_preview.playlist.uuid()) {
         return; ///< Still viewing the preview playlist.
     }
-    clear_preview(panel);
+    clearPreview(panel);
 }
 
-void preview_version(
+void previewVersion(
     plugin::StandardPlugin &panel,
     const utility::JsonStore &request) {
     const std::int64_t versionId = request.value("versionId", std::int64_t{0});
@@ -868,7 +848,7 @@ void preview_version(
                             if (gen != g_preview.generation) {
                                 return;
                             }
-                            add_version_to_playlist(
+                            addVersionToPlaylist(
                                 panel,
                                 playlist,
                                 paths,
@@ -883,10 +863,8 @@ void preview_version(
                                         panel,
                                         playlist,
                                         versionId,
-                                        [&panel, versionId, name, paths](
-                                            utility::UuidActor) {
+                                        [versionId, name, paths](utility::UuidActor) {
                                             g_preview.version_id = versionId;
-                                            playPreview(panel);
                                             log::info(
                                                 "preview_version version=" + name + "|" +
                                                 std::to_string(versionId) + " frames=" +
@@ -926,24 +904,24 @@ void preview_version(
         });
 }
 
-void open_version(plugin::StandardPlugin &panel, const utility::JsonStore &request) {
+void openVersion(plugin::StandardPlugin &panel, const utility::JsonStore &request) {
     const std::int64_t versionId = request.value("versionId", std::int64_t{0});
     const std::string name = request.value("name", std::string());
     const std::string playlistName = request.value("playlistName", std::string());
     if (versionId == 0) {
         return;
     }
-    clear_preview(panel);
+    clearPreview(panel);
     retrieveVersionMedia(
         panel,
         request,
         [&panel, versionId, name, playlistName](ResolvedVersionPaths paths) {
-            create_playlist(
+            createPlaylist(
                 panel,
                 playlistName,
                 [&panel, versionId, name, paths = std::move(paths)](
                     utility::UuidActor playlist, std::string resolvedPlaylistName) {
-                    add_version_to_playlist(
+                    addVersionToPlaylist(
                         panel,
                         playlist,
                         paths,
@@ -989,7 +967,7 @@ void open_version(plugin::StandardPlugin &panel, const utility::JsonStore &reque
         });
 }
 
-void open_playlist(
+void openPlaylist(
     plugin::StandardPlugin &panel,
     std::int64_t playlistId,
     std::int64_t projectId,
@@ -1002,7 +980,7 @@ void open_playlist(
         playlistId,
         [&panel, playlistId, projectId, playlistName](
             std::vector<poco::PlaylistVersionLink> versions) {
-            create_playlist(
+            createPlaylist(
                 panel,
                 playlistName,
                 [&panel, playlistId, projectId, versions = std::move(versions)](
@@ -1040,7 +1018,7 @@ void open_playlist(
                                 panel,
                                 mediaRequest,
                                 [&panel, playlist, link, addNext](ResolvedVersionPaths paths) {
-                                    add_version_to_playlist(
+                                    addVersionToPlaylist(
                                         panel,
                                         playlist,
                                         paths,

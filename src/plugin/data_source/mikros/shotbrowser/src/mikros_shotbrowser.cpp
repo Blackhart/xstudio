@@ -180,7 +180,7 @@ caf::message_handler MikrosShotBrowser::message_handler_extensions() {
         [=](utility::event_atom,
             session::viewport_active_media_container_atom,
             const utility::UuidActor &viewed) {
-            on_preview_viewport_container_changed(*this, viewed);
+            onPreviewViewportContainerChanged(*this, viewed);
         }};
     if (!shot_browser_) {
         return preview_focus;

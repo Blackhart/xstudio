@@ -372,11 +372,8 @@ void VersionList::appendVersions(const std::vector<poco::VersionListElement> &ne
         versions_.push_back(std::make_unique<VersionCard>(row, row.name));
         versionIds.push_back(row.id);
     }
-    // Timing test: cards only (no thumbs / media).
-    // scheduleVersionThumbs(projectId, std::move(versionIds));
-    // scheduleVersionTranscoded(projectId, newRows);
-    (void)projectId;
-    (void)versionIds;
+    scheduleVersionThumbs(projectId, std::move(versionIds));
+    scheduleVersionTranscoded(projectId, newRows);
 }
 
 VersionCard *VersionList::findCard(std::int64_t versionId) const {
@@ -566,7 +563,7 @@ void VersionList::open_version(const std::string &text) {
         uploadedMovie = card->uploadedMovie();
         pathsKnown = true; ///< Card already carries list paths (possibly empty).
     }
-    mikros_shotbrowser::open_version(
+    mikros_shotbrowser::openVersion(
         panel_,
         utility::JsonStore(
             {{"versionId", versionId},
@@ -611,7 +608,7 @@ void VersionList::preview_version(const std::string &text) {
         uploadedMovie = card->uploadedMovie();
         pathsKnown = true; ///< Card already carries list paths (possibly empty).
     }
-    mikros_shotbrowser::preview_version(
+    mikros_shotbrowser::previewVersion(
         panel_,
         utility::JsonStore(
             {{"versionId", versionId},

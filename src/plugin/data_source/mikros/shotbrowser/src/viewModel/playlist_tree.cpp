@@ -288,7 +288,7 @@ void PlaylistTree::open_playlist(const std::string &text) {
     const std::string name = body.value("name", std::string());
     const std::int64_t projectId =
         dal::selectedProject() == -1 ? std::int64_t{0} : dal::selectedProject();
-    mikros_shotbrowser::open_playlist(panel_, playlistId, projectId, name);
+    mikros_shotbrowser::openPlaylist(panel_, playlistId, projectId, name);
 }
 
 void PlaylistTree::expandPlaylist() {

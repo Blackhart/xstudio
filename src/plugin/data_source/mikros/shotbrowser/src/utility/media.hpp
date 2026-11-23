@@ -175,7 +175,7 @@ void retrieveVersionsForPlaylist(
  * @param then_ok Called with the playlist uuid/actor and the resolved playlist name.
  * @param then_err Called when the session request fails.
  */
-void create_playlist(
+void createPlaylist(
     plugin::StandardPlugin &panel,
     const std::string &name,
     std::function<void(utility::UuidActor, std::string)> then_ok,
@@ -195,7 +195,7 @@ void create_playlist(
  * @param then_ok Called with the media uuid and actor (existing or newly added).
  * @param then_err Called when rate, add, or listing media fails, or paths empty.
  */
-void add_version_to_playlist(
+void addVersionToPlaylist(
     plugin::StandardPlugin &panel,
     const utility::UuidActor &playlist,
     const ResolvedVersionPaths &paths,
@@ -229,7 +229,7 @@ void selectAddedMedia(
  * @param panel Panel actor used for retrieve, session, and media spawn.
  * @param request JsonStore with versionId, projectId, name, playlistName, and paths.
  */
-void open_version(plugin::StandardPlugin &panel, const utility::JsonStore &request);
+void openVersion(plugin::StandardPlugin &panel, const utility::JsonStore &request);
 
 /**
  * @brief Loads playlist version links, creates one xSTUDIO playlist, then adds and selects each.
@@ -242,7 +242,7 @@ void open_version(plugin::StandardPlugin &panel, const utility::JsonStore &reque
  * @param projectId Project id for the movie cache folder.
  * @param playlistName Target xSTUDIO playlist name (usually the ShotGrid playlist name).
  */
-void open_playlist(
+void openPlaylist(
     plugin::StandardPlugin &panel,
     std::int64_t playlistId,
     std::int64_t projectId,
@@ -254,18 +254,18 @@ void open_playlist(
 inline constexpr const char *kPreviewPlaylistName = "preview";
 
 /**
- * @brief Loads one version into a hidden `preview` playlist and plays it in the viewport.
+ * @brief Loads one version into a hidden `preview` playlist in the viewport (paused).
  *
  * Uses a session-hidden playlist (not in the playlist tree). Reuses one instance: clears
- * its media, adds the version, selects it, activates the viewport only (does not change
- * the inspected media list), then starts playback. A second call with the same version
- * id is a no-op. Bumps an internal generation so a slower earlier request cannot
- * overwrite a newer click.
+ * its media, adds the version, selects it, and activates the viewport only (does not
+ * change the inspected media list). Does not start playback. A second call with the
+ * same version id is a no-op. Bumps an internal generation so a slower earlier request
+ * cannot overwrite a newer click.
  *
  * @param panel Panel actor used for retrieve, session, and media spawn.
  * @param request JsonStore with versionId, projectId, name, and path fields from the card.
  */
-void preview_version(plugin::StandardPlugin &panel, const utility::JsonStore &request);
+void previewVersion(plugin::StandardPlugin &panel, const utility::JsonStore &request);
 
 /**
  * @brief Deactivates the hidden `preview` playlist without destroying it.
@@ -277,7 +277,7 @@ void preview_version(plugin::StandardPlugin &panel, const utility::JsonStore &re
  *
  * @param panel Panel actor used to reach the session and clear media.
  */
-void clear_preview(plugin::StandardPlugin &panel);
+void clearPreview(plugin::StandardPlugin &panel);
 
 /**
  * @brief Drops `preview` when the viewport leaves that playlist.
@@ -287,7 +287,7 @@ void clear_preview(plugin::StandardPlugin &panel);
  * @param panel Panel actor used to clear.
  * @param viewed Current viewport media container.
  */
-void on_preview_viewport_container_changed(
+void onPreviewViewportContainerChanged(
     plugin::StandardPlugin &panel, const utility::UuidActor &viewed);
 
 /**
