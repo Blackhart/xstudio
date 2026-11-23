@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/asset_list.hpp
- * @brief Asset combo: publishes labels, and signals the chosen id.
+ * @brief Asset list: first page, load-more, and selected id signal.
  */
 #pragma once
 
@@ -16,51 +16,62 @@ using namespace xstudio;
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace xstudio::mikros_shotbrowser {
 
 /**
- * @brief View model of the asset combo.
+ * @brief View model of the asset list.
  *
- * The combo shows the name and writes that name. This class stores the id
- * through the DAL and emits `onAssetSelected`. `loadAssetsAsync` returns
- * immediately. The lambda it stores runs on the panel actor when a page arrives.
+ * The list shows names and writes the chosen name. This class stores the id
+ * through the DAL and emits `onAssetSelected`. `loadAssetsAsync` and
+ * `loadMoreAssetsAsync` return before the pages arrive.
  */
 class AssetList : public QObject {
     Q_OBJECT
 
   public:
     /**
-     * @brief Publishes the empty asset combo.
+     * @brief Publishes the empty asset list and the load-more attribute.
      * @param panel Panel actor. Attributes are created on it, and loads are spawned through it.
      */
     explicit AssetList(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Stores a new selected id and emits `onAssetSelected`.
+     * @brief Starts a load-more or stores a new selected id.
      *
-     * Other attributes are ignored. Publishing the asset list does not emit
-     * when the id is already the one stored.
+     * `LoadMoreAssets` starts the next page. The asset combo value stores the id
+     * and emits `onAssetSelected`. Other attributes are ignored. Publishing the
+     * asset list does not emit when the id is already the one stored.
      * @param attr_uuid Attribute the panel changed.
-     * @param role Role that changed. Only Value is a choice.
+     * @param role Role that changed. Only Value is a request.
      */
     void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
     /**
-     * @brief Loads asset pages when `assets_` is empty.
+     * @brief Loads the first asset page when `assets_` is empty.
      *
-     * Rows already on screen are kept. The catalog starts only when a project
-     * is selected and the left tab is Asset. Returns before the pages arrive.
+     * Rows already on screen are kept. Resets the continuation cursor. The catalog
+     * starts only when a project is selected and the left tab is Asset. Returns
+     * before the page arrives.
      */
     void loadAssetsAsync();
 
     /**
+     * @brief Loads the next asset page when the list still has a continuation cursor.
+     *
+     * No-op when there is no cursor, a more-page is already incoming, or no project is
+     * selected. Keeps the current request id. Returns before the page arrives.
+     */
+    void loadMoreAssetsAsync();
+
+    /**
      * @brief Clears `assets_` and stops a load that is still running.
      *
-     * The panel calls this when the selected project changes. Does not clear the
-     * selected asset.
+     * Resets the continuation cursor. The panel calls this when the selected project
+     * changes. Does not clear the selected asset.
      */
     void clearAssetsTree();
 
@@ -78,7 +89,7 @@ class AssetList : public QObject {
     void setSelectedAsset(std::int64_t assetId);
 
     /**
-     * @brief Handles an `asset` page and declines every other catalog.
+     * @brief Handles an `asset` page or `asset_count` and declines every other catalog.
      * @return The asset-page handler.
      */
     caf::message_handler message_handler_extensions();
@@ -92,7 +103,7 @@ class AssetList : public QObject {
 
   private:
     /**
-     * @brief Publishes the asset combo.
+     * @brief Publishes the asset list and load-more attributes.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
@@ -117,18 +128,23 @@ class AssetList : public QObject {
     /**
      * @brief Replaces or extends `assets_` with one page, then publishes it.
      * @param append False for the first page of a request.
-     * @param payload `{id, name}` rows from the worker.
+     * @param payload Object with `rows` and optional `next_cursor` from the worker.
      */
     void updateAssetList(bool append, const utility::JsonStore &payload);
 
     /**
-     * @brief Writes the asset total into the footer attribute.
+     * @brief Stores the asset total and refreshes the footer.
      * @param payload JSON with an `assets` integer.
      */
     void updateAssetFooter(const utility::JsonStore &payload);
 
     /**
-     * @brief Clears the footer attribute text.
+     * @brief Writes `loaded / total assets` into the footer.
+     */
+    void refreshFooterValue();
+
+    /**
+     * @brief Clears the footer attribute text and the stored total.
      */
     void clearFooterValue();
 
@@ -148,12 +164,16 @@ class AssetList : public QObject {
     void sendAssetsListToQml();
 
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
-    std::vector<poco::Asset> assets_; ///< Pages received for this combo.
+    std::vector<poco::Asset> assets_; ///< Pages received for this list.
     RequestGeneration asset_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale asset fetches and pages.
-    module::StringChoiceAttribute *asset_ = nullptr; ///< Labels the combo displays.
+    std::optional<std::string> next_cursor_; ///< Continuation for the next page. Empty when finished.
+    bool more_incoming_ = false; ///< True while a load-more page is still on the way.
+    int asset_total_ = -1; ///< Server match count for the footer. -1 until the count arrives.
+    module::StringChoiceAttribute *asset_ = nullptr; ///< Labels the list displays.
     module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
     module::BooleanAttribute *assets_loaded_ = nullptr; ///< True once the current request has delivered a page.
+    module::StringAttribute *load_more_assets_ = nullptr; ///< QML bump that requests the next page.
 };
 
 } // namespace xstudio::mikros_shotbrowser

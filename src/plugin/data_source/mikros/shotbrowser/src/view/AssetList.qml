@@ -72,6 +72,14 @@ Item {
         model: attributes
     }
 
+    XsAttributeValue {
+        id: loadMoreAssets
+        attributeTitle: "LoadMoreAssets"
+        model: attributes
+    }
+
+    property int loadMoreToken: 0
+
     NameColumn {
         anchors.fill: parent
         title: ""
@@ -86,6 +94,11 @@ Item {
         loadedFooter: true
         customFooter: true
         footerText: footer.value
+        infiniteScroll: true
+        onLoadMoreRequested: {
+            assets.loadMoreToken += 1
+            loadMoreAssets.value = String(assets.loadMoreToken)
+        }
         rowDelegate: assetRow
     }
 

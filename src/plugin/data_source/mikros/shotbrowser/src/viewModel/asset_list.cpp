@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/asset_list.cpp
- * @brief Asset combo: page load, selected id, and onAssetSelected.
+ * @brief Asset list: first page, load-more, selected id, and onAssetSelected.
  */
 
 #include "viewModel/asset_list.hpp"
@@ -78,6 +78,22 @@ class AssetPageHandler : public caf::detail::behavior_impl {
     AssetPage apply_; ///< Lambda stored by `message_handler_extensions`.
 };
 
+/**
+ * @brief Formats the asset-list footer as loaded rows over the server total.
+ * @param loaded Rows currently held by the list.
+ * @param total Match count from the server, or -1 when the count has not arrived.
+ * @return Footer text (`N / T assets`), or `No assets` when total is zero.
+ */
+std::string formatAssetFooter(std::size_t loaded, int total) {
+    if (total == 0) {
+        return "No assets";
+    }
+    if (total < 0) {
+        return std::to_string(loaded) + " loaded";
+    }
+    return std::to_string(loaded) + " / " + std::to_string(total) + " assets";
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -95,6 +111,8 @@ void AssetList::initQmlAttributes(plugin::StandardPlugin &panel) {
     footer_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     assets_loaded_ = panel.add_boolean_attribute("AssetsLoaded", "AssetsLoaded", false);
     assets_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    load_more_assets_ = panel.add_string_attribute("LoadMoreAssets", "LoadMoreAssets", "");
+    load_more_assets_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +120,14 @@ void AssetList::initQmlAttributes(plugin::StandardPlugin &panel) {
 // ---------------------------------------------------------------------------
 
 void AssetList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
-    if (role != module::Attribute::Value || !asset_ || attr_uuid != asset_->uuid()) {
+    if (role != module::Attribute::Value) {
+        return;
+    }
+    if (load_more_assets_ && attr_uuid == load_more_assets_->uuid()) {
+        loadMoreAssetsAsync(); ///< QML bumped the attribute near the bottom of the list.
+        return;
+    }
+    if (!asset_ || attr_uuid != asset_->uuid()) {
         return; ///< Only the combo value is a choice.
     }
     applyAssetFromQml();
@@ -152,6 +177,8 @@ void AssetList::loadAssetsAsync() {
     if (!assets_.empty() || !checkProjectSelected() || !checkBrowserModeIsAsset()) {
         return; ///< List already loaded, no project, or the shot tab is showing.
     }
+    next_cursor_.reset(); ///< A new first page replaces any pending continuation.
+    more_incoming_ = false;
     const std::uint64_t requestId = ++(*asset_request_id_); ///< Stop the asset fetch already running.
     const std::int64_t projectId = dal::selectedProject();
     CatalogLoadRequest pages =
@@ -164,12 +191,27 @@ void AssetList::loadAssetsAsync() {
     launchCatalogLoad(panel_.system(), std::move(counts));
 }
 
+void AssetList::loadMoreAssetsAsync() {
+    if (dal::selectedProject() == -1 || !next_cursor_ || more_incoming_) {
+        return; ///< Nothing left to fetch, or a more-page is already on the way.
+    }
+    more_incoming_ = true;
+    const std::uint64_t requestId = asset_request_id_->load(); ///< Same generation as the first page.
+    CatalogLoadRequest request =
+        makeCatalogRequest(&panel_, CatalogKind::Asset, requestId, dal::selectedProject());
+    request.cursor = next_cursor_;
+    request.generation = asset_request_id_; ///< Drop the page when clearAssetsTree moves the id.
+    launchCatalogLoad(panel_.system(), std::move(request));
+}
+
 void AssetList::clearAssetsTree() {
     ++(*asset_request_id_); ///< Drop pages that still belong to the previous project.
+    next_cursor_.reset();
     assets_.clear();
     clearFooterValue(); ///< Clear until the next count arrives.
     sendAssetsListToQml();
     clearAssetsLoadedFlag();
+    more_incoming_ = false;
 }
 
 void AssetList::clearSelectedAsset() {
@@ -177,37 +219,33 @@ void AssetList::clearSelectedAsset() {
 }
 
 void AssetList::updateAssetList(bool append, const utility::JsonStore &payload) {
-    applyCatalogPage(assets_, asset_, rowsFromJson<poco::Asset>(payload), append);
+    const utility::JsonStore rowsJson =
+        payload.contains("rows") ? utility::JsonStore(payload.at("rows")) : payload;
+    if (payload.contains("next_cursor") && payload.at("next_cursor").is_string()) {
+        next_cursor_ = payload.at("next_cursor").get<std::string>();
+    } else {
+        next_cursor_.reset(); ///< Last page, or a payload without a continuation.
+    }
+    applyCatalogPage(assets_, asset_, rowsFromJson<poco::Asset>(rowsJson), append);
+    refreshFooterValue(); ///< Show how many rows are loaded versus the server total.
     markAssetsLoaded();
+    more_incoming_ = false; ///< This page arrived; another more-request may start.
 }
-
-namespace {
-
-/**
- * @brief Formats the asset-list footer from a total.
- * @param total Match count.
- * @return `No assets`, `1 asset`, or `N assets`.
- */
-std::string formatAssetFooter(int total) {
-    if (total <= 0) {
-        return "No assets";
-    }
-    if (total == 1) {
-        return "1 asset";
-    }
-    return std::to_string(total) + " assets";
-}
-
-} // namespace
 
 void AssetList::updateAssetFooter(const utility::JsonStore &payload) {
+    asset_total_ = payload.value("assets", 0);
+    refreshFooterValue();
+}
+
+void AssetList::refreshFooterValue() {
     if (!footer_) {
         return;
     }
-    footer_->set_value(formatAssetFooter(payload.value("assets", 0)));
+    footer_->set_value(formatAssetFooter(assets_.size(), asset_total_));
 }
 
 void AssetList::clearFooterValue() {
+    asset_total_ = -1;
     if (footer_) {
         footer_->set_value("");
     }

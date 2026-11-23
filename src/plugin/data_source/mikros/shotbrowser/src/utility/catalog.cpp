@@ -181,18 +181,29 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             std::move(counts));
         return;
     }
-    case CatalogKind::Asset:
-        publishPages<poco::Asset>(
+    case CatalogKind::Asset: {
+        if (request.generation && request.generation->load() != request.request_id) {
+            return; ///< A newer load started before this find.
+        }
+        const dal::RowPage<poco::Asset> page =
+            dal::findAssets(request.project_id, dal::readPageLimit(), request.cursor);
+        nlohmann::json body;
+        body["rows"] = static_cast<nlohmann::json>(rowsToJson(page.rows));
+        if (page.next_cursor) {
+            body["next_cursor"] = *page.next_cursor; ///< Opaque token for loadMoreAssetsAsync.
+        } else {
+            body["next_cursor"] = nullptr; ///< No further page.
+        }
+        sendCatalog(
             request.panel,
             request.request_id,
             "asset",
             request.project_id,
-            [projectId = request.project_id](const std::optional<std::string> &cursor) {
-                return dal::findAssets(projectId, dal::readPageLimit(), cursor);
-            },
             {},
-            request.generation); ///< Stops before the next findAssets when the id moves.
+            request.cursor.has_value(), ///< First page replaces; a cursor page appends.
+            utility::JsonStore(std::move(body)));
         return;
+    }
     case CatalogKind::AssetCount: {
         if (request.generation && request.generation->load() != request.request_id) {
             return; ///< A newer load started. Do not call the DAL.
