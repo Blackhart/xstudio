@@ -185,8 +185,8 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         if (request.generation && request.generation->load() != request.request_id) {
             return; ///< A newer load started before this find.
         }
-        const dal::RowPage<poco::Asset> page =
-            dal::findAssets(request.project_id, dal::readPageLimit(), request.cursor);
+        const dal::RowPage<poco::Asset> page = dal::findAssets(
+            request.project_id, dal::readPageLimit(), request.cursor, request.name_or_id);
         nlohmann::json body;
         body["rows"] = static_cast<nlohmann::json>(rowsToJson(page.rows));
         if (page.next_cursor) {
@@ -209,7 +209,7 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             return; ///< A newer load started. Do not call the DAL.
         }
         utility::JsonStore counts;
-        counts["assets"] = dal::getNumberOfAssets(request.project_id);
+        counts["assets"] = dal::getNumberOfAssets(request.project_id, request.name_or_id);
         sendCatalog(
             request.panel,
             request.request_id,

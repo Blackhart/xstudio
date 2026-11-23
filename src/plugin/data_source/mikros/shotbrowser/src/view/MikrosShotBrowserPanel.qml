@@ -90,6 +90,12 @@ Item {
         model: shotbrowserAttributes
     }
 
+    XsAttributeValue {
+        id: assetSearch
+        attributeTitle: "AssetSearch"
+        model: shotbrowserAttributes
+    }
+
     XsPreference {
         id: modePref
         path: "/plugin/data_source/mikros_shotbrowser/browser_mode"
@@ -181,6 +187,7 @@ Item {
                             panel.browserMode = "shot"
                             modePref.value = "shot"
                             browserModeAttr.value = "shot"
+                            panel.treeQuery = treeSearch.text ///< Keep the shot-tree client filter.
                         }
                     }
 
@@ -194,6 +201,7 @@ Item {
                             panel.browserMode = "asset"
                             modePref.value = "asset"
                             browserModeAttr.value = "asset"
+                            assetSearch.value = treeSearch.text ///< Reload assets with the bar text.
                         }
                     }
 
@@ -219,18 +227,16 @@ Item {
                     spacing: panel.buttonSpacing
 
                     XsSearchBar {
+                        id: treeSearch
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         placeholderText: "Search..."
-                        onTextChanged: panel.treeQuery = text
-                    }
-
-                    XsPrimaryButton {
-                        Layout.preferredWidth: XsStyleSheet.primaryButtonStdWidth
-                        Layout.fillHeight: true
-                        imgSrc: "qrc:/icons/filter.svg"
-                        toolTip: "Filter"
-                        isActive: false
+                        onTextChanged: {
+                            if (panel.browserMode === "asset")
+                                assetSearch.value = text
+                            else
+                                panel.treeQuery = text
+                        }
                     }
                 }
 
@@ -247,7 +253,6 @@ Item {
                     AssetList {
                         anchors.fill: parent
                         visible: panel.browserMode === "asset"
-                        query: panel.treeQuery
                     }
                 }
             }

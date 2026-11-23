@@ -5,11 +5,9 @@ import QtQuick.Layouts
 import xStudio 1.0
 import xstudio.qml.models 1.0
 
-// The asset list, filtered by the same search as the shot tree.
+// The asset list. Name/id search reloads through AssetSearch on the panel.
 Item {
     id: assets
-
-    property string query: ""
 
     function listPlaceholder() {
         const projectId = String(selectedProject.value ?? "")
@@ -20,22 +18,8 @@ Item {
         return "No results"
     }
 
-    function filteredNames(names) {
-        if (!names || !names.length)
-            return []
-        if (!query)
-            return names
-        const text = query.toLowerCase()
-        const matched = []
-        for (let i = 0; i < names.length; i++) {
-            if (String(names[i]).toLowerCase().indexOf(text) !== -1)
-                matched.push(names[i])
-        }
-        return matched
-    }
-
     function assetTreeRows() {
-        const labels = filteredNames(asset.names)
+        const labels = asset.names || []
         const rows = []
         for (let i = 0; i < labels.length; i++) {
             rows.push({

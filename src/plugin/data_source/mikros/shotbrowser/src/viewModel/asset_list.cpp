@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/asset_list.cpp
- * @brief Asset list: first page, load-more, selected id, and onAssetSelected.
+ * @brief Asset list: first page, load-more, name/id search, and selected id.
  */
 
 #include "viewModel/asset_list.hpp"
@@ -113,6 +113,8 @@ void AssetList::initQmlAttributes(plugin::StandardPlugin &panel) {
     assets_loaded_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     load_more_assets_ = panel.add_string_attribute("LoadMoreAssets", "LoadMoreAssets", "");
     load_more_assets_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    asset_search_ = panel.add_string_attribute("AssetSearch", "AssetSearch", "");
+    asset_search_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 // ---------------------------------------------------------------------------
@@ -127,10 +129,22 @@ void AssetList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
         loadMoreAssetsAsync(); ///< QML bumped the attribute near the bottom of the list.
         return;
     }
+    if (asset_search_ && attr_uuid == asset_search_->uuid()) {
+        clearAssetsTree(); ///< Drop the previous filter result before the new first page.
+        loadAssetsFromNameOrIdAsync(asset_search_->value());
+        return;
+    }
     if (!asset_ || attr_uuid != asset_->uuid()) {
         return; ///< Only the combo value is a choice.
     }
     applyAssetFromQml();
+}
+
+std::optional<std::string> AssetList::activeSearchQuery() const {
+    if (search_query_.empty()) {
+        return std::nullopt;
+    }
+    return search_query_;
 }
 
 void AssetList::applyAssetFromQml() {
@@ -181,14 +195,22 @@ void AssetList::loadAssetsAsync() {
     more_incoming_ = false;
     const std::uint64_t requestId = ++(*asset_request_id_); ///< Stop the asset fetch already running.
     const std::int64_t projectId = dal::selectedProject();
+    const std::optional<std::string> nameOrId = activeSearchQuery();
     CatalogLoadRequest pages =
         makeCatalogRequest(&panel_, CatalogKind::Asset, requestId, projectId);
+    pages.name_or_id = nameOrId;
     pages.generation = asset_request_id_; ///< The worker stops before the next find when this moves.
     launchCatalogLoad(panel_.system(), std::move(pages));
     CatalogLoadRequest counts =
         makeCatalogRequest(&panel_, CatalogKind::AssetCount, requestId, projectId);
+    counts.name_or_id = nameOrId;
     counts.generation = asset_request_id_; ///< Drop a stale footer with the pages.
     launchCatalogLoad(panel_.system(), std::move(counts));
+}
+
+void AssetList::loadAssetsFromNameOrIdAsync(const std::string &text) {
+    search_query_ = text; ///< Empty clears the filter; the DAL trims before Where.
+    loadAssetsAsync();
 }
 
 void AssetList::loadMoreAssetsAsync() {
@@ -200,6 +222,7 @@ void AssetList::loadMoreAssetsAsync() {
     CatalogLoadRequest request =
         makeCatalogRequest(&panel_, CatalogKind::Asset, requestId, dal::selectedProject());
     request.cursor = next_cursor_;
+    request.name_or_id = activeSearchQuery();
     request.generation = asset_request_id_; ///< Drop the page when clearAssetsTree moves the id.
     launchCatalogLoad(panel_.system(), std::move(request));
 }

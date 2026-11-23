@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/asset_list.hpp
- * @brief Asset list: first page, load-more, and selected id signal.
+ * @brief Asset list: first page, load-more, name/id search, and selected id.
  */
 #pragma once
 
@@ -26,8 +26,9 @@ namespace xstudio::mikros_shotbrowser {
  * @brief View model of the asset list.
  *
  * The list shows names and writes the chosen name. This class stores the id
- * through the DAL and emits `onAssetSelected`. `loadAssetsAsync` and
- * `loadMoreAssetsAsync` return before the pages arrive.
+ * through the DAL and emits `onAssetSelected`. A name or id search clears the
+ * list and reloads with that filter. `loadAssetsAsync` and `loadMoreAssetsAsync`
+ * return before the pages arrive.
  */
 class AssetList : public QObject {
     Q_OBJECT
@@ -40,11 +41,12 @@ class AssetList : public QObject {
     explicit AssetList(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Starts a load-more or stores a new selected id.
+     * @brief Starts a load-more, a name/id search, or stores a new selected id.
      *
-     * `LoadMoreAssets` starts the next page. The asset combo value stores the id
-     * and emits `onAssetSelected`. Other attributes are ignored. Publishing the
-     * asset list does not emit when the id is already the one stored.
+     * `LoadMoreAssets` starts the next page. `AssetSearch` clears and reloads.
+     * The asset combo value stores the id and emits `onAssetSelected`. Other
+     * attributes are ignored. Publishing the asset list does not emit when the
+     * id is already the one stored.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed. Only Value is a request.
      */
@@ -54,16 +56,26 @@ class AssetList : public QObject {
      * @brief Loads the first asset page when `assets_` is empty.
      *
      * Rows already on screen are kept. Resets the continuation cursor. The catalog
-     * starts only when a project is selected and the left tab is Asset. Returns
-     * before the page arrives.
+     * starts only when a project is selected and the left tab is Asset. Passes the
+     * active name/id search to the worker. Returns before the page arrives.
      */
     void loadAssetsAsync();
+
+    /**
+     * @brief Stores a name/id filter and loads the first matching page.
+     *
+     * Does not clear the list; the caller runs `clearAssetsTree` first when needed.
+     * Empty text clears the filter. Returns before the pages arrive.
+     * @param text Exact id (all digits) or name substring.
+     */
+    void loadAssetsFromNameOrIdAsync(const std::string &text);
 
     /**
      * @brief Loads the next asset page when the list still has a continuation cursor.
      *
      * No-op when there is no cursor, a more-page is already incoming, or no project is
-     * selected. Keeps the current request id. Returns before the page arrives.
+     * selected. Keeps the current request id and the active search. Returns before
+     * the page arrives.
      */
     void loadMoreAssetsAsync();
 
@@ -103,7 +115,7 @@ class AssetList : public QObject {
 
   private:
     /**
-     * @brief Publishes the asset list and load-more attributes.
+     * @brief Publishes the asset list, search, and load-more attributes.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
@@ -112,6 +124,12 @@ class AssetList : public QObject {
      * @brief Reads the label written by the combo and stores its id.
      */
     void applyAssetFromQml();
+
+    /**
+     * @brief Active name/id filter for the worker, or empty when none.
+     * @return The search text, or nullopt when `search_query_` is empty.
+     */
+    std::optional<std::string> activeSearchQuery() const;
 
     /**
      * @brief True when a project id is stored.
@@ -165,6 +183,7 @@ class AssetList : public QObject {
 
     plugin::StandardPlugin &panel_; ///< Panel actor. Attributes and loads go through it.
     std::vector<poco::Asset> assets_; ///< Pages received for this list.
+    std::string search_query_; ///< Name or id filter. Empty means no Where.
     RequestGeneration asset_request_id_ =
         std::make_shared<std::atomic<std::uint64_t>>(0); ///< Drops stale asset fetches and pages.
     std::optional<std::string> next_cursor_; ///< Continuation for the next page. Empty when finished.
@@ -174,6 +193,7 @@ class AssetList : public QObject {
     module::StringAttribute *footer_ = nullptr; ///< Footer text for the QML list.
     module::BooleanAttribute *assets_loaded_ = nullptr; ///< True once the current request has delivered a page.
     module::StringAttribute *load_more_assets_ = nullptr; ///< QML bump that requests the next page.
+    module::StringAttribute *asset_search_ = nullptr; ///< Name or id the search bar wrote.
 };
 
 } // namespace xstudio::mikros_shotbrowser

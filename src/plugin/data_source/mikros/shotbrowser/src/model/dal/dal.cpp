@@ -450,9 +450,18 @@ RowPage<poco::SequenceShots> findSequenceShots(
 }
 
 RowPage<poco::Asset> findAssets(
-    std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
+    std::int64_t projectId,
+    std::size_t limit,
+    std::optional<std::string> cursor,
+    std::optional<std::string> nameOrId) {
     return fetchPage<poco::Asset>(
-        pms::Asset().In(pms::scope::project == projectId), limit, cursor);
+        applyNameOrId(
+            pms::Asset().In(pms::scope::project == projectId),
+            pms::asset::id,
+            pms::asset::name,
+            nameOrId),
+        limit,
+        cursor);
 }
 
 RowPage<poco::Playlist> findPlaylists(
@@ -703,8 +712,12 @@ int getNumberOfShots(std::int64_t projectId, std::optional<std::int64_t> sequenc
     return fetchCount(pms::Shot().In(pms::scope::project == projectId));
 }
 
-int getNumberOfAssets(std::int64_t projectId) {
-    return fetchCount(pms::Asset().In(pms::scope::project == projectId));
+int getNumberOfAssets(std::int64_t projectId, std::optional<std::string> nameOrId) {
+    return fetchCount(applyNameOrId(
+        pms::Asset().In(pms::scope::project == projectId),
+        pms::asset::id,
+        pms::asset::name,
+        nameOrId));
 }
 
 int getNumberOfPlaylists(std::int64_t projectId, std::optional<std::string> nameOrId) {

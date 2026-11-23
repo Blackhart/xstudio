@@ -173,12 +173,14 @@ RowPage<poco::SequenceShots> findSequenceShots(
  * @param projectId Domain project `id`.
  * @param limit Maximum rows in the page. Must be greater than zero.
  * @param cursor Continuation from a prior RowPage::next_cursor, or empty.
+ * @param nameOrId Optional exact id (all digits) or name substring.
  * @return Page of assets. Empty when none match or the lookup fails.
  */
 RowPage<poco::Asset> findAssets(
     std::int64_t projectId,
     std::size_t limit,
-    std::optional<std::string> cursor = std::nullopt);
+    std::optional<std::string> cursor = std::nullopt,
+    std::optional<std::string> nameOrId = std::nullopt);
 
 /**
  * @brief One page of playlists belonging to a project.
@@ -290,9 +292,11 @@ int getNumberOfShots(
 /**
  * @brief How many assets belong to a project.
  * @param projectId Domain project `id`.
+ * @param nameOrId Optional exact id (all digits) or name substring.
  * @return Match count, or `0` when the lookup fails.
  */
-int getNumberOfAssets(std::int64_t projectId);
+int getNumberOfAssets(
+    std::int64_t projectId, std::optional<std::string> nameOrId = std::nullopt);
 
 /**
  * @brief How many playlists belong to a project.
