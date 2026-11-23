@@ -263,11 +263,11 @@ void VersionList::loadMoreVersionsAsync() {
 void VersionList::clearVersions() {
     ++(*version_request_id_); ///< Drop pages that still belong to the previous selection.
     next_cursor_.reset();
-    more_incoming_ = false;
     versions_.clear();
     clearFooterValue(); ///< Clear until the next count arrives.
     sendVersionCardsToQml();
     clearVersionsLoadedFlag();
+    more_incoming_ = false;
 }
 
 namespace {
@@ -326,7 +326,6 @@ void VersionList::updateVersionList(
         trace::drop("version", requestId); ///< clearVersions bumped the id on project/parents change.
         return;
     }
-    more_incoming_ = false; ///< This page arrived; another more-request may start.
     const utility::JsonStore rowsJson =
         payload.contains("rows") ? utility::JsonStore(payload.at("rows")) : payload;
     if (payload.contains("next_cursor") && payload.at("next_cursor").is_string()) {
@@ -341,6 +340,7 @@ void VersionList::updateVersionList(
     sendVersionCardsToQml();
     refreshFooterValue(); ///< Show how many cards are loaded versus the server total.
     markVersionsLoaded();
+    more_incoming_ = false; ///< This page arrived; another more-request may start.
 }
 
 std::vector<poco::VersionListElement> VersionList::findUnknownVersionRows(
