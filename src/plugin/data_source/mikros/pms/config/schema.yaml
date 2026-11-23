@@ -9,9 +9,11 @@ entities:
   project:
     creatable: false
     fields:
-      id:   { type: int,    filter: true, set: false }
-      name: { type: string, filter: true, set: true }
-      code: { type: string, filter: true, set: true }
+      id:     { type: int,    filter: true, set: false }
+      name:   { type: string, filter: true, set: true }
+      code:   { type: string, filter: true, set: true }
+      status: { type: string, filter: true, set: false, show: [Active] }
+      type:   { type: string, filter: true, set: false, show: [Feature Film, Episodic] }
     scope: []
 
   sequence:

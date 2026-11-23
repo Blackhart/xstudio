@@ -90,6 +90,13 @@ Schema Schema::load(const std::string &path) {
                     spec.providers.push_back(provider->as<std::string>());
                 }
             }
+            if (meta["show"]) {
+                for (YAML::const_iterator value = meta["show"].begin();
+                     value != meta["show"].end();
+                     ++value) {
+                    spec.show.push_back(value->as<std::string>()); ///< UI filter default.
+                }
+            }
             spec.ops = loadOps(root["types"], spec.type);
             entity.fields.push_back(std::move(spec));
         }

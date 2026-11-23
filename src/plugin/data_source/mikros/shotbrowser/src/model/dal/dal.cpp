@@ -109,6 +109,26 @@ std::int64_t optionalInt64(const pms::Record &record, const std::string &key) {
 }
 
 /**
+ * @brief Maps project records, including the filter fields.
+ * @param records Domain rows.
+ * @return Projects in the same order. Status and type are empty when absent.
+ */
+template <>
+std::vector<poco::Project> mapRecordsToRows<poco::Project>(const pms::Records &records) {
+    std::vector<poco::Project> rows;
+    rows.reserve(records.size());
+    for (const pms::Record &record : records) {
+        poco::Project row;
+        row.id = std::get<std::int64_t>(record.at("id"));
+        row.name = std::get<std::string>(record.at("name"));
+        row.status = optionalString(record, "status"); ///< ShotGrid sg_status_list.
+        row.type = optionalString(record, "type");     ///< ShotGrid sg_type.
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+/**
  * @brief Maps version list records (no image or media).
  * @param records Domain rows.
  * @return List elements in the same order.
@@ -324,6 +344,31 @@ void initialize() {
         ::setenv(pms::kSchemaPath, path.c_str(), /*overwrite=*/0);
     }
     shotbrowserContext(); ///< Create the context at plugin launch.
+}
+
+/**
+ * @brief Reads the `show` list of one project field from the shared schema.
+ * @param fieldKey Domain field name, such as `"status"`.
+ * @return The values in schema order, or empty when the entity or field is missing.
+ */
+std::vector<std::string> projectFieldShowList(const std::string &fieldKey) {
+    const pms::EntitySpec *project = pms::sharedSession().schema().entity("project");
+    if (!project) {
+        return {};
+    }
+    const pms::FieldSpec *field = project->field(fieldKey);
+    if (!field) {
+        return {};
+    }
+    return field->show; ///< Empty means the UI starts with no check on this field.
+}
+
+std::vector<std::string> defaultShownProjectStatuses() {
+    return projectFieldShowList("status");
+}
+
+std::vector<std::string> defaultShownProjectTypes() {
+    return projectFieldShowList("type");
 }
 
 std::int64_t selectedProject() {

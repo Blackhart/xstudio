@@ -50,6 +50,8 @@ std::string projectLabel(int projectId) {
  * Ids stay in ascending order so keyset pages keep working.
  */
 Records makeProjects() {
+    const char *statuses[] = {"Active", "delivered", "Bidding", "Hold"};
+    const char *types[] = {"Episodic", "Feature Film", "Test"};
     Records rows;
     rows.reserve(FakeBackend::projectCount);
     for (int index = 1; index <= static_cast<int>(FakeBackend::projectCount); ++index) {
@@ -58,6 +60,8 @@ Records makeProjects() {
         row.fields["id"] = std::int64_t{index};
         row.fields["name"] = "paw" + number;
         row.fields["code"] = "PAW" + number;
+        row.fields["status"] = std::string(statuses[(index - 1) % 4]);
+        row.fields["type"] = std::string(types[(index - 1) % 3]);
         rows.push_back(std::move(row));
     }
     return rows;

@@ -206,14 +206,6 @@ Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                     }
-
-                    XsPrimaryButton {
-                        Layout.preferredWidth: XsStyleSheet.primaryButtonStdWidth * 0.8
-                        Layout.fillHeight: true
-                        imgSrc: "qrc:/icons/filter.svg"
-                        toolTip: "Status"
-                        isActive: false
-                    }
                 }
 
                 Rectangle {

@@ -31,6 +31,24 @@ using ::xstudio::mikros_shotbrowser::ResultView;
 void initialize();
 
 /**
+ * @brief Project statuses the filter menu checks on start.
+ *
+ * Reads `show` on `project.status` from the shared schema. Empty when the
+ * field has no `show` list, so the combo starts unfiltered.
+ * @return Status values in schema order.
+ */
+std::vector<std::string> defaultShownProjectStatuses();
+
+/**
+ * @brief Project types the filter menu checks on start.
+ *
+ * Reads `show` on `project.type` from the shared schema. Empty when the
+ * field has no `show` list, so the combo starts unfiltered.
+ * @return Type values in schema order.
+ */
+std::vector<std::string> defaultShownProjectTypes();
+
+/**
  * @brief Id of the project the panel is showing.
  * @return The project id, or `-1` when none is selected.
  */

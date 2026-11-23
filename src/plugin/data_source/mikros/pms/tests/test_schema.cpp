@@ -37,6 +37,23 @@ TEST_CASE("schema loads the project entity") {
     CHECK(code->type == "string");
     CHECK(code->filter);
     CHECK(code->canSet);
+
+    const FieldSpec *status = project->field("status");
+    REQUIRE(status != nullptr);
+    CHECK(status->type == "string");
+    CHECK(status->filter);
+    CHECK_FALSE(status->canSet);
+    REQUIRE(status->show.size() == 1);
+    CHECK(status->show[0] == "Active");
+
+    const FieldSpec *type = project->field("type");
+    REQUIRE(type != nullptr);
+    CHECK(type->type == "string");
+    CHECK(type->filter);
+    CHECK_FALSE(type->canSet);
+    REQUIRE(type->show.size() == 2);
+    CHECK(type->show[0] == "Feature Film");
+    CHECK(type->show[1] == "Episodic");
     CHECK(schema.entity("episode") == nullptr);
 }
 
@@ -175,6 +192,8 @@ TEST_CASE("generated proxies use the schema keys") {
     CHECK(std::string(project::id.key) == "id");
     CHECK(std::string(project::name.key) == "name");
     CHECK(std::string(project::code.key) == "code");
+    CHECK(std::string(project::status.key) == "status");
+    CHECK(std::string(project::type.key) == "type");
     CHECK(Project().ir().entity == "project");
 
     CHECK(std::string(sequence::id.key) == "id");

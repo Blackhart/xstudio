@@ -3,9 +3,11 @@ entities:
   project:
     shotgrid: Project
     fields:
-      id:   { shotgrid: id }
-      name: { shotgrid: name }
-      code: { shotgrid: code }
+      id:     { shotgrid: id }
+      name:   { shotgrid: name }
+      code:   { shotgrid: code }
+      status: { shotgrid: sg_status_list }
+      type:   { shotgrid: sg_type }
     links: {}
 
   sequence:

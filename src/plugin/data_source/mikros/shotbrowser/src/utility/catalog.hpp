@@ -300,6 +300,46 @@ std::vector<Row> rowsFromJson(const xstudio::utility::JsonStore &json) {
 }
 
 /**
+ * @brief Writes project rows with the values the filter menu reads.
+ * @param rows Projects to send to the panel.
+ * @return JSON the panel message can carry.
+ */
+template <>
+inline xstudio::utility::JsonStore rowsToJson<poco::Project>(
+    const std::vector<poco::Project> &rows) {
+    nlohmann::json out = nlohmann::json::array();
+    for (const poco::Project &row : rows) {
+        out.push_back(
+            {{"id", row.id}, {"name", row.name}, {"status", row.status}, {"type", row.type}});
+    }
+    return xstudio::utility::JsonStore(out);
+}
+
+/**
+ * @brief Reads project rows with their status and type.
+ * @param json Payload from `rowsToJson`.
+ * @return Projects, or empty when `json` is not an array.
+ */
+template <>
+inline std::vector<poco::Project> rowsFromJson<poco::Project>(
+    const xstudio::utility::JsonStore &json) {
+    std::vector<poco::Project> rows;
+    if (!json.is_array()) {
+        return rows;
+    }
+    rows.reserve(json.size());
+    for (const auto &entry : json) {
+        poco::Project row;
+        row.id = entry.at("id").get<std::int64_t>();
+        row.name = entry.at("name").get<std::string>();
+        row.status = entry.value("status", std::string()); ///< Absent on an older payload.
+        row.type = entry.value("type", std::string());
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+/**
  * @brief Writes playlist rows with their version counts.
  * @param rows Playlists to send to the panel.
  * @return JSON the panel message can carry.

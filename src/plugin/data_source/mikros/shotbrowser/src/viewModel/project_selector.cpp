@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file viewModel/project_selector.cpp
- * @brief Project combo: page load, selected id, and onProjectSelected.
+ * @brief Project combo: page load, selected id, and status/type filters.
  */
 
 #include "viewModel/project_selector.hpp"
@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <set>
 #include <utility>
 
 namespace trace = xstudio::mikros_shotbrowser::log;
@@ -83,6 +84,71 @@ class ProjectPageHandler : public caf::detail::behavior_impl {
 };
 
 /**
+ * @brief Reads the string array a filter attribute stores.
+ *
+ * A JSON string is parsed first, so a QML write of either an array or its
+ * text form is accepted. Empty strings are not checks.
+ * @param attribute Shown statuses or shown types.
+ * @return The checked values, or empty when the attribute is missing.
+ */
+std::set<std::string> shownValuesFromAttribute(const module::JsonAttribute *attribute) {
+    std::set<std::string> values;
+    if (!attribute) {
+        return values;
+    }
+    nlohmann::json json = attribute->value();
+    if (json.is_string()) {
+        try {
+            json = nlohmann::json::parse(json.get<std::string>()); ///< QML wrote the array as text.
+        } catch (const std::exception &) {
+            return values;
+        }
+    }
+    if (!json.is_array()) {
+        return values;
+    }
+    for (const auto &entry : json) {
+        if (!entry.is_string()) {
+            continue;
+        }
+        const std::string value = entry.get<std::string>();
+        if (!value.empty()) {
+            values.insert(value); ///< A blank ShotGrid value is not a check.
+        }
+    }
+    return values;
+}
+
+/**
+ * @brief Writes the distinct non-empty values of one project field.
+ * @tparam Field Callable that reads one string from a project.
+ * @param attribute Option list the menu reads.
+ * @param projects Loaded projects.
+ * @param field Status or type accessor.
+ */
+template <typename Field>
+void publishDistinctValues(
+    module::JsonAttribute *attribute,
+    const std::vector<poco::Project> &projects,
+    Field field) {
+    if (!attribute) {
+        return;
+    }
+    std::set<std::string> values;
+    for (const poco::Project &project : projects) {
+        const std::string value = field(project);
+        if (!value.empty()) {
+            values.insert(value); ///< Empty ShotGrid values are not menu rows.
+        }
+    }
+    nlohmann::json rows = nlohmann::json::array();
+    for (const std::string &value : values) {
+        rows.push_back(value);
+    }
+    attribute->set_value(rows); ///< The menu lists these strings.
+}
+
+/**
  * @brief Orders one project before another by name.
  * @param left First project.
  * @param right Second project.
@@ -111,6 +177,7 @@ bool projectNameAlphabeticOrderAlgorithm(const poco::Project &left, const poco::
 ProjectSelector::ProjectSelector(plugin::StandardPlugin &panel)
     : QObject(nullptr), panel_(panel) {
     initQmlAttributes(panel);
+    setDefaultValues(); ///< Schema `show` lists become the first checked filters.
 }
 
 void ProjectSelector::initQmlAttributes(plugin::StandardPlugin &panel) {
@@ -118,6 +185,47 @@ void ProjectSelector::initQmlAttributes(plugin::StandardPlugin &panel) {
     catalog_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     selected_ = panel.add_string_attribute("SelectedProject", "SelectedProject", "-1");
     selected_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    status_options_ = panel.add_json_attribute(
+        "ProjectStatusOptions", "ProjectStatusOptions", nlohmann::json::array());
+    status_options_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    type_options_ = panel.add_json_attribute(
+        "ProjectTypeOptions", "ProjectTypeOptions", nlohmann::json::array());
+    type_options_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    shown_statuses_attribute_ =
+        panel.add_json_attribute("ShownStatuses", "ShownStatuses", nlohmann::json::array());
+    shown_statuses_attribute_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    shown_types_attribute_ =
+        panel.add_json_attribute("ShownTypes", "ShownTypes", nlohmann::json::array());
+    shown_types_attribute_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+}
+
+void ProjectSelector::setDefaultValues() {
+    setDefaultProjectShown();
+    setDefaultProjectType();
+}
+
+void ProjectSelector::setDefaultProjectShown() {
+    const std::vector<std::string> statuses = dal::defaultShownProjectStatuses();
+    shown_statuses_ = {statuses.begin(), statuses.end()}; ///< Schema `show` on status.
+    nlohmann::json statusJson = nlohmann::json::array();
+    for (const std::string &value : statuses) {
+        statusJson.push_back(value);
+    }
+    if (shown_statuses_attribute_) {
+        shown_statuses_attribute_->set_value(statusJson); ///< Menu checks these statuses.
+    }
+}
+
+void ProjectSelector::setDefaultProjectType() {
+    const std::vector<std::string> types = dal::defaultShownProjectTypes();
+    shown_types_ = {types.begin(), types.end()}; ///< Schema `show` on type.
+    nlohmann::json typeJson = nlohmann::json::array();
+    for (const std::string &value : types) {
+        typeJson.push_back(value);
+    }
+    if (shown_types_attribute_) {
+        shown_types_attribute_->set_value(typeJson); ///< Menu checks these types.
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -125,14 +233,20 @@ void ProjectSelector::initQmlAttributes(plugin::StandardPlugin &panel) {
 // ---------------------------------------------------------------------------
 
 void ProjectSelector::attribute_changed(const utility::Uuid &attr_uuid, int role) {
-    if (role != module::Attribute::Value || !selected_ || attr_uuid != selected_->uuid()) {
-        return; ///< The project list is published on another attribute.
+    if (role != module::Attribute::Value) {
+        return; ///< Only a new value is a choice.
     }
-    const std::int64_t projectId = readSelectedProjectFromQml();
-    if (projectId == dal::selectedProject()) {
-        return; ///< The QML write repeats an id already stored.
+    if (selected_ && attr_uuid == selected_->uuid()) {
+        const std::int64_t projectId = readSelectedProjectFromQml();
+        if (projectId == dal::selectedProject()) {
+            return; ///< The QML write repeats an id already stored.
+        }
+        setSelectedProject(projectId);
+        return;
     }
-    setSelectedProject(projectId);
+    if (isShownFilter(attr_uuid)) {
+        applyShownFilters(); ///< Checked values become the combo contents.
+    }
 }
 
 std::int64_t ProjectSelector::readSelectedProjectFromQml() const {
@@ -203,6 +317,7 @@ void ProjectSelector::loadProjectsAsync() {
 void ProjectSelector::clearProjects() {
     ++(*project_request_id_); ///< Drop pages from the previous project load.
     projects_.clear();
+    publishFilterOptions(); ///< The menu has no choices until the next page.
     sendProjectsListToQml(); ///< The combo shows Loading until the next page.
     clearProjectSelected();
 }
@@ -215,6 +330,7 @@ void ProjectSelector::updateProjectList(bool append, const utility::JsonStore &p
         projects_.insert(projects_.end(), rows.begin(), rows.end());
     }
     sortProjectsByName(); ///< The combo shows this page in alphabetical order.
+    publishFilterOptions(); ///< The menu grows as later pages add values.
     sendProjectsListToQml();
 }
 
@@ -225,9 +341,67 @@ void ProjectSelector::sortProjectsByName() {
 void ProjectSelector::sendProjectsListToQml() {
     nlohmann::json rows = nlohmann::json::array();
     for (const poco::Project &project : projects_) {
+        if (!projectPassesFilters(project)) {
+            continue; ///< A checked status or type hides this project.
+        }
         rows.push_back({{"id", project.id}, {"name", project.name}});
     }
     catalog_->set_value(rows); ///< The combo reads this attribute, not the vector.
+}
+
+bool ProjectSelector::isShownFilter(const utility::Uuid &attr_uuid) const {
+    const bool status = shown_statuses_attribute_ && attr_uuid == shown_statuses_attribute_->uuid();
+    const bool type = shown_types_attribute_ && attr_uuid == shown_types_attribute_->uuid();
+    return status || type;
+}
+
+void ProjectSelector::applyShownFilters() {
+    const std::set<std::string> statuses = shownValuesFromAttribute(shown_statuses_attribute_);
+    const std::set<std::string> types = shownValuesFromAttribute(shown_types_attribute_);
+    if (statuses == shown_statuses_ && types == shown_types_) {
+        return; ///< The QML write repeats the checks already stored.
+    }
+    shown_statuses_ = statuses;
+    shown_types_ = types;
+    sendProjectsListToQml();
+    clearSelectionWhenHidden(); ///< A hidden project must not stay selected.
+}
+
+bool ProjectSelector::projectPassesFilters(const poco::Project &project) const {
+    const bool statusHidden = !shown_statuses_.empty() &&
+                              shown_statuses_.find(project.status) == shown_statuses_.end();
+    if (statusHidden) {
+        return false; ///< A checked status hides every other status.
+    }
+    const bool typeHidden =
+        !shown_types_.empty() && shown_types_.find(project.type) == shown_types_.end();
+    if (typeHidden) {
+        return false; ///< A checked type hides every other type.
+    }
+    return true;
+}
+
+void ProjectSelector::clearSelectionWhenHidden() {
+    const std::int64_t projectId = dal::selectedProject();
+    if (projectId == -1) {
+        return; ///< None stays None.
+    }
+    for (const poco::Project &project : projects_) {
+        if (project.id != projectId) {
+            continue;
+        }
+        if (!projectPassesFilters(project)) {
+            clearProjectSelected(); ///< The trees follow None.
+        }
+        return;
+    }
+}
+
+void ProjectSelector::publishFilterOptions() {
+    publishDistinctValues(
+        status_options_, projects_, [](const poco::Project &project) { return project.status; });
+    publishDistinctValues(
+        type_options_, projects_, [](const poco::Project &project) { return project.type; });
 }
 
 // ---------------------------------------------------------------------------

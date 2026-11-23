@@ -15,6 +15,7 @@ namespace pms {
  *
  * `filter` allows the field in Where. `canSet` mirrors the YAML key `set`
  * and is loaded for later slices; this slice does not write fields.
+ * `show` lists the values a UI filter checks on start. Empty means no filter.
  */
 struct FieldSpec {
     std::string key;  ///< YAML field name.
@@ -24,6 +25,7 @@ struct FieldSpec {
     bool requiredOnCreate = false; ///< True when a later create must send the field.
     std::vector<std::string> ops;  ///< Comparison names allowed for `type`.
     std::vector<std::string> providers; ///< Ways a worker may read this field, such as `http`.
+    std::vector<std::string> show; ///< Values the UI checks on start. Empty = no filter.
 };
 
 /**
