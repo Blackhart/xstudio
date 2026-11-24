@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file pms/expr.hpp
- * @brief Field proxies and the operators that build a where-tree.
+ * @brief Field proxies and the operators that build Where and In trees.
  */
 #pragma once
 
@@ -44,11 +44,12 @@ template <typename Entity, typename T> struct Field {
 };
 
 /**
- * @brief Where-tree whose leaves all belong to one entity.
+ * @brief Field-tree whose leaves all belong to one entity.
  *
- * `&&`, `||`, and `!` combine expressions of the same entity. They build both
- * sides: the overloaded operators do not short-circuit. C++ precedence applies,
- * so parentheses are significant.
+ * Used for Where() on the queried entity and for In() on one parent. `&&`,
+ * `||`, and `!` combine expressions of the same entity. They build both sides:
+ * the overloaded operators do not short-circuit. C++ precedence applies, so
+ * parentheses are significant.
  *
  * @tparam Entity Entity tag the leaves belong to.
  */
@@ -219,7 +220,7 @@ struct scopeContains<Needle, ScopeList<Parents...>>
 /**
  * @brief Reports whether `Parent` is legal in `Entity::Scope`.
  * @tparam Entity Queried entity tag.
- * @tparam Parent Parent entity tag named by a ScopeRef.
+ * @tparam Parent Parent entity tag named by In().
  * @return True when the parent is in the entity scope.
  */
 template <typename Entity, typename Parent>
@@ -228,142 +229,27 @@ constexpr bool scopeAllows() {
 }
 
 /**
- * @brief Parent-name expression built by In().
- *
- * The parent pack is part of the type so Query::In can reject illegal parents
- * at compile time. The node itself is type-erased for storage on Ir.
- *
- * @tparam Parents Parent entity tags named by this expression.
+ * @brief Deep-copies an expression and stamps the domain parent on every field leaf.
+ * @param root Expression root. Must not be null.
+ * @param parentDomain YAML parent entity name. Must outlive the returned tree.
+ * @return Shared copy with `parent` set on each Field leaf.
  */
-template <typename... Parents> struct ScopeExpr {
-    std::shared_ptr<const ExprNode> node; ///< Root of this expression.
-};
-
-/**
- * @brief Compile-time name of one legal parent for In().
- * @tparam Parent Entity tag of the parent.
- */
-template <typename Parent> struct ScopeRef {
-    const char *key = nullptr; ///< YAML entity name of the parent.
-
-    /**
-     * @brief Binds the proxy to a parent entity key.
-     * @param parentKey YAML entity name. Must outlive the proxy.
-     */
-    constexpr explicit ScopeRef(const char *parentKey) : key(parentKey) {}
-};
-
-/**
- * @brief Builds a scope comparison leaf.
- * @tparam Parent Parent entity tag.
- * @param parent Proxy that supplies the YAML parent key.
- * @param op `Eq` or `Ne`.
- * @param value Parent `id` (int) or parent `name` (string).
- * @return Expression holding the new scope node.
- */
-template <typename Parent>
-ScopeExpr<Parent> makeScopeComparison(
-    const ScopeRef<Parent> &parent, ExprOp op, Value value) {
-    auto node = std::make_shared<ExprNode>();
-    node->op = op;
-    node->kind = ExprKind::Scope;
-    node->key = parent.key;
-    node->value = std::move(value);
-    return ScopeExpr<Parent>{std::move(node)};
-}
-
-/**
- * @brief Matches a parent by name.
- * @tparam Parent Parent entity tag.
- * @param parent Scope proxy on the left.
- * @param name Parent `name`.
- * @return A scope leaf with `op` Eq.
- */
-template <typename Parent>
-ScopeExpr<Parent> operator==(const ScopeRef<Parent> &parent, const std::string &name) {
-    return makeScopeComparison(parent, ExprOp::Eq, Value{name});
-}
-
-/**
- * @brief Rejects a parent by name.
- * @tparam Parent Parent entity tag.
- * @param parent Scope proxy on the left.
- * @param name Parent `name`.
- * @return A scope leaf with `op` Ne.
- */
-template <typename Parent>
-ScopeExpr<Parent> operator!=(const ScopeRef<Parent> &parent, const std::string &name) {
-    return makeScopeComparison(parent, ExprOp::Ne, Value{name});
-}
-
-/**
- * @brief Matches a parent by id.
- * @tparam Parent Parent entity tag.
- * @param parent Scope proxy on the left.
- * @param id Parent `id`.
- * @return A scope leaf with `op` Eq.
- */
-template <typename Parent>
-ScopeExpr<Parent> operator==(const ScopeRef<Parent> &parent, std::int64_t id) {
-    return makeScopeComparison(parent, ExprOp::Eq, Value{id});
-}
-
-/**
- * @brief Rejects a parent by id.
- * @tparam Parent Parent entity tag.
- * @param parent Scope proxy on the left.
- * @param id Parent `id`.
- * @return A scope leaf with `op` Ne.
- */
-template <typename Parent>
-ScopeExpr<Parent> operator!=(const ScopeRef<Parent> &parent, std::int64_t id) {
-    return makeScopeComparison(parent, ExprOp::Ne, Value{id});
-}
-
-/**
- * @brief Builds an `and`, `or`, or `not` scope group.
- * @tparam Parents Combined parent pack of the children.
- * @param op Group operator.
- * @param args Child nodes.
- * @return Expression holding the new group.
- */
-template <typename... Parents>
-ScopeExpr<Parents...> makeScopeGroup(
-    ExprOp op, std::vector<std::shared_ptr<const ExprNode>> args) {
-    auto node = std::make_shared<ExprNode>();
-    node->op = op;
-    node->kind = ExprKind::Group;
-    node->args = std::move(args);
-    return ScopeExpr<Parents...>{std::move(node)};
-}
-
-/**
- * @brief Combines two scope expressions with `and`.
- * @tparam A Parents of the left expression.
- * @tparam B Parents of the right expression.
- */
-template <typename... A, typename... B>
-ScopeExpr<A..., B...> operator&&(const ScopeExpr<A...> &left, const ScopeExpr<B...> &right) {
-    return makeScopeGroup<A..., B...>(ExprOp::And, {left.node, right.node});
-}
-
-/**
- * @brief Combines two scope expressions with `or`.
- * @tparam A Parents of the left expression.
- * @tparam B Parents of the right expression.
- */
-template <typename... A, typename... B>
-ScopeExpr<A..., B...> operator||(const ScopeExpr<A...> &left, const ScopeExpr<B...> &right) {
-    return makeScopeGroup<A..., B...>(ExprOp::Or, {left.node, right.node});
-}
-
-/**
- * @brief Negates a scope expression.
- * @tparam Parents Parent pack of the expression.
- */
-template <typename... Parents>
-ScopeExpr<Parents...> operator!(const ScopeExpr<Parents...> &expr) {
-    return makeScopeGroup<Parents...>(ExprOp::Not, {expr.node});
+inline std::shared_ptr<const ExprNode> stampParent(
+    const std::shared_ptr<const ExprNode> &root, const char *parentDomain) {
+    auto copy = std::make_shared<ExprNode>();
+    copy->op = root->op;
+    copy->kind = root->kind;
+    copy->key = root->key;
+    copy->value = root->value;
+    if (root->kind == ExprKind::Field) {
+        copy->parent = parentDomain;
+        return copy;
+    }
+    copy->args.reserve(root->args.size());
+    for (const auto &child : root->args) {
+        copy->args.push_back(stampParent(child, parentDomain));
+    }
+    return copy;
 }
 
 } // namespace pms

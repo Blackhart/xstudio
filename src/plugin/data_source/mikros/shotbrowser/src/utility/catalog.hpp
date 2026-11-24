@@ -75,6 +75,7 @@ struct CatalogLoadRequest {
     std::optional<std::int64_t> asset;       ///< Version filter: selected asset.
     std::optional<std::string> cursor; ///< Continuation for Version / PlaylistTree / Asset pages. Empty for the first page.
     std::optional<std::string> name_or_id; ///< Exact id or name substring for Version / PlaylistTree.
+    std::shared_ptr<const pms::ExprNode> where; ///< Optional shelf Where for Version / Playlist entity.
 };
 
 /**

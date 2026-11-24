@@ -233,7 +233,8 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             parents.shotId,
             parents.assetId,
             std::nullopt,
-            request.name_or_id);
+            request.name_or_id,
+            request.where);
         nlohmann::json body;
         body["rows"] = static_cast<nlohmann::json>(rowsToJson(page.rows));
         if (page.next_cursor) {
@@ -263,7 +264,8 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             parents.shotId,
             parents.assetId,
             std::nullopt,
-            request.name_or_id);
+            request.name_or_id,
+            request.where);
         sendCatalog(
             request.panel,
             request.request_id,
@@ -279,7 +281,11 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
             return; ///< A newer load started before this find.
         }
         const dal::RowPage<poco::Playlist> page = dal::findPlaylists(
-            request.project_id, dal::readPageLimit(), request.cursor, request.name_or_id);
+            request.project_id,
+            dal::readPageLimit(),
+            request.cursor,
+            request.name_or_id,
+            request.where);
         nlohmann::json body;
         body["rows"] = static_cast<nlohmann::json>(rowsToJson(page.rows));
         if (page.next_cursor) {
@@ -303,7 +309,7 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
         }
         utility::JsonStore counts;
         counts["playlists"] =
-            dal::getNumberOfPlaylists(request.project_id, request.name_or_id);
+            dal::getNumberOfPlaylists(request.project_id, request.name_or_id, request.where);
         sendCatalog(
             request.panel,
             request.request_id,

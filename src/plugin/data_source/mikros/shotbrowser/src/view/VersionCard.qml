@@ -99,7 +99,7 @@ Rectangle {
     height: (XsStyleSheet.widgetStdHeight + 1) * 4
     color: chosen ? Qt.darker(XsStyleSheet.accentColor, 5) : "transparent"
     border.width: 1
-    border.color: rowHover.hovered || versionPress.containsMouse
+    border.color: chosen || rowHover.hovered || versionPress.containsMouse
                   ? XsStyleSheet.accentColor
                   : XsStyleSheet.widgetBgNormalColor
 

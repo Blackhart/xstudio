@@ -131,9 +131,9 @@ TEST_CASE("caching backend serves a second count from cache") {
     CachingBackend cache(backend);
     Session session(Schema::load(PMS_SCHEMA_PATH), cache);
 
-    CHECK(Sequence().In(scope::project == std::int64_t{1}).count(session) == 42);
+    CHECK(Sequence().In(project::id == std::int64_t{1}).count(session) == 42);
     backend.next_count = 99;
-    CHECK(Sequence().In(scope::project == std::int64_t{1}).count(session) == 42);
+    CHECK(Sequence().In(project::id == std::int64_t{1}).count(session) == 42);
     REQUIRE(backend.calls.size() == 1);
     CHECK(cache.size() == 1);
 }
@@ -162,10 +162,10 @@ TEST_CASE("caching backend expires a count after the ttl") {
     CachingBackend cache(backend, options, [&tick]() { return tick; });
     Session session(Schema::load(PMS_SCHEMA_PATH), cache);
 
-    CHECK(Asset().In(scope::project == std::int64_t{1}).count(session) == 1);
+    CHECK(Asset().In(project::id == std::int64_t{1}).count(session) == 1);
     tick += std::chrono::seconds(6);
     backend.next_count = 2;
-    CHECK(Asset().In(scope::project == std::int64_t{1}).count(session) == 2);
+    CHECK(Asset().In(project::id == std::int64_t{1}).count(session) == 2);
     REQUIRE(backend.calls.size() == 2);
 }
 

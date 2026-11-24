@@ -88,13 +88,13 @@ TEST_CASE("find versions in a sequence sends a scope leaf by id") {
     backend.next = {version};
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records rows = Version().In(scope::sequence == std::int64_t{1}).find(session).rows;
+    const Records rows = Version().In(sequence::id == std::int64_t{1}).find(session).rows;
 
     REQUIRE(backend.calls.size() == 1);
     const char *expected = R"(op: find
 entity: version
 in:
-  scope sequence eq 1
+  field sequence.id eq 1
 where:
 )";
     CHECK(dump(backend.calls[0]) == expected);
@@ -108,13 +108,13 @@ TEST_CASE("count sends the ir and returns the backend total") {
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
     const std::size_t total =
-        Shot().In(scope::project == std::int64_t{3}).count(session);
+        Shot().In(project::id == std::int64_t{3}).count(session);
 
     REQUIRE(backend.calls.size() == 1);
     const char *expected = R"(op: count
 entity: shot
 in:
-  scope project eq 3
+  field project.id eq 3
 where:
 )";
     CHECK(dump(backend.calls[0]) == expected);

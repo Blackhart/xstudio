@@ -39,25 +39,25 @@ enum class ExprOp {
  * @brief Role of an expression node.
  */
 enum class ExprKind {
-    Field, ///< Comparison of one field of the queried entity.
-    Scope, ///< Comparison of one parent name from In().
+    Field, ///< Field of the queried entity (Where) or of a parent (In).
     Group, ///< `and`, `or`, or `not` applied to child nodes.
 };
 
 /**
  * @brief One immutable node of an In or Where tree.
  *
- * A field node has `key`, `op` (`eq`, `ne`, or `contains`), and `value`. A
- * scope node has the parent entity name as `key` and either the parent `id`
- * (int) or `name` (string) as `value`. A group node has `op` (`and`, `or`, or
+ * A field node has `key`, `op` (`eq`, `ne`, or `contains`), and `value`. For
+ * In() leaves, `parent` holds the domain parent name (`shot`, `playlist`, …).
+ * Where() leaves leave `parent` empty. A group node has `op` (`and`, `or`, or
  * `not`) and `args`. Nodes are shared and never mutated after the builder
  * returns them.
  */
 struct ExprNode {
-    ExprOp op = ExprOp::Eq;    ///< Comparison or group operator.
-    ExprKind kind = ExprKind::Field; ///< Field leaf, scope leaf, or group.
-    std::string key;           ///< Field name or parent entity. Empty on a group.
-    std::optional<Value> value; ///< Leaf value. Empty on a group.
+    ExprOp op = ExprOp::Eq;              ///< Comparison or group operator.
+    ExprKind kind = ExprKind::Field;     ///< Field leaf or group.
+    std::string key;                     ///< Domain field name. Empty on a group.
+    std::string parent;                  ///< Domain parent for In leaves. Empty on Where.
+    std::optional<Value> value;          ///< Leaf value. Empty on a group.
     std::vector<std::shared_ptr<const ExprNode>> args; ///< Children of a group.
 };
 
@@ -70,7 +70,7 @@ struct ExprNode {
 struct Ir {
     std::optional<Op> op; ///< Empty until a verb runs.
     std::string entity;   ///< Domain entity name.
-    std::shared_ptr<const ExprNode> in;    ///< Parent scope tree, or null.
+    std::shared_ptr<const ExprNode> in;    ///< Parent field filter tree, or null.
     std::shared_ptr<const ExprNode> where; ///< Field filter tree, or null.
     std::optional<std::size_t> limit;      ///< Page size when set. Empty means every match.
     std::optional<std::string> cursor;     ///< Keyset cursor from a prior Page::next_cursor.
@@ -86,9 +86,10 @@ struct Ir {
 /**
  * @brief Renders an intermediate representation as stable text.
  *
- * Keys inside a leaf use the YAML names. Strings are quoted, dates are
- * `YYYY-MM-DD`, and group children are indented by two spaces. The text ends
- * with a newline and is what the tests compare.
+ * Keys inside a leaf use the YAML names. In leaves print as
+ * `field <parent>.<key>`. Strings are quoted, dates are `YYYY-MM-DD`, and group
+ * children are indented by two spaces. The text ends with a newline and is what
+ * the tests compare.
  *
  * @param ir Tree to render. `op` may be empty.
  * @return The multi-line dump.

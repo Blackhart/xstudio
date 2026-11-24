@@ -13,7 +13,11 @@
 #include "model/poco/sequence_shots.hpp"
 #include "model/poco/version.hpp"
 
+#include "pms/ir.hpp"
+
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -98,15 +102,69 @@ void setSelectedAsset(std::int64_t assetId);
 
 /**
  * @brief Left tab the panel is showing.
- * @return `Shot` or `Asset`. The default is `Shot`.
+ * @return `Shot`, `Asset`, or `Shelf`. The default is `Shot`.
  */
 BrowserMode browserMode();
 
 /**
  * @brief Remembers the left tab the user picked.
- * @param mode `Shot` or `Asset`.
+ * @param mode `Shot`, `Asset`, or `Shelf`.
  */
 void setBrowserMode(BrowserMode mode);
+
+/**
+ * @brief True when a shelf (including All) is selected.
+ * @return False until the user picks a shelf in Shelf mode.
+ */
+bool hasActiveShelf();
+
+/**
+ * @brief Active shelf filters by domain entity.
+ * @return Map of entity name to ExprNode. Empty for All.
+ */
+const std::map<std::string, std::shared_ptr<const pms::ExprNode>> &activeShelfFilters();
+
+/**
+ * @brief ExprNode for one entity in the active shelf.
+ * @param entity Domain entity name.
+ * @return Shared tree, or null when that entity is absent.
+ */
+std::shared_ptr<const pms::ExprNode> activeShelfFilter(const std::string &entity);
+
+/**
+ * @brief Clears the active shelf so Shelf-mode results stay empty.
+ */
+void clearActiveShelf();
+
+/**
+ * @brief Stores the shelf the user picked.
+ * @param filters Per-entity ExprNode map. Empty for All.
+ */
+void setActiveShelf(std::map<std::string, std::shared_ptr<const pms::ExprNode>> filters);
+
+/**
+ * @brief One schema field the shelf editor may use in a term.
+ */
+struct FilterableField {
+    std::string entity;           ///< Domain entity name (`shot`, `version`, …).
+    std::string key;              ///< YAML field name.
+    std::string type;             ///< `string`, `int`, or `date`.
+    std::vector<std::string> ops; ///< Allowed comparison names.
+};
+
+/**
+ * @brief Schema fields with `filter: true` for one entity.
+ * @param entity Domain entity name.
+ * @return Fields in schema order without the `entity` member filled. Prefer
+ *         `filterableFieldsForShelves` for the editor.
+ */
+std::vector<FilterableField> filterableFields(const std::string &entity);
+
+/**
+ * @brief Filterable fields for every entity except project.
+ * @return Fields in schema entity order, each with `entity` set.
+ */
+std::vector<FilterableField> filterableFieldsForShelves();
 
 /**
  * @brief Right tab the panel is showing.
@@ -198,7 +256,8 @@ RowPage<poco::Playlist> findPlaylists(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor = std::nullopt,
-    std::optional<std::string> nameOrId = std::nullopt);
+    std::optional<std::string> nameOrId = std::nullopt,
+    std::shared_ptr<const pms::ExprNode> where = nullptr);
 
 /**
  * @brief One page of version list rows for a project.
@@ -226,7 +285,8 @@ RowPage<poco::VersionListElement> findVersionListElements(
     std::optional<std::int64_t> shotId = std::nullopt,
     std::optional<std::int64_t> assetId = std::nullopt,
     std::optional<std::int64_t> playlistId = std::nullopt,
-    std::optional<std::string> nameOrId = std::nullopt);
+    std::optional<std::string> nameOrId = std::nullopt,
+    std::shared_ptr<const pms::ExprNode> where = nullptr);
 
 /**
  * @brief Version membership of one playlist from its `versions` links field.
@@ -305,7 +365,9 @@ int getNumberOfAssets(
  * @return Match count, or `0` when the lookup fails.
  */
 int getNumberOfPlaylists(
-    std::int64_t projectId, std::optional<std::string> nameOrId = std::nullopt);
+    std::int64_t projectId,
+    std::optional<std::string> nameOrId = std::nullopt,
+    std::shared_ptr<const pms::ExprNode> where = nullptr);
 
 /**
  * @brief How many versions match the same parents as `findVersionListElements`.
@@ -327,6 +389,7 @@ int getNumberOfVersions(
     std::optional<std::int64_t> shotId = std::nullopt,
     std::optional<std::int64_t> assetId = std::nullopt,
     std::optional<std::int64_t> playlistId = std::nullopt,
-    std::optional<std::string> nameOrId = std::nullopt);
+    std::optional<std::string> nameOrId = std::nullopt,
+    std::shared_ptr<const pms::ExprNode> where = nullptr);
 
 } // namespace xstudio::mikros_shotbrowser::dal

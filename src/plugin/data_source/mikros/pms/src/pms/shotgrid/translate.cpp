@@ -165,48 +165,61 @@ std::string pathField(const std::vector<LinkHop> &hops, const std::string &leaf 
 }
 
 /**
- * @brief One ShotGrid condition for a single ownership path.
- * @param node Scope leaf. `value` is an id or a parent name.
- * @param mapping Domain ↔ ShotGrid map, used to resolve a parent name field.
- * @param hops One path from `linkPathsTo`.
- * @param op ShotGrid comparison, `"is"` or `"is_not"`.
+ * @brief One ShotGrid condition for a parent field along one ownership path.
+ * @param node In field leaf (`parent` + `key` + value).
+ * @param mapping Domain ↔ ShotGrid map for the parent field mapping.
+ * @param hops One path from `linkPathsTo` (link fields from mapping.links).
+ * @param op ShotGrid comparison (`is`, `is_not`, `contains`, …).
  * @return A basic condition array.
- * @throw Error When the value is neither an id nor a name, or the parent has no name field.
+ * @throw Error When the parent field is unmapped or the value is missing.
  */
 nlohmann::json pathCondition(
     const ExprNode &node,
     const ShotGridMapping &mapping,
     const std::vector<LinkHop> &hops,
     const char *op) {
-    if (const auto *id = std::get_if<std::int64_t>(&*node.value)) {
+    if (!node.value) {
+        throw Error("shotgrid: parent field \"" + node.parent + "." + node.key + "\" has no value");
+    }
+    // Parent id equality uses the link field itself: ["entity", "is", {type, id}].
+    if (node.key == "id" && (node.op == ExprOp::Eq || node.op == ExprOp::Ne)) {
+        const auto *id = std::get_if<std::int64_t>(&*node.value);
+        if (!id) {
+            throw Error("shotgrid: parent id expects an int");
+        }
         nlohmann::json condition = nlohmann::json::array();
         condition.push_back(pathField(hops));
         condition.push_back(op);
         condition.push_back(nlohmann::json{{"type", hops.back().type_name}, {"id", *id}});
         return condition;
     }
-    if (const auto *name = std::get_if<std::string>(&*node.value)) {
-        const ShotGridSchema *target = mapping.findSchema(hops.back().target);
-        const ShotGridSchemaField *nameField = target ? target->findField("name") : nullptr;
-        if (!nameField || nameField->shotgrid.empty()) {
-            throw Error("shotgrid: parent \"" + node.key + "\" has no mapped name field");
-        }
-        nlohmann::json condition = nlohmann::json::array();
-        condition.push_back(pathField(hops, nameField->shotgrid));
-        condition.push_back(op);
-        condition.push_back(*name);
-        return condition;
+    const ShotGridSchema *target = mapping.findSchema(hops.back().target);
+    const ShotGridSchemaField *field = target ? target->findField(node.key) : nullptr;
+    if (!field || field->shotgrid.empty()) {
+        throw Error(
+            "shotgrid: parent \"" + node.parent + "\" field \"" + node.key + "\" is not mapped");
     }
-    throw Error("shotgrid: scope \"" + node.key + "\" expects id or name");
+    nlohmann::json condition = nlohmann::json::array();
+    condition.push_back(pathField(hops, field->shotgrid));
+    condition.push_back(op);
+    condition.push_back(valueJson(*node.value));
+    return condition;
 }
 
-nlohmann::json scopeCondition(
+/**
+ * @brief Builds ShotGrid filter conditions for one In() field leaf.
+ * @param node Field leaf stamped with domain `parent`.
+ * @param mapping Domain ↔ ShotGrid map.
+ * @param entity Queried domain entity.
+ * @return One condition, or an `or` of paths when several ownership links exist.
+ */
+nlohmann::json parentFieldCondition(
     const ExprNode &node, const ShotGridMapping &mapping, const std::string &entity) {
     const char *op = comparisonOp(node.op);
-    if (!op || !node.value) {
-        throw Error("shotgrid: invalid scope leaf on \"" + node.key + "\"");
+    if (!op || node.parent.empty()) {
+        throw Error("shotgrid: invalid In leaf on \"" + node.key + "\"");
     }
-    const std::vector<std::vector<LinkHop>> paths = linkPathsTo(mapping, entity, node.key);
+    const std::vector<std::vector<LinkHop>> paths = linkPathsTo(mapping, entity, node.parent);
     nlohmann::json conditions = nlohmann::json::array();
     for (const std::vector<LinkHop> &hops : paths) {
         conditions.push_back(pathCondition(node, mapping, hops, op));
@@ -236,13 +249,13 @@ nlohmann::json exprToJson(
     const ExprNode &node,
     const ShotGridMapping &mapping,
     const ShotGridSchema &schema,
-    bool scope) {
+    bool isIn) {
     if (node.kind == ExprKind::Group) {
         if (node.op == ExprOp::Not) {
             if (node.args.size() != 1 || !node.args[0]) {
                 throw Error("shotgrid: not expects one child");
             }
-            nlohmann::json child = exprToJson(*node.args[0], mapping, schema, scope);
+            nlohmann::json child = exprToJson(*node.args[0], mapping, schema, isIn);
             if (!child.is_array() || child.size() < 2) {
                 throw Error("shotgrid: not only inverts a leaf");
             }
@@ -260,12 +273,15 @@ nlohmann::json exprToJson(
             if (!child) {
                 throw Error("shotgrid: empty child");
             }
-            out["conditions"].push_back(exprToJson(*child, mapping, schema, scope));
+            out["conditions"].push_back(exprToJson(*child, mapping, schema, isIn));
         }
         return out;
     }
-    if (scope) {
-        return scopeCondition(node, mapping, schema.domainName);
+    if (node.kind != ExprKind::Field) {
+        throw Error("shotgrid: invalid expression leaf");
+    }
+    if (isIn) {
+        return parentFieldCondition(node, mapping, schema.domainName);
     }
     return fieldCondition(node, schema);
 }

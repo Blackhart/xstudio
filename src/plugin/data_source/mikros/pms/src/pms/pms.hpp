@@ -12,6 +12,7 @@
 #include "pms/caching_backend.hpp"
 #include "pms/env.hpp"
 #include "pms/error.hpp"
+#include "pms/expr_json.hpp"
 #include "pms/page.hpp"
 #include "pms/query.hpp"
 #include "pms/session.hpp"

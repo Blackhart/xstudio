@@ -8,7 +8,12 @@
  */
 #pragma once
 
+#include "pms/ir.hpp"
+
 #include <cstdint>
+#include <map>
+#include <memory>
+#include <string>
 
 namespace xstudio::mikros_shotbrowser {
 
@@ -16,10 +21,12 @@ namespace xstudio::mikros_shotbrowser {
  * @brief Left tab of the panel.
  *
  * `Shot` shows the sequence tree. `Asset` shows the asset list.
+ * `Shelf` shows named user searches.
  */
 enum class BrowserMode {
     Shot,  ///< Sequence and shot tree.
     Asset, ///< Asset list.
+    Shelf, ///< Named multi-entity searches (shelves).
 };
 
 /**
@@ -90,13 +97,13 @@ class ShotbrowserState {
 
     /**
      * @brief Left tab of the panel.
-     * @return `Shot` or `Asset`.
+     * @return `Shot`, `Asset`, or `Shelf`.
      */
     BrowserMode browserMode() const { return browser_mode_; }
 
     /**
      * @brief Remembers the left tab the user picked.
-     * @param mode `Shot` or `Asset`.
+     * @param mode `Shot`, `Asset`, or `Shelf`.
      */
     void setBrowserMode(BrowserMode mode) { browser_mode_ = mode; }
 
@@ -112,6 +119,37 @@ class ShotbrowserState {
      */
     void setResultView(ResultView view) { result_view_ = view; }
 
+    /**
+     * @brief True when a shelf (including All) is selected.
+     * @return False until the user picks a shelf in Shelf mode.
+     */
+    bool hasActiveShelf() const { return has_active_shelf_; }
+
+    /**
+     * @brief Active shelf filters by domain entity.
+     * @return Map of entity name to ExprNode. Empty for All.
+     */
+    const std::map<std::string, std::shared_ptr<const pms::ExprNode>> &activeShelfFilters() const {
+        return active_shelf_filters_;
+    }
+
+    /**
+     * @brief Clears the active shelf so results stay empty in Shelf mode.
+     */
+    void clearActiveShelf() {
+        has_active_shelf_ = false;
+        active_shelf_filters_.clear();
+    }
+
+    /**
+     * @brief Stores the shelf the user picked.
+     * @param filters Per-entity ExprNode map. Empty for All.
+     */
+    void setActiveShelf(std::map<std::string, std::shared_ptr<const pms::ExprNode>> filters) {
+        has_active_shelf_ = true;
+        active_shelf_filters_ = std::move(filters);
+    }
+
   private:
     std::int64_t selected_project_ = -1;  ///< Current project, or `-1` for None.
     std::int64_t selected_sequence_ = -1; ///< Current sequence, or `-1` when none.
@@ -119,6 +157,8 @@ class ShotbrowserState {
     std::int64_t selected_asset_ = -1;    ///< Current asset, or `-1` when none.
     BrowserMode browser_mode_ = BrowserMode::Shot; ///< Left tab. `Shot` until a preference says otherwise.
     ResultView result_view_ = ResultView::Versions; ///< Right tab. `Versions` until a preference says otherwise.
+    bool has_active_shelf_ = false; ///< True after a shelf (including All) is selected.
+    std::map<std::string, std::shared_ptr<const pms::ExprNode>> active_shelf_filters_; ///< Active search.
 };
 
 } // namespace xstudio::mikros_shotbrowser

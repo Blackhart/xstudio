@@ -8,6 +8,7 @@
 #include "viewModel/asset_list.hpp"
 #include "viewModel/playlist_tree.hpp"
 #include "viewModel/project_selector.hpp"
+#include "viewModel/shelf_list.hpp"
 #include "viewModel/shot_tree.hpp"
 #include "viewModel/version_list.hpp"
 
@@ -29,13 +30,14 @@ const char *kBrowserModeAttr = "BrowserMode";
 const char *kResultViewAttr = "ResultView";
 const char *kBrowserModeShot = "shot";
 const char *kBrowserModeAsset = "asset";
+const char *kBrowserModeShelf = "shelf";
 const char *kResultViewVersions = "versions";
 const char *kResultViewPlaylist = "playlist";
 
 /**
  * @brief Left tab named by a preference or by the QML.
- * @param text `shot`, `asset`, or anything else.
- * @return The tab, or empty when the text is not one of the two.
+ * @param text `shot`, `asset`, `shelf`, or anything else.
+ * @return The tab, or empty when the text is not one of the three.
  */
 std::optional<dal::BrowserMode> browserModeFromText(const std::string &text) {
     if (text == kBrowserModeShot) {
@@ -43,6 +45,9 @@ std::optional<dal::BrowserMode> browserModeFromText(const std::string &text) {
     }
     if (text == kBrowserModeAsset) {
         return dal::BrowserMode::Asset;
+    }
+    if (text == kBrowserModeShelf) {
+        return dal::BrowserMode::Shelf;
     }
     return std::nullopt;
 }
@@ -65,10 +70,16 @@ std::optional<ResultView> resultViewFromText(const std::string &text) {
 /**
  * @brief Text the QML attribute stores for one left tab.
  * @param mode Tab to show.
- * @return `shot` or `asset`.
+ * @return `shot`, `asset`, or `shelf`.
  */
 const char *textOfBrowserMode(dal::BrowserMode mode) {
-    return mode == dal::BrowserMode::Asset ? kBrowserModeAsset : kBrowserModeShot;
+    if (mode == dal::BrowserMode::Asset) {
+        return kBrowserModeAsset;
+    }
+    if (mode == dal::BrowserMode::Shelf) {
+        return kBrowserModeShelf;
+    }
+    return kBrowserModeShot;
 }
 
 /**
@@ -135,6 +146,7 @@ void ShotBrowser::initScreens() {
     project_selector_ = std::make_unique<ProjectSelector>(panel_);
     shot_tree_ = std::make_unique<ShotTree>(panel_);
     asset_list_ = std::make_unique<AssetList>(panel_);
+    shelf_list_ = std::make_unique<ShelfList>(panel_);
     version_list_ = std::make_unique<VersionList>(panel_);
     playlist_tree_ = std::make_unique<PlaylistTree>(panel_);
 }
@@ -164,9 +176,16 @@ void ShotBrowser::initSignals() {
             asset_list_->clearAssetsTree(); ///< The previous project's assets must not be reused.
             asset_list_->loadAssetsAsync();
             version_list_->clearVersions(); ///< The previous project's versions must not be reused.
-            version_list_->loadVersionsAsync();
             playlist_tree_->clearPlaylists(); ///< The previous project's playlists must not be reused.
-            playlist_tree_->loadPlaylistListAsync();
+            if (dal::browserMode() == dal::BrowserMode::Shelf) {
+                if (dal::hasActiveShelf()) {
+                    version_list_->loadVersionsAsync();
+                    playlist_tree_->loadPlaylistListAsync();
+                }
+            } else {
+                version_list_->loadVersionsAsync();
+                playlist_tree_->loadPlaylistListAsync();
+            }
         },
         Qt::DirectConnection);
     // Left tab: reload that tab's catalog. Selection stays until the other side is chosen.
@@ -176,9 +195,48 @@ void ShotBrowser::initSignals() {
         this,
         [this](dal::BrowserMode mode) {
             if (mode == dal::BrowserMode::Shot) {
+                shelf_list_->clearSelection(); ///< Shelf filters must not leak into Shot loads.
                 shot_tree_->loadSequenceShotsAsync(); ///< Loads only on the Shot tab, and keeps a tree already stored.
-            } else {
+                version_list_->clearVersions();
+                version_list_->loadVersionsAsync();
+                playlist_tree_->clearPlaylists();
+                playlist_tree_->loadPlaylistListAsync();
+            } else if (mode == dal::BrowserMode::Asset) {
+                shelf_list_->clearSelection(); ///< Shelf filters must not leak into Asset loads.
                 asset_list_->loadAssetsAsync(); ///< Loads only on the Asset tab, and keeps a list already stored.
+                version_list_->clearVersions();
+                version_list_->loadVersionsAsync();
+                playlist_tree_->clearPlaylists();
+                playlist_tree_->loadPlaylistListAsync();
+            } else {
+                shot_tree_->clearSelectedSequenceAndShot();
+                asset_list_->clearSelectedAsset();
+                version_list_->clearVersions();
+                playlist_tree_->clearPlaylists();
+                shelf_list_->selectAllByDefault(); ///< All selected; onShelfSelected reloads results.
+            }
+        },
+        Qt::DirectConnection);
+    // Shelf picked: load the active result pane with the FieldExpr Where.
+    QObject::connect(
+        shelf_list_.get(),
+        &ShelfList::onShelfSelected,
+        this,
+        [this]() {
+            if (dal::browserMode() != dal::BrowserMode::Shelf) {
+                return;
+            }
+            version_list_->clearVersions();
+            playlist_tree_->clearPlaylists();
+            if (!dal::hasActiveShelf()) {
+                return; ///< Cleared selection keeps both panes empty.
+            }
+            shot_tree_->clearSelectedSequenceAndShot(); ///< Shelf search scopes the project.
+            asset_list_->clearSelectedAsset();
+            if (dal::resultView() == ResultView::Playlist) {
+                playlist_tree_->loadPlaylistListAsync();
+            } else {
+                version_list_->loadVersionsAsync();
             }
         },
         Qt::DirectConnection);
@@ -191,11 +249,15 @@ void ShotBrowser::initSignals() {
             if (view == ResultView::Playlist) {
                 version_list_->clearVersions(); ///< Versions and playlist are mutually exclusive.
                 playlist_tree_->clearPlaylists();
-                playlist_tree_->loadPlaylistListAsync();
+                if (dal::browserMode() != dal::BrowserMode::Shelf || dal::hasActiveShelf()) {
+                    playlist_tree_->loadPlaylistListAsync();
+                }
             } else {
                 playlist_tree_->clearPlaylists();
                 version_list_->clearVersions();
-                version_list_->loadVersionsAsync();
+                if (dal::browserMode() != dal::BrowserMode::Shelf || dal::hasActiveShelf()) {
+                    version_list_->loadVersionsAsync();
+                }
             }
         },
         Qt::DirectConnection);
@@ -250,6 +312,9 @@ void ShotBrowser::attribute_changed(const utility::Uuid &attr_uuid, int role) {
     }
     if (asset_list_) {
         asset_list_->attribute_changed(attr_uuid, role); ///< Selected asset, then onAssetSelected.
+    }
+    if (shelf_list_) {
+        shelf_list_->attribute_changed(attr_uuid, role); ///< Shelf select, upsert, or remove.
     }
     if (playlist_tree_) {
         playlist_tree_->attribute_changed(attr_uuid, role); ///< Unfold, search, or open playlist.

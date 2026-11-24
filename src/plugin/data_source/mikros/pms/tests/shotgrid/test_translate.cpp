@@ -52,7 +52,7 @@ TEST_CASE("filters for version where name contains") {
 
 TEST_CASE("filters for sequence in project by id") {
     const ShotGridMapping mapping = filledMapping();
-    Ir ir = Sequence().In(scope::project == std::int64_t{7}).ir();
+    Ir ir = Sequence().In(project::id == std::int64_t{7}).ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
     REQUIRE(filters.is_array());
@@ -64,7 +64,7 @@ TEST_CASE("filters for sequence in project by id") {
 
 TEST_CASE("filters for version in project use the direct project field") {
     const ShotGridMapping mapping = filledMapping();
-    Ir ir = Version().In(scope::project == std::int64_t{4}).ir();
+    Ir ir = Version().In(project::id == std::int64_t{4}).ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
     REQUIRE(filters.is_array());
@@ -77,7 +77,7 @@ TEST_CASE("filters for version in project use the direct project field") {
 
 TEST_CASE("filters for version in sequence include versions on its shots") {
     const ShotGridMapping mapping = filledMapping();
-    Ir ir = Version().In(scope::sequence == std::int64_t{8}).ir();
+    Ir ir = Version().In(sequence::id == std::int64_t{8}).ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
     REQUIRE(filters.is_object());
@@ -94,8 +94,8 @@ TEST_CASE("filters for version in sequence include versions on its shots") {
 TEST_CASE("filters for version in shot and playlist") {
     const ShotGridMapping mapping = filledMapping();
     Ir ir = Version()
-                .In(scope::shot == std::int64_t{9})
-                .In(scope::playlist == std::int64_t{3})
+                .In(shot::id == std::int64_t{9})
+                .In(playlist::id == std::int64_t{3})
                 .ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
@@ -111,9 +111,20 @@ TEST_CASE("filters for version in shot and playlist") {
     CHECK(filters["conditions"][1][2]["id"] == 3);
 }
 
+TEST_CASE("filters for version in shot name contains use mapping link path") {
+    const ShotGridMapping mapping = filledMapping();
+    Ir ir = Version().In(contains(shot::name, "sh0010")).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
+    REQUIRE(filters.is_array());
+    CHECK(filters[0] == "entity.Shot.code");
+    CHECK(filters[1] == "contains");
+    CHECK(filters[2] == "sh0010");
+}
+
 TEST_CASE("filters for shot in project inherit through sequence") {
     const ShotGridMapping mapping = filledMapping();
-    Ir ir = Shot().In(scope::project == std::int64_t{1}).ir();
+    Ir ir = Shot().In(project::id == std::int64_t{1}).ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
     REQUIRE(filters.is_array());

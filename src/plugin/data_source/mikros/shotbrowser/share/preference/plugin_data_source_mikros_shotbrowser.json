@@ -8,7 +8,7 @@
                     ],
                     "datatype": "string",
                     "default_value": "shot",
-                    "description": "Shot or asset tree shown in the Mikros Shot Browser.",
+                    "description": "Shot, asset, or shelf list shown in the Mikros Shot Browser.",
                     "path": "/plugin/data_source/mikros_shotbrowser/browser_mode",
                     "value": "shot"
                 },
@@ -31,6 +31,16 @@
                     "description": "Left column width in pixels. Zero keeps the default ratio.",
                     "path": "/plugin/data_source/mikros_shotbrowser/left_pane_width",
                     "value": 0.0
+                },
+                "shelves": {
+                    "context": [
+                        "PLUGIN"
+                    ],
+                    "datatype": "json",
+                    "default_value": [],
+                    "description": "User shelves: named FieldExpr filters for versions or playlists.",
+                    "path": "/plugin/data_source/mikros_shotbrowser/shelves",
+                    "value": []
                 }
             }
         }

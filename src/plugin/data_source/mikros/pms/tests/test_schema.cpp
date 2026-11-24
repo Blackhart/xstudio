@@ -115,10 +115,15 @@ TEST_CASE("schema loads the playlist entity") {
     const FieldSpec *openNotes = playlist->field("open_notes_count");
     REQUIRE(openNotes != nullptr);
     CHECK(openNotes->type == "int");
-    CHECK(playlist->field("departments") != nullptr);
+    CHECK(openNotes->filter);
+    const FieldSpec *departments = playlist->field("departments");
+    REQUIRE(departments != nullptr);
+    CHECK(departments->filter);
     CHECK(playlist->field("created_at") != nullptr);
     CHECK(playlist->field("category") != nullptr);
-    CHECK(playlist->field("author") != nullptr);
+    const FieldSpec *author = playlist->field("author");
+    REQUIRE(author != nullptr);
+    CHECK(author->filter);
     CHECK(schema.allowsInParent(*playlist, "project"));
 }
 
@@ -160,16 +165,22 @@ TEST_CASE("schema loads the version entity") {
     const FieldSpec *author = version->field("author");
     REQUIRE(author != nullptr);
     CHECK(author->type == "string");
-    CHECK_FALSE(author->filter);
+    CHECK(author->filter);
+
+    const FieldSpec *status = version->field("status");
+    REQUIRE(status != nullptr);
+    CHECK(status->type == "string");
+    CHECK(status->filter);
 
     const FieldSpec *openNotes = version->field("open_notes_count");
     REQUIRE(openNotes != nullptr);
     CHECK(openNotes->type == "int");
-    CHECK_FALSE(openNotes->filter);
+    CHECK(openNotes->filter);
 
     const FieldSpec *synced = version->field("synced_to_client");
     REQUIRE(synced != nullptr);
     CHECK(synced->type == "int");
+    CHECK(synced->filter);
 
     const FieldSpec *frames = version->field("frames");
     REQUIRE(frames != nullptr);
@@ -219,9 +230,9 @@ TEST_CASE("generated proxies use the schema keys") {
     CHECK(std::string(version::image.key) == "image");
     CHECK(std::string(version::openNotesCount.key) == "open_notes_count");
     CHECK(Version().ir().entity == "version");
-    CHECK(std::string(scope::project.key) == "project");
-    CHECK(std::string(scope::sequence.key) == "sequence");
-    CHECK(std::string(scope::shot.key) == "shot");
-    CHECK(std::string(scope::asset.key) == "asset");
-    CHECK(std::string(scope::playlist.key) == "playlist");
+    CHECK(std::string(Project::entityName) == "project");
+    CHECK(std::string(Sequence::entityName) == "sequence");
+    CHECK(std::string(Shot::entityName) == "shot");
+    CHECK(std::string(Asset::entityName) == "asset");
+    CHECK(std::string(Playlist::entityName) == "playlist");
 }

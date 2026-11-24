@@ -21,6 +21,7 @@ namespace xstudio::mikros_shotbrowser {
 class AssetList;
 class PlaylistTree;
 class ProjectSelector;
+class ShelfList;
 class ShotTree;
 class VersionList;
 
@@ -67,7 +68,7 @@ class ShotBrowser : public QObject {
   signals:
     /**
      * @brief Emitted after the left tab is stored from the QML.
-     * @param mode `Shot` or `Asset`.
+     * @param mode `Shot`, `Asset`, or `Shelf`.
      */
     void onBrowserModeSelected(dal::BrowserMode mode);
 
@@ -119,9 +120,10 @@ class ShotBrowser : public QObject {
     std::unique_ptr<ProjectSelector> project_selector_; ///< Project combo and `onProjectSelected`.
     std::unique_ptr<ShotTree> shot_tree_;               ///< Sequence tree and `onSequenceAndShotSelected`.
     std::unique_ptr<AssetList> asset_list_;             ///< Asset combo and `onAssetSelected`.
+    std::unique_ptr<ShelfList> shelf_list_;             ///< Named FieldExpr shelves.
     std::unique_ptr<VersionList> version_list_;         ///< Versions, cards, and the open action.
     std::unique_ptr<PlaylistTree> playlist_tree_;       ///< Playlist tree.
-    module::StringAttribute *browser_mode_ = nullptr; ///< `shot` or `asset` written by the QML.
+    module::StringAttribute *browser_mode_ = nullptr; ///< `shot`, `asset`, or `shelf` written by the QML.
     module::StringAttribute *result_view_attribute_ = nullptr; ///< `versions` or `playlist` written by the QML.
 };
 

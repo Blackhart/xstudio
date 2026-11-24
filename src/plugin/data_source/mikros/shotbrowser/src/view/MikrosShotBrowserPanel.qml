@@ -26,7 +26,7 @@ Item {
     function restoreMode() {
         Qt.callLater(function() {
             const saved = modePref.value
-            if (saved === "shot" || saved === "asset")
+            if (saved === "shot" || saved === "asset" || saved === "shelf")
                 browserMode = saved
             browserModeAttr.value = browserMode
         })
@@ -205,6 +205,19 @@ Item {
                         }
                     }
 
+                    XsPrimaryButton {
+                        Layout.preferredWidth: panel.tabHeight
+                        Layout.fillHeight: true
+                        imgSrc: "qrc:/icons/filter.svg"
+                        toolTip: "Shelves"
+                        isActive: panel.browserMode === "shelf"
+                        onClicked: {
+                            panel.browserMode = "shelf"
+                            modePref.value = "shelf"
+                            browserModeAttr.value = "shelf"
+                        }
+                    }
+
                     Item {
                         Layout.preferredWidth: XsStyleSheet.panelPadding * 4
                         Layout.fillHeight: true
@@ -225,6 +238,10 @@ Item {
                 Bar {
                     barHeight: panel.tabHeight
                     spacing: panel.buttonSpacing
+                    visible: panel.browserMode !== "shelf"
+                    Layout.preferredHeight: visible ? panel.tabHeight : 0
+                    Layout.minimumHeight: visible ? panel.tabHeight : 0
+                    Layout.maximumHeight: visible ? panel.tabHeight : 0
 
                     XsSearchBar {
                         id: treeSearch
@@ -234,7 +251,7 @@ Item {
                         onTextChanged: {
                             if (panel.browserMode === "asset")
                                 assetSearch.value = text
-                            else
+                            else if (panel.browserMode === "shot")
                                 panel.treeQuery = text
                         }
                     }
@@ -253,6 +270,11 @@ Item {
                     AssetList {
                         anchors.fill: parent
                         visible: panel.browserMode === "asset"
+                    }
+
+                    ShelfList {
+                        anchors.fill: parent
+                        visible: panel.browserMode === "shelf"
                     }
                 }
             }

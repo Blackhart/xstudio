@@ -208,9 +208,30 @@ std::optional<std::string> VersionList::activeSearchQuery() const {
 // Version list. The panel clears first; unknown rows become cards and publish JSON.
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/**
+ * @brief Shelf FieldExpr for a version load, or null when none applies.
+ * @return Shared Where tree for CatalogLoadRequest::where.
+ */
+std::shared_ptr<const pms::ExprNode> versionShelfWhere() {
+    if (dal::browserMode() != dal::BrowserMode::Shelf) {
+        return nullptr; ///< Shot/Asset mode ignores shelves.
+    }
+    if (!dal::hasActiveShelf()) {
+        return nullptr;
+    }
+    return dal::activeShelfFilter("version"); ///< All / no version terms → null.
+}
+
+} // namespace
+
 void VersionList::loadVersionsAsync() {
     if (dal::selectedProject() == -1) {
         return; ///< No project: leave whatever clearVersions already emptied.
+    }
+    if (dal::browserMode() == dal::BrowserMode::Shelf && !dal::hasActiveShelf()) {
+        return; ///< Shelf mode waits for a selection before any find.
     }
     next_cursor_.reset(); ///< A new first page replaces any pending continuation.
     more_incoming_ = false;
@@ -218,12 +239,14 @@ void VersionList::loadVersionsAsync() {
     const std::int64_t projectId = dal::selectedProject();
     const VersionParents parents = readVersionParents();
     const std::optional<std::string> nameOrId = activeSearchQuery();
+    const std::shared_ptr<const pms::ExprNode> where = versionShelfWhere();
     CatalogLoadRequest request = makeCatalogRequest(
         &panel_, CatalogKind::Version, requestId, projectId);
     request.sequence = parents.sequenceId;
     request.shot = parents.shotId;
     request.asset = parents.assetId;
     request.name_or_id = nameOrId;
+    request.where = where;
     request.generation = version_request_id_; ///< The worker stops before the next find when this moves.
     launchCatalogLoad(panel_.system(), std::move(request));
     CatalogLoadRequest counts =
@@ -232,6 +255,7 @@ void VersionList::loadVersionsAsync() {
     counts.shot = parents.shotId;
     counts.asset = parents.assetId;
     counts.name_or_id = nameOrId;
+    counts.where = where;
     counts.generation = version_request_id_; ///< Drop a stale footer with the pages.
     launchCatalogLoad(panel_.system(), std::move(counts));
 }
@@ -256,6 +280,7 @@ void VersionList::loadMoreVersionsAsync() {
     request.asset = parents.assetId;
     request.cursor = next_cursor_;
     request.name_or_id = activeSearchQuery();
+    request.where = versionShelfWhere();
     request.generation = version_request_id_; ///< Drop the page when clearVersions moves the id.
     launchCatalogLoad(panel_.system(), std::move(request));
 }

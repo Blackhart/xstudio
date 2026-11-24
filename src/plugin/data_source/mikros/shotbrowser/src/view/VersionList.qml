@@ -21,6 +21,8 @@ Item {
         const projectId = String(selectedProject.value ?? "")
         if (!projectId || projectId === "-1")
             return "No project selected"
+        if (String(browserMode.value ?? "") === "shelf" && !String(selectedShelf.value ?? ""))
+            return "No filter selected"
         if (!versionsLoaded.value)
             return "Loading…"
         return "No results"
@@ -52,6 +54,18 @@ Item {
     }
 
     XsAttributeValue {
+        id: browserMode
+        attributeTitle: "BrowserMode"
+        model: attributes
+    }
+
+    XsAttributeValue {
+        id: selectedShelf
+        attributeTitle: "SelectedShelf"
+        model: attributes
+    }
+
+    XsAttributeValue {
         id: versionCardsAttr
         attributeTitle: "VersionCards"
         model: attributes
@@ -79,10 +93,21 @@ Item {
 
     property int loadMoreToken: 0
     property var cardRows: []
+    property int previewedVersionId: 0 ///< Last previewed card; orange contour stays on it.
 
     // Watch the attribute without putting contentY in the `names:` binding (binding loop).
     property var cardsSource: versionCardsAttr.value
-    onCardsSourceChanged: reloadCardRows()
+    onCardsSourceChanged: {
+        reloadCardRows()
+        if (!versionCardRows().length)
+            previewedVersionId = 0
+    }
+
+    // Drop the highlight when the list context changes (project, mode, or shelf).
+    property string previewContextKey: String(selectedProject.value ?? "")
+                                       + "|" + String(browserMode.value ?? "")
+                                       + "|" + String(selectedShelf.value ?? "")
+    onPreviewContextKeyChanged: previewedVersionId = 0
 
     // Hold scroll on append / thumbs; reset to top on clear or first page.
     function reloadCardRows() {
@@ -119,6 +144,8 @@ Item {
         }
         placeholder: {
             selectedProject.value
+            browserMode.value
+            selectedShelf.value
             versionsLoaded.value
             return versions.versionListPlaceholder()
         }
@@ -130,7 +157,11 @@ Item {
 
         VersionCard {
             id: card
-            onPreviewCurrent: versions.previewRequested(card.payload())
+            chosen: card.versionId !== 0 && card.versionId === versions.previewedVersionId
+            onPreviewCurrent: {
+                versions.previewedVersionId = card.versionId
+                versions.previewRequested(card.payload())
+            }
             onOpenCurrent: versions.openRequested(card.payload())
             onMenuRequested: function(x, y) {
                 versions.menuRequested(card.payload(), card, x, y)

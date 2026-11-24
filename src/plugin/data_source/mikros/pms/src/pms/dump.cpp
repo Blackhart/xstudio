@@ -98,9 +98,11 @@ void writeExpr(std::ostringstream &out, const ExprNode &node, int indent) {
     if (!node.value) {
         throw Error("dump: leaf \"" + node.key + "\" has no value");
     }
-    const char *kind = node.kind == ExprKind::Scope ? "scope" : "field";
-    out << gap << kind << ' ' << node.key << ' ' << exprOpName(node.op) << ' '
-        << dumpValue(*node.value) << '\n';
+    out << gap << "field ";
+    if (!node.parent.empty()) {
+        out << node.parent << '.';
+    }
+    out << node.key << ' ' << exprOpName(node.op) << ' ' << dumpValue(*node.value) << '\n';
 }
 
 } // namespace

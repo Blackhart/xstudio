@@ -21,6 +21,7 @@ TextField { id: widget
     font.pixelSize: XsStyleSheet.fontSize
     font.family: XsStyleSheet.fontFamily
     color: XsStyleSheet.primaryTextColor
+    placeholderTextColor: XsStyleSheet.hintColor
     selectedTextColor: "white"
     selectionColor: XsStyleSheet.accentColor
 

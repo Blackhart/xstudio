@@ -97,9 +97,6 @@ def main():
     entities = file_banner() + ["#pragma once", '#include "pms/expr.hpp"', "", "namespace pms {", ""]
     factories = file_banner() + ["#pragma once", "", "namespace pms {", ""]
 
-    scope_parents = []
-    seen_parents = set()
-
     for key, spec in entities_yaml.items():
         struct = pascal(key)
         scope = expanded_scope(key, entities_yaml)
@@ -149,10 +146,6 @@ def main():
             entities.append(f"    /// Proxy for `{field}`.")
             entities.append(f"    inline constexpr auto {ident} = {struct}::{ident};")
         entities.extend(["}", ""])
-        for parent in scope:
-            if parent not in seen_parents:
-                seen_parents.add(parent)
-                scope_parents.append(parent)
         factories.extend(
             [
                 "/**",
@@ -167,31 +160,7 @@ def main():
             ]
         )
 
-    entities.extend(
-        [
-            "/**",
-            " * @brief Parent proxies for In().",
-            " *",
-            " * Named apart from field namespaces (`pms::project`, …) because a",
-            " * variable and a namespace cannot share a name in C++.",
-            " */",
-            "namespace scope {",
-            "",
-        ]
-    )
-    for parent in scope_parents:
-        struct = pascal(parent)
-        ident = camel(parent)
-        entities.extend(
-            [
-                "/**",
-                f" * @brief Scope proxy for parent `{parent}` in In().",
-                " */",
-                f'inline constexpr ScopeRef<{struct}> {ident}{{"{parent}"}};',
-                "",
-            ]
-        )
-    entities.extend(["}", "", "}", ""])
+    entities.extend(["}", ""])
     factories.extend(["}", ""])
 
     (out_dir / "entities.hpp").write_text("\n".join(entities))

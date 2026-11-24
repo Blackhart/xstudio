@@ -726,12 +726,28 @@ std::optional<std::int64_t> idByName(const Records &catalog, const std::string &
 }
 
 /**
- * @brief Resolves a scope leaf to a parent id from the parent catalog.
+ * @brief Finds a parent catalog row by id.
+ */
+const Record *parentById(const Records &parents, std::int64_t id) {
+    for (const Record &row : parents) {
+        if (std::get<std::int64_t>(row.fields.at("id")) == id) {
+            return &row;
+        }
+    }
+    return nullptr;
+}
+
+/**
+ * @brief Resolves an In leaf that filters by parent id to that id.
  */
 std::optional<std::int64_t> parentId(
     const Records &parents, const ExprNode &node, const char *parentKey) {
-    if (node.key != parentKey) {
-        throw Error("fake backend: parent \"" + node.key + "\" is not available");
+    if (node.parent != parentKey) {
+        throw Error("fake backend: parent \"" + node.parent + "\" is not available");
+    }
+    if (node.key != "id") {
+        throw Error(
+            "fake backend: parentId expects id field on \"" + node.parent + "\"");
     }
     if (!node.value) {
         throw Error(std::string("fake backend: parent \"") + parentKey + "\" has no value");
@@ -739,10 +755,7 @@ std::optional<std::int64_t> parentId(
     if (const auto *id = std::get_if<std::int64_t>(&*node.value)) {
         return *id;
     }
-    if (const auto *name = std::get_if<std::string>(&*node.value)) {
-        return idByName(parents, *name);
-    }
-    throw Error(std::string("fake backend: parent \"") + parentKey + "\" expects an id or a name");
+    throw Error(std::string("fake backend: parent \"") + parentKey + "\" id expects an int");
 }
 
 bool matchesIn(
@@ -779,20 +792,32 @@ bool matchesIn(
         return node.op == ExprOp::And;
     }
 
-    if (node.kind != ExprKind::Scope) {
-        throw Error("fake backend: in expects a scope leaf");
+    if (node.kind != ExprKind::Field) {
+        throw Error("fake backend: in expects a field leaf");
     }
-    const auto expected = parentId(parents, node, parentKey);
+    if (node.parent != parentKey) {
+        throw Error("fake backend: parent \"" + node.parent + "\" is not available");
+    }
+    // Parent id eq/ne: compare the private link field to the expected id.
+    if (node.key == "id" && (node.op == ExprOp::Eq || node.op == ExprOp::Ne)) {
+        const auto expected = parentId(parents, node, parentKey);
+        const auto linked = row.fields.find(linkField);
+        const bool equal =
+            expected && linked != row.fields.end() && linked->second == Value{*expected};
+        return node.op == ExprOp::Eq ? equal : !equal;
+    }
+    // Other parent fields: resolve the linked parent row, then match the field on it.
     const auto linked = row.fields.find(linkField);
-    const bool equal =
-        expected && linked != row.fields.end() && linked->second == Value{*expected};
-    if (node.op == ExprOp::Eq) {
-        return equal;
+    if (linked == row.fields.end() || !std::holds_alternative<std::int64_t>(linked->second)) {
+        return false;
     }
-    if (node.op == ExprOp::Ne) {
-        return !equal;
+    const Record *parent = parentById(parents, std::get<std::int64_t>(linked->second));
+    if (!parent) {
+        return false;
     }
-    throw Error("fake backend: operator not allowed on parent \"" + node.key + "\"");
+    ExprNode fieldOnly = node;
+    fieldOnly.parent.clear(); ///< matchesWhere ignores parent.
+    return matchesWhere(*parent, fieldOnly);
 }
 
 /**
@@ -800,7 +825,7 @@ bool matchesIn(
  *
  * @param row Catalog row with private link fields.
  * @param node In expression root.
- * @param matchLeaf Resolves one scope leaf against the correct parent catalog.
+ * @param matchLeaf Resolves one parent field leaf against the correct catalog.
  */
 template <typename MatchLeaf>
 bool matchesScopedIn(const Record &row, const ExprNode &node, MatchLeaf &&matchLeaf) {
@@ -831,8 +856,8 @@ bool matchesScopedIn(const Record &row, const ExprNode &node, MatchLeaf &&matchL
         }
         return node.op == ExprOp::And;
     }
-    if (node.kind != ExprKind::Scope) {
-        throw Error("fake backend: in expects a scope leaf");
+    if (node.kind != ExprKind::Field) {
+        throw Error("fake backend: in expects a field leaf");
     }
     return matchLeaf(row, node);
 }
@@ -1029,13 +1054,14 @@ Records FakeBackend::matchAll(const Ir &ir) const {
         for (const Record &shot : shots_) {
             if (ir.in) {
                 const auto matchShotLeaf = [&](const Record &row, const ExprNode &node) {
-                    if (node.key == "sequence") {
+                    if (node.parent == "sequence") {
                         return matchesIn(row, sequences_, node, "sequence", "sequence");
                     }
-                    if (node.key == "project") {
+                    if (node.parent == "project") {
                         return matchesIn(row, projects_, node, "project", "project");
                     }
-                    throw Error("fake backend: parent \"" + node.key + "\" is not available");
+                    throw Error(
+                        "fake backend: parent \"" + node.parent + "\" is not available");
                 };
                 if (!matchesScopedIn(shot, *ir.in, matchShotLeaf)) {
                     continue;
@@ -1092,36 +1118,49 @@ Records FakeBackend::matchAll(const Ir &ir) const {
         for (const Record &version : versions_) {
             if (ir.in) {
                 const auto matchVersionLeaf = [&](const Record &row, const ExprNode &node) {
-                    if (node.key == "shot") {
+                    if (node.parent == "shot") {
                         return matchesIn(row, shots_, node, "shot", "shot");
                     }
-                    if (node.key == "sequence") {
+                    if (node.parent == "sequence") {
                         return matchesIn(row, sequences_, node, "sequence", "sequence");
                     }
-                    if (node.key == "asset") {
+                    if (node.parent == "asset") {
                         return matchesIn(row, assets_, node, "asset", "asset");
                     }
-                    if (node.key == "playlist") {
-                        const auto expected = parentId(playlists_, node, "playlist");
+                    if (node.parent == "playlist") {
                         const auto versionId = std::get<std::int64_t>(row.fields.at("id"));
                         const auto found = version_playlists_.find(versionId);
-                        const bool member =
-                            expected && found != version_playlists_.end() &&
-                            std::find(found->second.begin(), found->second.end(), *expected) !=
-                                found->second.end();
-                        if (node.op == ExprOp::Eq) {
-                            return member;
+                        if (found == version_playlists_.end()) {
+                            return node.op == ExprOp::Ne && node.key == "id";
                         }
-                        if (node.op == ExprOp::Ne) {
-                            return !member;
+                        if (node.key == "id" &&
+                            (node.op == ExprOp::Eq || node.op == ExprOp::Ne)) {
+                            const auto expected = parentId(playlists_, node, "playlist");
+                            const bool member =
+                                expected &&
+                                std::find(
+                                    found->second.begin(), found->second.end(), *expected) !=
+                                    found->second.end();
+                            return node.op == ExprOp::Eq ? member : !member;
                         }
-                        throw Error(
-                            "fake backend: operator not allowed on parent \"" + node.key + "\"");
+                        for (const std::int64_t playlistId : found->second) {
+                            const Record *playlist = parentById(playlists_, playlistId);
+                            if (!playlist) {
+                                continue;
+                            }
+                            ExprNode fieldOnly = node;
+                            fieldOnly.parent.clear();
+                            if (matchesWhere(*playlist, fieldOnly)) {
+                                return true;
+                            }
+                        }
+                        return false;
                     }
-                    if (node.key == "project") {
+                    if (node.parent == "project") {
                         return matchesIn(row, projects_, node, "project", "project");
                     }
-                    throw Error("fake backend: parent \"" + node.key + "\" is not available");
+                    throw Error(
+                        "fake backend: parent \"" + node.parent + "\" is not available");
                 };
                 if (!matchesScopedIn(version, *ir.in, matchVersionLeaf)) {
                     continue;

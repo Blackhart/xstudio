@@ -101,12 +101,12 @@ where:
 }
 
 TEST_CASE("count dump names the verb") {
-    Ir ir = Sequence().In(scope::project == std::int64_t{1}).ir();
+    Ir ir = Sequence().In(project::id == std::int64_t{1}).ir();
     ir.op = Op::Count;
     const char *expected = R"(op: count
 entity: sequence
 in:
-  scope project eq 1
+  field project.id eq 1
 where:
 )";
     CHECK(dump(ir) == expected);
@@ -116,80 +116,80 @@ TEST_CASE("in builds a scope leaf on sequence by project id") {
     const char *expected = R"(op:
 entity: sequence
 in:
-  scope project eq 1
+  field project.id eq 1
 where:
 )";
-    CHECK(dump(Sequence().In(scope::project == std::int64_t{1}).ir()) == expected);
+    CHECK(dump(Sequence().In(project::id == std::int64_t{1}).ir()) == expected);
 }
 
 TEST_CASE("in builds a scope leaf on version by sequence id") {
     const char *expected = R"(op:
 entity: version
 in:
-  scope sequence eq 7
+  field sequence.id eq 7
 where:
 )";
-    CHECK(dump(Version().In(scope::sequence == std::int64_t{7}).ir()) == expected);
+    CHECK(dump(Version().In(sequence::id == std::int64_t{7}).ir()) == expected);
 }
 
 TEST_CASE("in builds a scope leaf on shot by sequence id") {
     const char *expected = R"(op:
 entity: shot
 in:
-  scope sequence eq 3
+  field sequence.id eq 3
 where:
 )";
-    CHECK(dump(Shot().In(scope::sequence == std::int64_t{3}).ir()) == expected);
+    CHECK(dump(Shot().In(sequence::id == std::int64_t{3}).ir()) == expected);
 }
 
 TEST_CASE("in builds a scope leaf on version by shot id") {
     const char *expected = R"(op:
 entity: version
 in:
-  scope shot eq 9
+  field shot.id eq 9
 where:
 )";
-    CHECK(dump(Version().In(scope::shot == std::int64_t{9}).ir()) == expected);
+    CHECK(dump(Version().In(shot::id == std::int64_t{9}).ir()) == expected);
 }
 
 TEST_CASE("in builds a scope leaf on asset by project id") {
     const char *expected = R"(op:
 entity: asset
 in:
-  scope project eq 1
+  field project.id eq 1
 where:
 )";
-    CHECK(dump(Asset().In(scope::project == std::int64_t{1}).ir()) == expected);
+    CHECK(dump(Asset().In(project::id == std::int64_t{1}).ir()) == expected);
 }
 
 TEST_CASE("in builds a scope leaf on version by asset id") {
     const char *expected = R"(op:
 entity: version
 in:
-  scope asset eq 4
+  field asset.id eq 4
 where:
 )";
-    CHECK(dump(Version().In(scope::asset == std::int64_t{4}).ir()) == expected);
+    CHECK(dump(Version().In(asset::id == std::int64_t{4}).ir()) == expected);
 }
 
 TEST_CASE("in builds a scope leaf on playlist by project id") {
     const char *expected = R"(op:
 entity: playlist
 in:
-  scope project eq 1
+  field project.id eq 1
 where:
 )";
-    CHECK(dump(Playlist().In(scope::project == std::int64_t{1}).ir()) == expected);
+    CHECK(dump(Playlist().In(project::id == std::int64_t{1}).ir()) == expected);
 }
 
 TEST_CASE("in builds a scope leaf on version by playlist id") {
     const char *expected = R"(op:
 entity: version
 in:
-  scope playlist eq 5
+  field playlist.id eq 5
 where:
 )";
-    CHECK(dump(Version().In(scope::playlist == std::int64_t{5}).ir()) == expected);
+    CHECK(dump(Version().In(playlist::id == std::int64_t{5}).ir()) == expected);
 }
 
 TEST_CASE("fields dumps the projection and always keeps id and name") {

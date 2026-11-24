@@ -341,23 +341,47 @@ bool PlaylistTree::checkResultViewIsPlaylist() const {
     return dal::resultView() == ResultView::Playlist;
 }
 
+namespace {
+
+/**
+ * @brief Shelf FieldExpr for a playlist load, or null when none applies.
+ * @return Shared Where tree for CatalogLoadRequest::where.
+ */
+std::shared_ptr<const pms::ExprNode> playlistShelfWhere() {
+    if (dal::browserMode() != dal::BrowserMode::Shelf) {
+        return nullptr; ///< Shot/Asset mode ignores shelves.
+    }
+    if (!dal::hasActiveShelf()) {
+        return nullptr;
+    }
+    return dal::activeShelfFilter("playlist"); ///< All / no playlist terms → null.
+}
+
+} // namespace
+
 void PlaylistTree::loadPlaylistListAsync() {
     if (!checkResultViewIsPlaylist() || dal::selectedProject() == -1) {
         return; ///< Versions is showing, or no project is selected. Leave whatever clearPlaylists emptied.
+    }
+    if (dal::browserMode() == dal::BrowserMode::Shelf && !dal::hasActiveShelf()) {
+        return; ///< Shelf mode waits for a selection before any find.
     }
     next_cursor_.reset(); ///< A new first page replaces any pending continuation.
     more_incoming_ = false;
     const std::uint64_t requestId = ++(*playlist_request_id_); ///< Stop the name fetch already running.
     const std::int64_t projectId = dal::selectedProject();
     const std::optional<std::string> nameOrId = activeSearchQuery();
+    const std::shared_ptr<const pms::ExprNode> where = playlistShelfWhere();
     CatalogLoadRequest request =
         makeCatalogRequest(&panel_, CatalogKind::PlaylistTree, requestId, projectId);
     request.name_or_id = nameOrId;
+    request.where = where;
     request.generation = playlist_request_id_; ///< The worker stops before the next find when this moves.
     launchCatalogLoad(panel_.system(), std::move(request));
     CatalogLoadRequest counts =
         makeCatalogRequest(&panel_, CatalogKind::PlaylistCount, requestId, projectId);
     counts.name_or_id = nameOrId;
+    counts.where = where;
     counts.generation = playlist_request_id_; ///< Drop a stale footer with the pages.
     launchCatalogLoad(panel_.system(), std::move(counts));
 }
@@ -377,6 +401,7 @@ void PlaylistTree::loadMorePlaylistsAsync() {
         &panel_, CatalogKind::PlaylistTree, requestId, dal::selectedProject());
     request.cursor = next_cursor_;
     request.name_or_id = activeSearchQuery();
+    request.where = playlistShelfWhere();
     request.generation = playlist_request_id_; ///< Drop the page when clearPlaylists moves the id.
     launchCatalogLoad(panel_.system(), std::move(request));
 }

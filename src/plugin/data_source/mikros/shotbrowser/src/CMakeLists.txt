@@ -11,6 +11,7 @@ set(SOURCES
 	model/constants.cpp
 	model/dal/dal.cpp
 	model/log.cpp
+	model/shelf_store.cpp
 	mikros_shotbrowser.cpp
 	utility/home.cpp
 	utility/catalog.cpp
@@ -21,6 +22,7 @@ set(SOURCES
 	viewModel/shot_browser.cpp
 	viewModel/shot_tree.cpp
 	viewModel/asset_list.cpp
+	viewModel/shelf_list.cpp
 	viewModel/version_card.cpp
 	viewModel/version_list.cpp
 	viewModel/playlist_card.cpp
@@ -78,6 +80,8 @@ qt_add_qml_module(${PROJECT_NAME}
 		view/ProjectSelector.qml
 		view/ShotTree.qml
 		view/AssetList.qml
+		view/ShelfList.qml
+		view/ShelfEditPopup.qml
 		view/VersionList.qml
 		view/VersionCard.qml
 		view/PlaylistTree.qml

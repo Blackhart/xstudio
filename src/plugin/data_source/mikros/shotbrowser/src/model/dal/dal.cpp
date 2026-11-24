@@ -172,16 +172,16 @@ decltype(pms::Version()) versionScopeQuery(
     std::optional<std::int64_t> playlistId) {
     auto query = pms::Version();
     if (shotId) {
-        query = query.In(pms::scope::shot == *shotId);
+        query = query.In(pms::shot::id == *shotId);
     } else if (sequenceId) {
-        query = query.In(pms::scope::sequence == *sequenceId);
+        query = query.In(pms::sequence::id == *sequenceId);
     } else if (assetId) {
-        query = query.In(pms::scope::asset == *assetId);
+        query = query.In(pms::asset::id == *assetId);
     } else {
-        query = query.In(pms::scope::project == projectId);
+        query = query.In(pms::project::id == projectId);
     }
     if (playlistId) {
-        query = query.In(pms::scope::playlist == *playlistId);
+        query = query.In(pms::playlist::id == *playlistId);
     }
     return query;
 }
@@ -411,6 +411,87 @@ void setBrowserMode(BrowserMode mode) {
     shotbrowserContext().setBrowserMode(mode);
 }
 
+bool hasActiveShelf() {
+    return shotbrowserContext().hasActiveShelf();
+}
+
+const std::map<std::string, std::shared_ptr<const pms::ExprNode>> &activeShelfFilters() {
+    return shotbrowserContext().activeShelfFilters();
+}
+
+std::shared_ptr<const pms::ExprNode> activeShelfFilter(const std::string &entity) {
+    const auto &filters = activeShelfFilters();
+    const auto found = filters.find(entity);
+    if (found == filters.end()) {
+        return nullptr;
+    }
+    return found->second;
+}
+
+void clearActiveShelf() {
+    shotbrowserContext().clearActiveShelf();
+}
+
+void setActiveShelf(std::map<std::string, std::shared_ptr<const pms::ExprNode>> filters) {
+    shotbrowserContext().setActiveShelf(std::move(filters));
+}
+
+std::vector<FilterableField> filterableFields(const std::string &entity) {
+    const pms::EntitySpec *spec = pms::sharedSession().schema().entity(entity);
+    if (!spec) {
+        return {};
+    }
+    std::vector<FilterableField> fields;
+    for (const pms::FieldSpec &field : spec->fields) {
+        if (!field.filter) {
+            continue; ///< Shelf editor only lists filterable fields.
+        }
+        FilterableField row;
+        row.entity = entity;
+        row.key = field.key;
+        row.type = field.type;
+        row.ops = field.ops;
+        fields.push_back(std::move(row));
+    }
+    return fields;
+}
+
+std::vector<FilterableField> filterableFieldsForShelves() {
+    static const char *kEntities[] = {"sequence", "shot", "asset", "version", "playlist"};
+    std::vector<FilterableField> fields;
+    for (const char *entity : kEntities) {
+        for (FilterableField field : filterableFields(entity)) {
+            fields.push_back(std::move(field));
+        }
+    }
+    return fields;
+}
+
+/**
+ * @brief Adds active-shelf parent In() clauses to a version query.
+ *
+ * No-op outside Shelf mode so a leftover selection cannot filter Shot/Asset loads.
+ */
+template <typename VersionQuery>
+VersionQuery applyShelfParentInsToVersion(VersionQuery query) {
+    if (browserMode() != BrowserMode::Shelf) {
+        return query;
+    }
+    if (auto shot = activeShelfFilter("shot")) {
+        query = query.In(pms::FieldExpr<struct pms::Shot>{shot});
+    }
+    if (auto sequence = activeShelfFilter("sequence")) {
+        query = query.In(pms::FieldExpr<struct pms::Sequence>{sequence});
+    }
+    if (auto asset = activeShelfFilter("asset")) {
+        query = query.In(pms::FieldExpr<struct pms::Asset>{asset});
+    }
+    if (auto playlist = activeShelfFilter("playlist")) {
+        query = query.In(pms::FieldExpr<struct pms::Playlist>{playlist});
+    }
+    return query;
+}
+
 ResultView resultView() {
     return shotbrowserContext().resultView();
 }
@@ -431,7 +512,7 @@ RowPage<poco::SequenceShots> findSequenceShots(
     std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
     try {
         const pms::Page page = findLimitedPage(
-            pms::Sequence().In(pms::scope::project == projectId), limit, cursor);
+            pms::Sequence().In(pms::project::id == projectId), limit, cursor);
         RowPage<poco::SequenceShots> out;
         out.next_cursor = page.next_cursor;
         out.rows.reserve(page.rows.size());
@@ -456,7 +537,7 @@ RowPage<poco::Asset> findAssets(
     std::optional<std::string> nameOrId) {
     return fetchPage<poco::Asset>(
         applyNameOrId(
-            pms::Asset().In(pms::scope::project == projectId),
+            pms::Asset().In(pms::project::id == projectId),
             pms::asset::id,
             pms::asset::name,
             nameOrId),
@@ -468,13 +549,17 @@ RowPage<poco::Playlist> findPlaylists(
     std::int64_t projectId,
     std::size_t limit,
     std::optional<std::string> cursor,
-    std::optional<std::string> nameOrId) {
+    std::optional<std::string> nameOrId,
+    std::shared_ptr<const pms::ExprNode> where) {
     try {
         auto query = applyNameOrId(
-            pms::Playlist().In(pms::scope::project == projectId),
+            pms::Playlist().In(pms::project::id == projectId),
             pms::playlist::id,
             pms::playlist::name,
             nameOrId);
+        if (where) {
+            query = query.Where(pms::FieldExpr<struct pms::Playlist>{where}); ///< Shelf FieldExpr.
+        }
         const pms::Page page = findLimitedPage(std::move(query), limit, cursor);
         RowPage<poco::Playlist> out;
         out.next_cursor = page.next_cursor;
@@ -506,28 +591,33 @@ RowPage<poco::VersionListElement> findVersionListElements(
     std::optional<std::int64_t> shotId,
     std::optional<std::int64_t> assetId,
     std::optional<std::int64_t> playlistId,
-    std::optional<std::string> nameOrId) {
+    std::optional<std::string> nameOrId,
+    std::shared_ptr<const pms::ExprNode> where) {
     using namespace pms::version;
     auto query = applyNameOrId(
-                     versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId),
-                     id,
-                     name,
-                     nameOrId)
-                     .Fields(
-                         id,
-                         name,
-                         author,
-                         createdAt,
-                         frameRange,
-                         description,
-                         step,
-                         status,
-                         artisticStatus,
-                         sites,
-                         openNotesCount,
-                         syncedToClient,
-                         frames,
-                         movie);
+        versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId),
+        id,
+        name,
+        nameOrId);
+    query = applyShelfParentInsToVersion(std::move(query)); ///< Shelf parent FieldExpr → In().
+    if (where) {
+        query = query.Where(pms::FieldExpr<struct pms::Version>{where}); ///< Shelf version Where.
+    }
+    query = query.Fields(
+        id,
+        name,
+        author,
+        createdAt,
+        frameRange,
+        description,
+        step,
+        status,
+        artisticStatus,
+        sites,
+        openNotesCount,
+        syncedToClient,
+        frames,
+        movie);
     return fetchPage<poco::VersionListElement>(std::move(query), limit, cursor);
 }
 
@@ -702,30 +792,37 @@ template <typename QueryT> int fetchCount(QueryT query) {
 }
 
 int getNumberOfSequences(std::int64_t projectId) {
-    return fetchCount(pms::Sequence().In(pms::scope::project == projectId));
+    return fetchCount(pms::Sequence().In(pms::project::id == projectId));
 }
 
 int getNumberOfShots(std::int64_t projectId, std::optional<std::int64_t> sequenceId) {
     if (sequenceId) {
-        return fetchCount(pms::Shot().In(pms::scope::sequence == *sequenceId));
+        return fetchCount(pms::Shot().In(pms::sequence::id == *sequenceId));
     }
-    return fetchCount(pms::Shot().In(pms::scope::project == projectId));
+    return fetchCount(pms::Shot().In(pms::project::id == projectId));
 }
 
 int getNumberOfAssets(std::int64_t projectId, std::optional<std::string> nameOrId) {
     return fetchCount(applyNameOrId(
-        pms::Asset().In(pms::scope::project == projectId),
+        pms::Asset().In(pms::project::id == projectId),
         pms::asset::id,
         pms::asset::name,
         nameOrId));
 }
 
-int getNumberOfPlaylists(std::int64_t projectId, std::optional<std::string> nameOrId) {
-    return fetchCount(applyNameOrId(
-        pms::Playlist().In(pms::scope::project == projectId),
+int getNumberOfPlaylists(
+    std::int64_t projectId,
+    std::optional<std::string> nameOrId,
+    std::shared_ptr<const pms::ExprNode> where) {
+    auto query = applyNameOrId(
+        pms::Playlist().In(pms::project::id == projectId),
         pms::playlist::id,
         pms::playlist::name,
-        nameOrId));
+        nameOrId);
+    if (where) {
+        query = query.Where(pms::FieldExpr<struct pms::Playlist>{where});
+    }
+    return fetchCount(std::move(query));
 }
 
 int getNumberOfVersions(
@@ -734,12 +831,18 @@ int getNumberOfVersions(
     std::optional<std::int64_t> shotId,
     std::optional<std::int64_t> assetId,
     std::optional<std::int64_t> playlistId,
-    std::optional<std::string> nameOrId) {
-    return fetchCount(applyNameOrId(
+    std::optional<std::string> nameOrId,
+    std::shared_ptr<const pms::ExprNode> where) {
+    auto query = applyNameOrId(
         versionScopeQuery(projectId, sequenceId, shotId, assetId, playlistId),
         pms::version::id,
         pms::version::name,
-        nameOrId));
+        nameOrId);
+    query = applyShelfParentInsToVersion(std::move(query));
+    if (where) {
+        query = query.Where(pms::FieldExpr<struct pms::Version>{where});
+    }
+    return fetchCount(std::move(query));
 }
 
 } // namespace xstudio::mikros_shotbrowser::dal

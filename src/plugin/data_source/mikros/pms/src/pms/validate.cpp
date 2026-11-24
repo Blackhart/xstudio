@@ -119,11 +119,11 @@ void checkWhere(const ExprNode &node, const EntitySpec &entity) {
 }
 
 /**
- * @brief Checks one In-node and its children against an entity scope.
- * @param node Scope leaf or group.
- * @param entity Entity whose YAML scope lists direct parents.
- * @param schema Schema used to inherit ancestor parents.
- * @throw Error When the shape, the parent, the operator, or the value is illegal.
+ * @brief Checks one In-node and its children against parent field rules.
+ * @param node Field leaf (stamped with `parent`) or group.
+ * @param entity Queried entity whose YAML scope lists legal parents.
+ * @param schema Schema used to inherit ancestor parents and resolve parent fields.
+ * @throw Error When the shape, the parent, the field, the operator, or the value is illegal.
  */
 void checkIn(const ExprNode &node, const EntitySpec &entity, const Schema &schema) {
     if (node.kind == ExprKind::Group) {
@@ -134,19 +134,35 @@ void checkIn(const ExprNode &node, const EntitySpec &entity, const Schema &schem
         return;
     }
 
-    if (node.kind != ExprKind::Scope) {
+    if (node.kind != ExprKind::Field) {
         throw Error("in: invalid node");
     }
-    if (node.op != ExprOp::Eq && node.op != ExprOp::Ne) {
-        throw Error("in: operator not allowed on \"" + node.key + "\"");
+    if (node.parent.empty()) {
+        throw Error("in: field \"" + node.key + "\" has no parent");
     }
-    if (!schema.allowsInParent(entity, node.key)) {
-        throw Error("in: parent \"" + node.key + "\" is not in scope");
+    if (!schema.allowsInParent(entity, node.parent)) {
+        throw Error("in: parent \"" + node.parent + "\" is not in scope");
     }
-    if (!node.value ||
-        (!std::holds_alternative<std::string>(*node.value) &&
-         !std::holds_alternative<std::int64_t>(*node.value))) {
-        throw Error("in: parent \"" + node.key + "\" expects an id or a name");
+    const EntitySpec *parent = schema.entity(node.parent);
+    if (!parent) {
+        throw Error("in: unknown parent \"" + node.parent + "\"");
+    }
+    const char *opName = comparisonName(node.op);
+    if (!opName) {
+        throw Error("in: operator not allowed on \"" + node.parent + "." + node.key + "\"");
+    }
+    const FieldSpec *spec = parent->field(node.key);
+    if (!spec) {
+        throw Error("in: unknown field \"" + node.parent + "." + node.key + "\"");
+    }
+    if (!spec->filter) {
+        throw Error("in: field \"" + node.parent + "." + node.key + "\" is not filterable");
+    }
+    if (std::find(spec->ops.begin(), spec->ops.end(), opName) == spec->ops.end()) {
+        throw Error("in: operator not allowed on \"" + node.parent + "." + node.key + "\"");
+    }
+    if (!node.value || !valueMatches(spec->type, *node.value)) {
+        throw Error("in: type mismatch on \"" + node.parent + "." + node.key + "\"");
     }
 }
 

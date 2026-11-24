@@ -82,14 +82,23 @@ TEST_CASE("validate rejects a broken tree") {
     CHECK_THROWS_WITH_AS(validate(badNot, loaded), "where: not expects one child", Error);
 }
 
+/**
+ * @brief Builds an In() field leaf for parent.id == value.
+ */
+std::shared_ptr<ExprNode> parentIdLeaf(const char *parent, std::int64_t id) {
+    auto leaf = std::make_shared<ExprNode>();
+    leaf->op = ExprOp::Eq;
+    leaf->kind = ExprKind::Field;
+    leaf->parent = parent;
+    leaf->key = "id";
+    leaf->value = id;
+    return leaf;
+}
+
 TEST_CASE("validate accepts sequence, shot, asset, and inherited version in clauses") {
     const Schema loaded = schema();
 
-    auto projectLeaf = std::make_shared<ExprNode>();
-    projectLeaf->op = ExprOp::Eq;
-    projectLeaf->kind = ExprKind::Scope;
-    projectLeaf->key = "project";
-    projectLeaf->value = std::int64_t{1};
+    auto projectLeaf = parentIdLeaf("project", 1);
     Ir sequenceIr;
     sequenceIr.op = Op::Find;
     sequenceIr.entity = "sequence";
@@ -102,11 +111,7 @@ TEST_CASE("validate accepts sequence, shot, asset, and inherited version in clau
     assetIr.in = projectLeaf;
     CHECK_NOTHROW(validate(assetIr, loaded));
 
-    auto sequenceLeaf = std::make_shared<ExprNode>();
-    sequenceLeaf->op = ExprOp::Eq;
-    sequenceLeaf->kind = ExprKind::Scope;
-    sequenceLeaf->key = "sequence";
-    sequenceLeaf->value = std::int64_t{1};
+    auto sequenceLeaf = parentIdLeaf("sequence", 1);
     Ir shotIr;
     shotIr.op = Op::Find;
     shotIr.entity = "shot";
@@ -119,44 +124,28 @@ TEST_CASE("validate accepts sequence, shot, asset, and inherited version in clau
     versionBySequence.in = sequenceLeaf;
     CHECK_NOTHROW(validate(versionBySequence, loaded));
 
-    auto shotLeaf = std::make_shared<ExprNode>();
-    shotLeaf->op = ExprOp::Eq;
-    shotLeaf->kind = ExprKind::Scope;
-    shotLeaf->key = "shot";
-    shotLeaf->value = std::int64_t{1};
+    auto shotLeaf = parentIdLeaf("shot", 1);
     Ir versionByShot;
     versionByShot.op = Op::Find;
     versionByShot.entity = "version";
     versionByShot.in = shotLeaf;
     CHECK_NOTHROW(validate(versionByShot, loaded));
 
-    auto assetLeaf = std::make_shared<ExprNode>();
-    assetLeaf->op = ExprOp::Eq;
-    assetLeaf->kind = ExprKind::Scope;
-    assetLeaf->key = "asset";
-    assetLeaf->value = std::int64_t{1};
+    auto assetLeaf = parentIdLeaf("asset", 1);
     Ir versionByAsset;
     versionByAsset.op = Op::Find;
     versionByAsset.entity = "version";
     versionByAsset.in = assetLeaf;
     CHECK_NOTHROW(validate(versionByAsset, loaded));
 
-    auto playlistLeaf = std::make_shared<ExprNode>();
-    playlistLeaf->op = ExprOp::Eq;
-    playlistLeaf->kind = ExprKind::Scope;
-    playlistLeaf->key = "playlist";
-    playlistLeaf->value = std::int64_t{1};
+    auto playlistLeaf = parentIdLeaf("playlist", 1);
     Ir versionByPlaylist;
     versionByPlaylist.op = Op::Find;
     versionByPlaylist.entity = "version";
     versionByPlaylist.in = playlistLeaf;
     CHECK_NOTHROW(validate(versionByPlaylist, loaded));
 
-    auto inheritedProject = std::make_shared<ExprNode>();
-    inheritedProject->op = ExprOp::Eq;
-    inheritedProject->kind = ExprKind::Scope;
-    inheritedProject->key = "project";
-    inheritedProject->value = std::int64_t{1};
+    auto inheritedProject = parentIdLeaf("project", 1);
     Ir versionByProject;
     versionByProject.op = Op::Find;
     versionByProject.entity = "version";
@@ -168,9 +157,10 @@ TEST_CASE("validate rejects an illegal in parent") {
     const Schema loaded = schema();
     auto leaf = std::make_shared<ExprNode>();
     leaf->op = ExprOp::Eq;
-    leaf->kind = ExprKind::Scope;
-    leaf->key = "episode";
-    leaf->value = std::string("ep01");
+    leaf->kind = ExprKind::Field;
+    leaf->parent = "episode";
+    leaf->key = "id";
+    leaf->value = std::int64_t{1};
     Ir ir;
     ir.op = Op::Find;
     ir.entity = "version";

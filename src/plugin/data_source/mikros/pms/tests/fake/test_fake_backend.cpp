@@ -60,7 +60,7 @@ TEST_CASE("the fake backend lists sequences in a project") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records rows = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records rows = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
 
     REQUIRE(rows.size() == FakeBackend::sequencesPerProject);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010");
@@ -77,29 +77,29 @@ TEST_CASE("the fake backend counts sequences shots and assets in a project") {
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
     CHECK(
-        Sequence().In(scope::project == std::int64_t{1}).count(session) ==
+        Sequence().In(project::id == std::int64_t{1}).count(session) ==
         FakeBackend::sequencesPerProject);
     CHECK(
-        Shot().In(scope::project == std::int64_t{1}).count(session) ==
+        Shot().In(project::id == std::int64_t{1}).count(session) ==
         FakeBackend::sequencesPerProject * FakeBackend::shotsPerSequence);
     CHECK(
-        Asset().In(scope::project == std::int64_t{1}).count(session) ==
+        Asset().In(project::id == std::int64_t{1}).count(session) ==
         FakeBackend::assetsPerProject);
 
-    const Records sequences = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     const auto sequenceId = std::get<std::int64_t>(sequences[0].at("id"));
-    CHECK(Shot().In(scope::sequence == sequenceId).count(session) == FakeBackend::shotsPerSequence);
+    CHECK(Shot().In(sequence::id == sequenceId).count(session) == FakeBackend::shotsPerSequence);
 }
 
 TEST_CASE("the fake backend lists shots in a sequence") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records sequences = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(sequences.size() == FakeBackend::sequencesPerProject);
     const auto sequenceId = std::get<std::int64_t>(sequences[0].at("id"));
 
-    const Records rows = Shot().In(scope::sequence == sequenceId).find(session).rows;
+    const Records rows = Shot().In(sequence::id == sequenceId).find(session).rows;
 
     REQUIRE(rows.size() == FakeBackend::shotsPerSequence);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010_sh010");
@@ -111,7 +111,7 @@ TEST_CASE("the fake backend lists assets in a project") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records rows = Asset().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records rows = Asset().In(project::id == std::int64_t{1}).find(session).rows;
 
     REQUIRE(rows.size() == FakeBackend::assetsPerProject);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_ast01");
@@ -123,13 +123,13 @@ TEST_CASE("the fake backend accepts a fields projection on versions") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records sequences = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(sequences.empty());
     const auto sequenceId = std::get<std::int64_t>(sequences[0].at("id"));
 
     const Records rows =
         Version()
-            .In(scope::sequence == sequenceId)
+            .In(sequence::id == sequenceId)
             .Fields(version::id, version::name, version::author)
             .Limit(1)
             .find(session)
@@ -145,7 +145,7 @@ TEST_CASE("the fake backend finds version thumbs by several ids") {
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
     const Records listed =
-        Version().In(scope::project == std::int64_t{1}).Limit(2).find(session).rows;
+        Version().In(project::id == std::int64_t{1}).Limit(2).find(session).rows;
     REQUIRE(listed.size() == 2);
     const auto firstId = std::get<std::int64_t>(listed[0].at("id"));
     const auto secondId = std::get<std::int64_t>(listed[1].at("id"));
@@ -167,11 +167,11 @@ TEST_CASE("the fake backend lists versions in a sequence including shot versions
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records sequences = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(sequences.size() == FakeBackend::sequencesPerProject);
     const auto sequenceId = std::get<std::int64_t>(sequences[0].at("id"));
 
-    const Records rows = Version().In(scope::sequence == sequenceId).find(session).rows;
+    const Records rows = Version().In(sequence::id == sequenceId).find(session).rows;
 
     REQUIRE(rows.size() == versionsPerSequenceTotal());
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010_v001");
@@ -197,11 +197,11 @@ TEST_CASE("the fake backend lists versions in a shot") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records shots = Shot().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(shots.size() == FakeBackend::sequencesPerProject * FakeBackend::shotsPerSequence);
     const auto shotId = std::get<std::int64_t>(shots[0].at("id"));
 
-    const Records rows = Version().In(scope::shot == shotId).find(session).rows;
+    const Records rows = Version().In(shot::id == shotId).find(session).rows;
 
     REQUIRE(rows.size() == FakeBackend::versionsPerShot);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010_sh010_v001");
@@ -212,11 +212,11 @@ TEST_CASE("the fake backend lists versions in an asset") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records assets = Asset().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records assets = Asset().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(assets.size() == FakeBackend::assetsPerProject);
     const auto assetId = std::get<std::int64_t>(assets[0].at("id"));
 
-    const Records rows = Version().In(scope::asset == assetId).find(session).rows;
+    const Records rows = Version().In(asset::id == assetId).find(session).rows;
 
     REQUIRE(rows.size() == FakeBackend::versionsPerAsset);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_ast01_v001");
@@ -227,7 +227,7 @@ TEST_CASE("the fake backend lists playlists in a project") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records rows = Playlist().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records rows = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
 
     REQUIRE(rows.size() == FakeBackend::playlistsPerProject);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_pl01");
@@ -244,11 +244,11 @@ TEST_CASE("the fake backend attaches version links on each playlist") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records playlists = Playlist().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records playlists = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(playlists.size() == FakeBackend::playlistsPerProject);
     const auto playlistId = std::get<std::int64_t>(playlists[0].at("id"));
     const auto &links = std::get<std::vector<Link>>(playlists[0].at("versions"));
-    const Records members = Version().In(scope::playlist == playlistId).find(session).rows;
+    const Records members = Version().In(playlist::id == playlistId).find(session).rows;
     REQUIRE(links.size() == members.size());
     REQUIRE_FALSE(links.empty());
 }
@@ -257,11 +257,11 @@ TEST_CASE("the fake backend lists versions in a playlist via weak membership") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records playlists = Playlist().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records playlists = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(playlists.size() == FakeBackend::playlistsPerProject);
     const auto playlistId = std::get<std::int64_t>(playlists[0].at("id"));
 
-    const Records rows = Version().In(scope::playlist == playlistId).find(session).rows;
+    const Records rows = Version().In(playlist::id == playlistId).find(session).rows;
 
     // Every `_v001` under the project: 2 sequence + 4 shot + 2 asset.
     constexpr std::size_t expected =
@@ -276,17 +276,17 @@ TEST_CASE("In(sequence) and In(playlist) combine with and") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records sequences = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(sequences.empty());
     const auto sequenceId = std::get<std::int64_t>(sequences[0].at("id"));
-    const Records playlists = Playlist().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records playlists = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(playlists.empty());
     const auto playlistId = std::get<std::int64_t>(playlists[0].at("id"));
 
     const Records rows =
         Version()
-            .In(scope::sequence == sequenceId)
-            .In(scope::playlist == playlistId)
+            .In(sequence::id == sequenceId)
+            .In(playlist::id == playlistId)
             .find(session).rows;
 
     // Sequence `_v001` plus its two shot `_v001` versions are in pl01.
@@ -303,18 +303,18 @@ TEST_CASE("a playlist member stays findable by its strong parent") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records sequences = Sequence().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(sequences.empty());
     const auto sequenceId = std::get<std::int64_t>(sequences[0].at("id"));
 
-    const Records bySequence = Version().In(scope::sequence == sequenceId).find(session).rows;
+    const Records bySequence = Version().In(sequence::id == sequenceId).find(session).rows;
     REQUIRE_FALSE(bySequence.empty());
     const std::string name = std::get<std::string>(bySequence[0].at("name"));
 
-    const Records playlists = Playlist().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records playlists = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(playlists.empty());
     const auto playlistId = std::get<std::int64_t>(playlists[0].at("id"));
-    const Records byPlaylist = Version().In(scope::playlist == playlistId).find(session).rows;
+    const Records byPlaylist = Version().In(playlist::id == playlistId).find(session).rows;
 
     bool found = false;
     for (const Record &row : byPlaylist) {
@@ -330,7 +330,7 @@ TEST_CASE("the fake backend lists all versions in a project with one find") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records rows = Version().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records rows = Version().In(project::id == std::int64_t{1}).find(session).rows;
 
     REQUIRE(rows.size() == versionsPerProjectTotal());
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010_v001");
@@ -364,21 +364,21 @@ TEST_CASE("the fake backend pages versions with a playlist filter") {
     FakeBackend backend;
     Session session(Schema::load(PMS_SCHEMA_PATH), backend);
 
-    const Records playlists = Playlist().In(scope::project == std::int64_t{1}).find(session).rows;
+    const Records playlists = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(playlists.empty());
     const auto playlistId = std::get<std::int64_t>(playlists[0].at("id"));
 
-    const Records all = Version().In(scope::playlist == playlistId).find(session).rows;
+    const Records all = Version().In(playlist::id == playlistId).find(session).rows;
     REQUIRE(all.size() > 1);
 
-    const Page first = Version().In(scope::playlist == playlistId).Limit(1).find(session);
+    const Page first = Version().In(playlist::id == playlistId).Limit(1).find(session);
     REQUIRE(first.rows.size() == 1);
     REQUIRE(first.next_cursor.has_value());
     CHECK(std::get<std::int64_t>(first.rows[0].at("id")) ==
           std::get<std::int64_t>(all[0].at("id")));
 
     const Page second =
-        Version().In(scope::playlist == playlistId).Limit(1).After(*first.next_cursor).find(session);
+        Version().In(playlist::id == playlistId).Limit(1).After(*first.next_cursor).find(session);
     REQUIRE(second.rows.size() == 1);
     CHECK(std::get<std::int64_t>(second.rows[0].at("id")) ==
           std::get<std::int64_t>(all[1].at("id")));

@@ -37,6 +37,8 @@ Item {
         const projectId = String(selectedProject.value ?? "")
         if (!projectId || projectId === "-1")
             return "No project selected"
+        if (String(browserMode.value ?? "") === "shelf" && !String(selectedShelf.value ?? ""))
+            return "No filter selected"
         if (!playlistsLoaded.value)
             return "Loading…"
         return "No results"
@@ -137,6 +139,18 @@ Item {
     }
 
     XsAttributeValue {
+        id: browserMode
+        attributeTitle: "BrowserMode"
+        model: attributes
+    }
+
+    XsAttributeValue {
+        id: selectedShelf
+        attributeTitle: "SelectedShelf"
+        model: attributes
+    }
+
+    XsAttributeValue {
         id: playlistTreeAttr
         attributeTitle: "PlaylistTree"
         model: attributes
@@ -177,16 +191,24 @@ Item {
 
     property int loadMoreToken: 0
     property var treeRows: []
+    property int previewedVersionId: 0 ///< Last previewed version card under a playlist.
 
     // Watch the attribute without putting contentY in the `names:` binding (binding loop).
     property var treeSource: playlistTreeAttr.value
     onTreeSourceChanged: {
         // clearPlaylists publishes []; reset chevrons (openPlaylists is not ExpandedPlaylist).
-        if (playlistTreeNodes().length === 0)
+        if (playlistTreeNodes().length === 0) {
             openPlaylists = ({})
+            previewedVersionId = 0
+        }
         reloadTreeRows()
     }
     onOpenPlaylistsChanged: reloadTreeRows()
+
+    property string previewContextKey: String(selectedProject.value ?? "")
+                                       + "|" + String(browserMode.value ?? "")
+                                       + "|" + String(selectedShelf.value ?? "")
+    onPreviewContextKeyChanged: previewedVersionId = 0
 
     // Hold scroll on append / thumbs; reset to top on clear or first page.
     function reloadTreeRows() {
@@ -225,6 +247,8 @@ Item {
         }
         placeholder: {
             selectedProject.value
+            browserMode.value
+            selectedShelf.value
             playlistsLoaded.value
             return playlists.listPlaceholder()
         }
@@ -281,8 +305,12 @@ Item {
                 visible: row.versionLine
                 modelData: row.modelData
                 indent: XsStyleSheet.widgetStdHeight / 1.2
-                chosen: false
-                onPreviewCurrent: playlists.previewRequested(versionCard.payload())
+                chosen: versionCard.versionId !== 0
+                        && versionCard.versionId === playlists.previewedVersionId
+                onPreviewCurrent: {
+                    playlists.previewedVersionId = versionCard.versionId
+                    playlists.previewRequested(versionCard.payload())
+                }
                 onOpenCurrent: playlists.openRequested(versionCard.payload())
                 onMenuRequested: function(x, y) {
                     playlists.menuRequested(versionCard.payload(), versionCard, x, y)

@@ -41,29 +41,30 @@ template <typename Entity> class Query {
     Query() : entity_(Entity::entityName) {}
 
     /**
-     * @brief Adds a parent scope filter, or combines it with the one stored.
+     * @brief Adds a parent field filter, or combines it with the one stored.
      *
-     * Each parent in `Parents` must appear in `Entity::Scope`. The first call
-     * stores `expr`. A later call builds an `and` whose children are the
-     * previous tree and `expr`.
+     * `Parent` must appear in `Entity::Scope` (including inherited ancestors).
+     * Leaves are stamped with the parent domain name so validate and translate
+     * resolve fields on that parent via mapping links. The first call stores
+     * `expr`. A later call builds an `and` whose children are the previous tree
+     * and `expr`.
      *
-     * @tparam Parents Parent tags named by the expression.
-     * @param expr Scope filter whose leaves name parents of `Entity`.
+     * @tparam Parent Parent entity tag whose fields the expression uses.
+     * @param expr Filter whose leaves belong to `Parent`.
      * @return A new query. This query is unchanged.
      */
-    template <typename... Parents> Query In(ScopeExpr<Parents...> expr) const {
-        static_assert(
-            (true && ... && scopeAllows<Entity, Parents>()),
-            "parent is not in this entity scope");
+    template <typename Parent> Query In(FieldExpr<Parent> expr) const {
+        static_assert(scopeAllows<Entity, Parent>(), "parent is not in this entity scope");
         Query copy = *this;
+        auto stamped = stampParent(expr.node, Parent::entityName);
         if (!copy.in_) {
-            copy.in_ = std::move(expr.node);
+            copy.in_ = std::move(stamped);
             return copy;
         }
         auto combined = std::make_shared<ExprNode>();
         combined->op = ExprOp::And;
         combined->kind = ExprKind::Group;
-        combined->args = {copy.in_, expr.node};
+        combined->args = {copy.in_, std::move(stamped)};
         copy.in_ = std::move(combined);
         return copy;
     }
@@ -200,7 +201,7 @@ template <typename Entity> class Query {
 
   private:
     std::string entity_; ///< YAML entity name copied from the tag.
-    std::shared_ptr<const ExprNode> in_;    ///< Scope tree, null until In().
+    std::shared_ptr<const ExprNode> in_;    ///< Parent field tree, null until In().
     std::shared_ptr<const ExprNode> where_; ///< Filter tree, null until Where().
     std::optional<std::size_t> limit_;      ///< Page size when set.
     std::optional<std::string> cursor_;     ///< Continuation cursor when set.
