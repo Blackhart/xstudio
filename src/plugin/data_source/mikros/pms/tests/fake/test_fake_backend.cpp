@@ -383,3 +383,208 @@ TEST_CASE("the fake backend pages versions with a playlist filter") {
     CHECK(std::get<std::int64_t>(second.rows[0].at("id")) ==
           std::get<std::int64_t>(all[1].at("id")));
 }
+
+TEST_CASE("the fake backend applies string where operators") {
+    FakeBackend backend;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
+    REQUIRE_FALSE(shots.empty());
+    const auto shotId = std::get<std::int64_t>(shots[0].at("id"));
+
+    const Records ends =
+        Version()
+            .In(shot::id == shotId)
+            .Where(endsWith(version::name, "v020"))
+            .find(session)
+            .rows;
+    REQUIRE(ends.size() == 1);
+    CHECK(std::get<std::string>(ends[0].at("name")).find("v020") != std::string::npos);
+
+    const Records starts =
+        Version()
+            .In(shot::id == shotId)
+            .Where(startsWith(version::name, "PAW20_SQ010_SH010"))
+            .find(session)
+            .rows;
+    CHECK(starts.size() == FakeBackend::versionsPerShot);
+
+    const Records absent =
+        Version()
+            .In(shot::id == shotId)
+            .Where(notContains(version::name, "missing_token"))
+            .find(session)
+            .rows;
+    CHECK(absent.size() == FakeBackend::versionsPerShot);
+
+    const Records listed =
+        Version()
+            .In(shot::id == shotId)
+            .Where(isIn(version::status, std::vector<std::string>{"ip", "rev"}))
+            .find(session)
+            .rows;
+    REQUIRE_FALSE(listed.empty());
+    for (const Record &row : listed) {
+        const std::string status = std::get<std::string>(row.at("status"));
+        CHECK((status == "ip" || status == "rev"));
+    }
+
+    const Records excluded =
+        Version()
+            .In(shot::id == shotId)
+            .Where(isNotIn(version::status, std::vector<std::string>{"omt"}))
+            .find(session)
+            .rows;
+    CHECK(excluded.size() < FakeBackend::versionsPerShot);
+    CHECK_FALSE(excluded.empty());
+}
+
+TEST_CASE("the fake backend applies int where operators") {
+    FakeBackend backend;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
+    REQUIRE_FALSE(shots.empty());
+    const auto shotId = std::get<std::int64_t>(shots[0].at("id"));
+
+    const Records above =
+        Version()
+            .In(shot::id == shotId)
+            .Where(greaterThan(version::openNotesCount, std::int64_t{0}))
+            .find(session)
+            .rows;
+    REQUIRE_FALSE(above.empty());
+    for (const Record &row : above) {
+        CHECK(std::get<std::int64_t>(row.at("open_notes_count")) > 0);
+    }
+
+    const Records below =
+        Version()
+            .In(shot::id == shotId)
+            .Where(lessThan(version::openNotesCount, std::int64_t{2}))
+            .find(session)
+            .rows;
+    REQUIRE_FALSE(below.empty());
+
+    const Records ranged =
+        Version()
+            .In(shot::id == shotId)
+            .Where(between(version::openNotesCount, 0, 2))
+            .find(session)
+            .rows;
+    CHECK(ranged.size() == FakeBackend::versionsPerShot);
+
+    const Records listed =
+        Version()
+            .In(shot::id == shotId)
+            .Where(isIn(version::openNotesCount, std::vector<std::int64_t>{0, 2}))
+            .find(session)
+            .rows;
+    CHECK(listed.size() == FakeBackend::versionsPerShot);
+}
+
+TEST_CASE("the fake backend applies entity name_* where operators") {
+    FakeBackend backend;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
+    REQUIRE_FALSE(shots.empty());
+    const auto shotId = std::get<std::int64_t>(shots[0].at("id"));
+
+    const Records exact =
+        Version()
+            .In(shot::id == shotId)
+            .Where(nameIs(version::author, "Ada"))
+            .find(session)
+            .rows;
+    REQUIRE_FALSE(exact.empty());
+    for (const Record &row : exact) {
+        CHECK(std::get<std::string>(row.at("author")) == "Ada");
+    }
+
+    const Records part =
+        Version()
+            .In(shot::id == shotId)
+            .Where(nameContains(version::author, "ad"))
+            .find(session)
+            .rows;
+    CHECK(part.size() == exact.size());
+
+    const Records prefix =
+        Version()
+            .In(shot::id == shotId)
+            .Where(nameStartsWith(version::author, "A"))
+            .find(session)
+            .rows;
+    CHECK(prefix.size() == exact.size());
+}
+
+TEST_CASE("the fake backend applies datetime where operators") {
+    FakeBackend backend;
+    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+
+    const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
+    REQUIRE_FALSE(shots.empty());
+    const auto shotId = std::get<std::int64_t>(shots[0].at("id"));
+
+    const Records newest =
+        Version()
+            .In(shot::id == shotId)
+            .Where(endsWith(version::name, "v001"))
+            .find(session)
+            .rows;
+    REQUIRE(newest.size() == 1);
+    const std::string today = std::get<std::string>(newest[0].at("created_at"));
+
+    const Records onDay =
+        Version()
+            .In(shot::id == shotId)
+            .Where(version::createdAt == today)
+            .find(session)
+            .rows;
+    REQUIRE(onDay.size() == 1);
+    CHECK(std::get<std::string>(onDay[0].at("name")).find("v001") != std::string::npos);
+
+    const Records calendar =
+        Version()
+            .In(shot::id == shotId)
+            .Where(inCalendarDay(version::createdAt, 0))
+            .find(session)
+            .rows;
+    CHECK(calendar.size() == 1);
+
+    const Records recent =
+        Version()
+            .In(shot::id == shotId)
+            .Where(inLast(version::createdAt, 7, "DAY"))
+            .find(session)
+            .rows;
+    CHECK(recent.size() >= 7);
+    CHECK(recent.size() <= FakeBackend::versionsPerShot);
+
+    const Records older =
+        Version()
+            .In(shot::id == shotId)
+            .Where(endsWith(version::name, "v010"))
+            .find(session)
+            .rows;
+    REQUIRE(older.size() == 1);
+    const std::string tenDaysAgo = std::get<std::string>(older[0].at("created_at"));
+
+    const Records after =
+        Version()
+            .In(shot::id == shotId)
+            .Where(greaterThan(version::createdAt, tenDaysAgo))
+            .find(session)
+            .rows;
+    REQUIRE_FALSE(after.empty());
+    CHECK(after.size() == 9); ///< v001..v009 are strictly after v010's day.
+
+    const Records ranged =
+        Version()
+            .In(shot::id == shotId)
+            .Where(between(version::createdAt, tenDaysAgo, today))
+            .find(session)
+            .rows;
+    CHECK(ranged.size() == 10); ///< v001..v010 inclusive.
+}

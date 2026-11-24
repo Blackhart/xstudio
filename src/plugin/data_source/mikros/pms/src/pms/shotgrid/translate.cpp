@@ -25,6 +25,36 @@ const char *comparisonOp(ExprOp op) {
         return "is_not";
     case ExprOp::Contains:
         return "contains";
+    case ExprOp::NotContains:
+        return "not_contains";
+    case ExprOp::StartsWith:
+        return "starts_with";
+    case ExprOp::EndsWith:
+        return "ends_with";
+    case ExprOp::In:
+        return "in";
+    case ExprOp::NotIn:
+        return "not_in";
+    case ExprOp::Gt:
+        return "greater_than";
+    case ExprOp::Lt:
+        return "less_than";
+    case ExprOp::Between:
+        return "between";
+    case ExprOp::InLast:
+        return "in_last";
+    case ExprOp::InCalendarDay:
+        return "in_calendar_day";
+    case ExprOp::InCalendarWeek:
+        return "in_calendar_week";
+    case ExprOp::InCalendarMonth:
+        return "in_calendar_month";
+    case ExprOp::NameContains:
+        return "name_contains";
+    case ExprOp::NameStartsWith:
+        return "name_starts_with";
+    case ExprOp::NameIs:
+        return "name_is";
     default:
         return nullptr;
     }
@@ -36,6 +66,30 @@ nlohmann::json valueJson(const Value &value) {
     }
     if (const auto *number = std::get_if<std::int64_t>(&value)) {
         return *number;
+    }
+    if (const auto *texts = std::get_if<std::vector<std::string>>(&value)) {
+        return nlohmann::json(*texts); ///< ShotGrid `in` wants the array itself.
+    }
+    if (const auto *numbers = std::get_if<std::vector<std::int64_t>>(&value)) {
+        return nlohmann::json(*numbers);
+    }
+    if (const auto *period = std::get_if<Period>(&value)) {
+        return nlohmann::json::array({period->count, period->unit}); ///< `[7, "DAY"]`.
+    }
+    if (const auto *bounds = std::get_if<IntBounds>(&value)) {
+        return nlohmann::json::array({bounds->low, bounds->high}); ///< REST `between` pair.
+    }
+    if (const auto *bounds = std::get_if<DateBounds>(&value)) {
+        auto formatDay = [](const Date &date) {
+            std::ostringstream out;
+            out << std::setfill('0') << std::setw(4) << date.year << '-' << std::setw(2)
+                << date.month << '-' << std::setw(2) << date.day;
+            return out.str();
+        };
+        return nlohmann::json::array({formatDay(bounds->low), formatDay(bounds->high)});
+    }
+    if (std::holds_alternative<std::vector<Link>>(value)) {
+        throw Error("shotgrid: links are not a filter value");
     }
     const Date &date = std::get<Date>(value);
     std::ostringstream out;
@@ -260,7 +314,13 @@ nlohmann::json exprToJson(
                 throw Error("shotgrid: not only inverts a leaf");
             }
             const std::string op = child[1].get<std::string>();
-            child[1] = (op == "is") ? "is_not" : "is";
+            if (op == "is") {
+                child[1] = "is_not";
+            } else if (op == "is_not") {
+                child[1] = "is";
+            } else {
+                throw Error("shotgrid: not only inverts is and is_not");
+            }
             return child;
         }
         if (node.op != ExprOp::And && node.op != ExprOp::Or) {

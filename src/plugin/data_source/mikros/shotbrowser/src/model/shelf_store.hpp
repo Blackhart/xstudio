@@ -72,6 +72,14 @@ class ShelfStore {
     void remove(const std::string &id);
 
     /**
+     * @brief Moves one user shelf to a new index for display order.
+     * @param id Shelf id. `"all"` ignored.
+     * @param toIndex Destination in `[0, size)`. Clamped. No-op when unchanged or missing.
+     * @return True when the vector order changed.
+     */
+    bool moveTo(const std::string &id, std::size_t toIndex);
+
+    /**
      * @brief Finds a user shelf by id.
      * @param id Shelf id.
      * @return The shelf, or empty when missing.

@@ -24,6 +24,12 @@ Ir fieldIr(const std::string &key, ExprOp op, Value value) {
     return ir;
 }
 
+Ir versionWhere(const std::string &key, ExprOp op, Value value) {
+    Ir ir = fieldIr(key, op, std::move(value));
+    ir.entity = "version"; ///< created_at and open notes live on version.
+    return ir;
+}
+
 } // namespace
 
 TEST_CASE("validate accepts a project filter and an empty where") {
@@ -38,6 +44,142 @@ TEST_CASE("validate accepts a project filter and an empty where") {
 
     const Ir byNamePart = fieldIr("name", ExprOp::Contains, std::string("paw"));
     CHECK_NOTHROW(validate(byNamePart, loaded));
+}
+
+TEST_CASE("validate accepts the new shelf operators and rejects a bad value") {
+    const Schema loaded = schema();
+    CHECK_NOTHROW(validate(fieldIr("name", ExprOp::StartsWith, std::string("paw")), loaded));
+    CHECK_NOTHROW(validate(fieldIr("name", ExprOp::EndsWith, std::string("_comp")), loaded));
+    CHECK_NOTHROW(validate(fieldIr("name", ExprOp::Ne, std::string("archive")), loaded));
+    CHECK_NOTHROW(validate(fieldIr("name", ExprOp::NotContains, std::string("temp")), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("status", ExprOp::NotIn, std::vector<std::string>{"omt", "na"}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("open_notes_count", ExprOp::In, std::vector<std::int64_t>{0, 1}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("open_notes_count", ExprOp::NotIn, std::vector<std::int64_t>{0}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("open_notes_count", ExprOp::Lt, std::int64_t{5}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("open_notes_count", ExprOp::Gt, std::int64_t{0}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("open_notes_count", ExprOp::Between, IntBounds{0, 5}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("created_at", ExprOp::Eq, std::string("2024-03-01")), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("created_at", ExprOp::Ne, std::string("2024-03-01")), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("created_at", ExprOp::Gt, std::string("2024-03-01")), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("created_at", ExprOp::Lt, std::string("2024-03-01")), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere(
+            "created_at",
+            ExprOp::Between,
+            DateBounds{Date{2024, 1, 1}, Date{2024, 3, 1}}),
+        loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere(
+            "created_at",
+            ExprOp::Between,
+            std::vector<std::string>{"2024-01-01", "2024-03-01"}),
+        loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("created_at", ExprOp::InLast, Period{7, "DAY"}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("created_at", ExprOp::InCalendarDay, std::int64_t{0}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("created_at", ExprOp::InCalendarWeek, std::int64_t{0}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("created_at", ExprOp::InCalendarMonth, std::int64_t{-1}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("status", ExprOp::In, std::vector<std::string>{"ip", "rev"}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("author", ExprOp::NameContains, std::string("Ada")), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("author", ExprOp::NameStartsWith, std::string("Ad")), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("author", ExprOp::NameIs, std::string("Ada")), loaded));
+
+    {
+        auto group = std::make_shared<ExprNode>();
+        group->op = ExprOp::Or;
+        group->kind = ExprKind::Group;
+        group->args = {fieldIr("code", ExprOp::Eq, std::string("PAW01")).where,
+                       fieldIr("code", ExprOp::Eq, std::string("PAW02")).where};
+        Ir ir;
+        ir.op = Op::Find;
+        ir.entity = "project";
+        ir.where = group;
+        CHECK_NOTHROW(validate(ir, loaded));
+    }
+    {
+        auto group = std::make_shared<ExprNode>();
+        group->op = ExprOp::Not;
+        group->kind = ExprKind::Group;
+        group->args = {fieldIr("code", ExprOp::Eq, std::string("PAW01")).where};
+        Ir ir;
+        ir.op = Op::Find;
+        ir.entity = "project";
+        ir.where = group;
+        CHECK_NOTHROW(validate(ir, loaded));
+    }
+
+    CHECK_THROWS_WITH_AS(
+        validate(fieldIr("name", ExprOp::Gt, std::string("paw")), loaded),
+        "where: operator not allowed on \"name\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(versionWhere("open_notes_count", ExprOp::InLast, Period{7, "DAY"}), loaded),
+        "where: operator not allowed on \"open_notes_count\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(fieldIr("name", ExprOp::In, std::vector<std::string>{}), loaded),
+        "where: type mismatch on \"name\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(versionWhere("created_at", ExprOp::InLast, Period{7, "MINUTE"}), loaded),
+        "where: type mismatch on \"created_at\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(versionWhere("created_at", ExprOp::InCalendarDay, std::string("today")), loaded),
+        "where: type mismatch on \"created_at\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(versionWhere("created_at", ExprOp::Eq, std::string("not-a-date")), loaded),
+        "where: type mismatch on \"created_at\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(
+            versionWhere("open_notes_count", ExprOp::In, std::vector<std::string>{"0"}), loaded),
+        "where: type mismatch on \"open_notes_count\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(fieldIr("name", ExprOp::Between, IntBounds{0, 5}), loaded),
+        "where: operator not allowed on \"name\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(fieldIr("name", ExprOp::NameContains, std::string("Ada")), loaded),
+        "where: operator not allowed on \"name\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(
+            versionWhere("open_notes_count", ExprOp::Between, IntBounds{5, 0}), loaded),
+        "where: type mismatch on \"open_notes_count\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(
+            versionWhere(
+                "created_at",
+                ExprOp::Between,
+                DateBounds{Date{2024, 3, 1}, Date{2024, 1, 1}}),
+            loaded),
+        "where: type mismatch on \"created_at\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(versionWhere("author", ExprOp::NameIs, std::string("")), loaded),
+        "where: type mismatch on \"author\"",
+        Error);
 }
 
 TEST_CASE("validate rejects contains on an int field") {

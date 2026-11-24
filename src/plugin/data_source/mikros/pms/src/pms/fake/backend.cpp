@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <iomanip>
 #include <map>
@@ -42,6 +43,60 @@ namespace {
 std::string projectLabel(int projectId) {
     const int nameIndex = static_cast<int>(FakeBackend::projectCount) + 1 - projectId;
     return (nameIndex < 10 ? "0" : "") + std::to_string(nameIndex);
+}
+
+/**
+ * @brief UTC calendar day for the wall clock.
+ */
+Date todayUtc() {
+    const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm parts{};
+    gmtime_r(&now, &parts);
+    return Date{parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday};
+}
+
+/**
+ * @brief Builds a UTC time_t for one calendar day and clock time.
+ */
+std::time_t utcTime(const Date &day, int hour = 0, int minute = 0, int second = 0) {
+    std::tm parts{};
+    parts.tm_year = day.year - 1900;
+    parts.tm_mon = day.month - 1;
+    parts.tm_mday = day.day;
+    parts.tm_hour = hour;
+    parts.tm_min = minute;
+    parts.tm_sec = second;
+    parts.tm_isdst = 0;
+    return timegm(&parts);
+}
+
+/**
+ * @brief Adds a signed day delta to a calendar day (UTC).
+ */
+Date addDays(const Date &day, int delta) {
+    const std::time_t shifted = utcTime(day, 12) + static_cast<std::time_t>(delta) * 86400;
+    std::tm parts{};
+    gmtime_r(&shifted, &parts);
+    return Date{parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday};
+}
+
+/**
+ * @brief Formats a day as `YYYY-MM-DD`.
+ */
+std::string formatIsoDay(const Date &day) {
+    std::ostringstream out;
+    out << std::setfill('0') << std::setw(4) << day.year << '-' << std::setw(2) << day.month
+        << '-' << std::setw(2) << day.day;
+    return out.str();
+}
+
+/**
+ * @brief Formats a day and hour as `YYYY-MM-DDTHH:00:00Z`.
+ */
+std::string formatIsoDateTime(const Date &day, int hour) {
+    std::ostringstream out;
+    out << formatIsoDay(day) << 'T' << std::setfill('0') << std::setw(2) << hour << ":00:00Z";
+    return out.str();
 }
 
 /**
@@ -170,9 +225,8 @@ Records makePlaylists() {
             row.fields["author"] = std::string(authors[id % 5]);
             row.fields["departments"] = std::string(departments[id % 4]);
             row.fields["category"] = std::string(categories[id % 4]);
-            row.fields["created_at"] =
-                "2024-0" + std::to_string(1 + (id % 9)) + "-15T1" +
-                std::to_string(id % 8) + ":30:00Z";
+            const Date createdDay = addDays(todayUtc(), -static_cast<int>(id % 60));
+            row.fields["created_at"] = formatIsoDateTime(createdDay, 12);
             row.fields["open_notes_count"] = std::int64_t{(id % 3) == 0 ? 2 : 0};
             rows.push_back(std::move(row));
         }
@@ -556,8 +610,7 @@ void fillVersionCard(Record &row, std::size_t index) {
 
     row.fields["author"] = std::string(authors[pick]);
     row.fields["created_at"] =
-        std::string("2024-0") + std::to_string(1 + static_cast<int>(pick)) + "-0" +
-        std::to_string(1 + static_cast<int>(index));
+        formatIsoDay(addDays(todayUtc(), -static_cast<int>(index - 1)));
     row.fields["frame_range"] = std::string("1001-1005");
     row.fields["description"] = std::string(descriptions[pick]);
     row.fields["step"] = std::string(steps[pick]);
@@ -649,6 +702,190 @@ Records makeVersions(
     return rows;
 }
 
+/**
+ * @brief Lowercases ASCII text for case-insensitive string ops.
+ */
+std::string toLower(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return text;
+}
+
+/**
+ * @brief Reports whether `left` is on or before `right` by year, month, day.
+ */
+bool dayOnOrBefore(const Date &left, const Date &right) {
+    if (left.year != right.year) {
+        return left.year < right.year;
+    }
+    if (left.month != right.month) {
+        return left.month < right.month;
+    }
+    return left.day <= right.day;
+}
+
+/**
+ * @brief Reads a calendar day from a Date or an ISO / date string.
+ */
+std::optional<Date> asDay(const Value &value) {
+    if (const auto *date = std::get_if<Date>(&value)) {
+        return *date;
+    }
+    const auto *text = std::get_if<std::string>(&value);
+    if (!text || text->size() < 10) {
+        return std::nullopt;
+    }
+    try {
+        return parseDate(text->substr(0, 10));
+    } catch (const Error &) {
+        return std::nullopt;
+    }
+}
+
+/**
+ * @brief Instant for a field value (date-only → midnight UTC).
+ */
+std::optional<std::chrono::system_clock::time_point> asInstant(const Value &value) {
+    if (const auto *date = std::get_if<Date>(&value)) {
+        return std::chrono::system_clock::from_time_t(utcTime(*date));
+    }
+    const auto *text = std::get_if<std::string>(&value);
+    if (!text || text->size() < 10) {
+        return std::nullopt;
+    }
+    Date day;
+    try {
+        day = parseDate(text->substr(0, 10));
+    } catch (const Error &) {
+        return std::nullopt;
+    }
+    int hour = 0;
+    int minute = 0;
+    int second = 0;
+    if (text->size() >= 19 && (*text)[10] == 'T') {
+        try {
+            hour = std::stoi(text->substr(11, 2));
+            minute = std::stoi(text->substr(14, 2));
+            second = std::stoi(text->substr(17, 2));
+        } catch (const std::exception &) {
+            return std::nullopt;
+        }
+    }
+    return std::chrono::system_clock::from_time_t(utcTime(day, hour, minute, second));
+}
+
+/**
+ * @brief Monday (UTC) of the week that contains `day`.
+ */
+Date weekStartMonday(const Date &day) {
+    const std::time_t noon = utcTime(day, 12);
+    std::tm parts{};
+    gmtime_r(&noon, &parts);
+    const int daysFromMonday = parts.tm_wday == 0 ? 6 : parts.tm_wday - 1;
+    return addDays(day, -daysFromMonday);
+}
+
+/**
+ * @brief Inclusive calendar-day window for an in_calendar_* leaf.
+ */
+std::pair<Date, Date> calendarWindow(ExprOp op, std::int64_t offset, const Date &today) {
+    if (op == ExprOp::InCalendarDay) {
+        const Date day = addDays(today, static_cast<int>(offset));
+        return {day, day};
+    }
+    if (op == ExprOp::InCalendarWeek) {
+        const Date start = addDays(weekStartMonday(today), static_cast<int>(offset) * 7);
+        return {start, addDays(start, 6)};
+    }
+    if (op == ExprOp::InCalendarMonth) {
+        int month = today.month + static_cast<int>(offset);
+        int year = today.year;
+        while (month < 1) {
+            month += 12;
+            --year;
+        }
+        while (month > 12) {
+            month -= 12;
+            ++year;
+        }
+        const Date start{year, month, 1};
+        const Date end{year, month, daysInMonth(year, month)};
+        return {start, end};
+    }
+    throw Error("fake backend: not a calendar operator");
+}
+
+/**
+ * @brief Whether a field instant falls in the past period ending at `now`.
+ */
+bool matchesInLast(
+    const Value &field,
+    const Period &period,
+    std::chrono::system_clock::time_point now) {
+    const auto instant = asInstant(field);
+    if (!instant || *instant > now) {
+        return false;
+    }
+    using namespace std::chrono;
+    system_clock::time_point start = now;
+    if (period.unit == "HOUR") {
+        start -= hours(period.count);
+    } else if (period.unit == "DAY") {
+        start -= hours(period.count * 24);
+    } else if (period.unit == "WEEK") {
+        start -= hours(period.count * 24 * 7);
+    } else if (period.unit == "MONTH") {
+        start -= hours(period.count * 24 * 30);
+    } else if (period.unit == "YEAR") {
+        start -= hours(period.count * 24 * 365);
+    } else {
+        throw Error("fake backend: unknown in_last unit \"" + period.unit + "\"");
+    }
+    return *instant >= start;
+}
+
+/**
+ * @brief Reads inclusive int bounds from IntBounds or a two-int shelf list.
+ */
+bool intBounds(const Value &value, std::int64_t &low, std::int64_t &high) {
+    if (const auto *bounds = std::get_if<IntBounds>(&value)) {
+        low = bounds->low;
+        high = bounds->high;
+        return true;
+    }
+    const auto *items = std::get_if<std::vector<std::int64_t>>(&value);
+    if (!items || items->size() != 2) {
+        return false;
+    }
+    low = (*items)[0];
+    high = (*items)[1];
+    return true;
+}
+
+/**
+ * @brief Reads inclusive day bounds from DateBounds or a two-string shelf list.
+ */
+bool dayBounds(const Value &value, Date &low, Date &high) {
+    if (const auto *bounds = std::get_if<DateBounds>(&value)) {
+        low = bounds->low;
+        high = bounds->high;
+        return true;
+    }
+    const auto *items = std::get_if<std::vector<std::string>>(&value);
+    if (!items || items->size() != 2) {
+        return false;
+    }
+    const auto left = asDay(Value{(*items)[0]});
+    const auto right = asDay(Value{(*items)[1]});
+    if (!left || !right) {
+        return false;
+    }
+    low = *left;
+    high = *right;
+    return true;
+}
+
 bool matchesWhere(const Record &row, const ExprNode &node) {
     if (node.kind == ExprKind::Group) {
         if (node.op == ExprOp::Not) {
@@ -685,33 +922,164 @@ bool matchesWhere(const Record &row, const ExprNode &node) {
         throw Error("fake backend: field \"" + node.key + "\" has no value");
     }
     const auto found = row.fields.find(node.key);
-    if (node.op == ExprOp::Contains) {
-        const auto *needle = std::get_if<std::string>(&*node.value);
+    const Value &leaf = *node.value;
+
+    const auto fieldString = [&]() -> const std::string * {
+        if (found == row.fields.end()) {
+            return nullptr;
+        }
+        return std::get_if<std::string>(&found->second);
+    };
+    const auto fieldInt = [&]() -> const std::int64_t * {
+        if (found == row.fields.end()) {
+            return nullptr;
+        }
+        return std::get_if<std::int64_t>(&found->second);
+    };
+
+    if (node.op == ExprOp::Contains || node.op == ExprOp::NotContains ||
+        node.op == ExprOp::StartsWith || node.op == ExprOp::EndsWith ||
+        node.op == ExprOp::NameContains || node.op == ExprOp::NameStartsWith) {
+        const auto *needle = std::get_if<std::string>(&leaf);
         if (!needle) {
-            throw Error("fake backend: contains expects a string on \"" + node.key + "\"");
+            throw Error("fake backend: string op expects a string on \"" + node.key + "\"");
+        }
+        const std::string *haystack = fieldString();
+        if (!haystack) {
+            return node.op == ExprOp::NotContains;
+        }
+        const std::string left = toLower(*haystack);
+        const std::string right = toLower(*needle);
+        if (node.op == ExprOp::Contains || node.op == ExprOp::NameContains) {
+            return left.find(right) != std::string::npos;
+        }
+        if (node.op == ExprOp::NotContains) {
+            return left.find(right) == std::string::npos;
+        }
+        if (node.op == ExprOp::StartsWith || node.op == ExprOp::NameStartsWith) {
+            return left.size() >= right.size() && left.compare(0, right.size(), right) == 0;
+        }
+        return left.size() >= right.size() &&
+               left.compare(left.size() - right.size(), right.size(), right) == 0;
+    }
+
+    if (node.op == ExprOp::NameIs) {
+        const auto *needle = std::get_if<std::string>(&leaf);
+        if (!needle) {
+            throw Error("fake backend: name_is expects a string on \"" + node.key + "\"");
+        }
+        const std::string *haystack = fieldString();
+        return haystack && *haystack == *needle;
+    }
+
+    if (node.op == ExprOp::In || node.op == ExprOp::NotIn) {
+        if (const auto *items = std::get_if<std::vector<std::string>>(&leaf)) {
+            const std::string *text = fieldString();
+            if (!text) {
+                return node.op == ExprOp::NotIn;
+            }
+            const bool member =
+                std::find(items->begin(), items->end(), *text) != items->end();
+            return node.op == ExprOp::In ? member : !member;
+        }
+        if (const auto *items = std::get_if<std::vector<std::int64_t>>(&leaf)) {
+            const std::int64_t *number = fieldInt();
+            if (!number) {
+                return node.op == ExprOp::NotIn;
+            }
+            const bool member =
+                std::find(items->begin(), items->end(), *number) != items->end();
+            return node.op == ExprOp::In ? member : !member;
+        }
+        throw Error("fake backend: in expects a list on \"" + node.key + "\"");
+    }
+
+    if (node.op == ExprOp::Between) {
+        std::int64_t lowInt = 0;
+        std::int64_t highInt = 0;
+        if (intBounds(leaf, lowInt, highInt)) {
+            const std::int64_t *number = fieldInt();
+            return number && *number >= lowInt && *number <= highInt;
+        }
+        Date lowDay;
+        Date highDay;
+        if (dayBounds(leaf, lowDay, highDay)) {
+            if (found == row.fields.end()) {
+                return false;
+            }
+            const auto day = asDay(found->second);
+            return day && dayOnOrBefore(lowDay, *day) && dayOnOrBefore(*day, highDay);
+        }
+        throw Error("fake backend: between expects bounds on \"" + node.key + "\"");
+    }
+
+    if (node.op == ExprOp::Gt || node.op == ExprOp::Lt) {
+        if (const auto *number = std::get_if<std::int64_t>(&leaf)) {
+            const std::int64_t *field = fieldInt();
+            if (!field) {
+                return false;
+            }
+            return node.op == ExprOp::Gt ? *field > *number : *field < *number;
+        }
+        const auto leafDay = asDay(leaf);
+        if (!leafDay) {
+            throw Error("fake backend: gt/lt expects int or day on \"" + node.key + "\"");
         }
         if (found == row.fields.end()) {
             return false;
         }
-        const auto *haystack = std::get_if<std::string>(&found->second);
-        if (!haystack) {
+        const auto fieldDay = asDay(found->second);
+        if (!fieldDay) {
             return false;
         }
-        auto lower = [](std::string text) {
-            std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
-            return text;
-        };
-        return lower(*haystack).find(lower(*needle)) != std::string::npos;
+        if (node.op == ExprOp::Gt) {
+            return !dayOnOrBefore(*fieldDay, *leafDay) && !(*fieldDay == *leafDay);
+        }
+        return !dayOnOrBefore(*leafDay, *fieldDay) && !(*fieldDay == *leafDay);
     }
-    const bool equal = found != row.fields.end() && found->second == *node.value;
-    if (node.op == ExprOp::Eq) {
-        return equal;
+
+    if (node.op == ExprOp::InLast) {
+        const auto *period = std::get_if<Period>(&leaf);
+        if (!period) {
+            throw Error("fake backend: in_last expects a period on \"" + node.key + "\"");
+        }
+        if (found == row.fields.end()) {
+            return false;
+        }
+        return matchesInLast(found->second, *period, std::chrono::system_clock::now());
     }
-    if (node.op == ExprOp::Ne) {
-        return !equal;
+
+    if (node.op == ExprOp::InCalendarDay || node.op == ExprOp::InCalendarWeek ||
+        node.op == ExprOp::InCalendarMonth) {
+        const auto *offset = std::get_if<std::int64_t>(&leaf);
+        if (!offset) {
+            throw Error("fake backend: calendar op expects an int on \"" + node.key + "\"");
+        }
+        if (found == row.fields.end()) {
+            return false;
+        }
+        const auto day = asDay(found->second);
+        if (!day) {
+            return false;
+        }
+        const auto window = calendarWindow(node.op, *offset, todayUtc());
+        return dayOnOrBefore(window.first, *day) && dayOnOrBefore(*day, window.second);
     }
+
+    if (node.op == ExprOp::Eq || node.op == ExprOp::Ne) {
+        if (std::holds_alternative<Date>(leaf)) {
+            if (found == row.fields.end()) {
+                return node.op == ExprOp::Ne;
+            }
+            const auto fieldDay = asDay(found->second);
+            const auto leafDay = asDay(leaf);
+            const bool equal = fieldDay && leafDay && *fieldDay == *leafDay;
+            return node.op == ExprOp::Eq ? equal : !equal;
+        }
+        const bool equal = found != row.fields.end() && found->second == leaf;
+        return node.op == ExprOp::Eq ? equal : !equal;
+    }
+
     throw Error("fake backend: operator not allowed on \"" + node.key + "\"");
 }
 

@@ -64,7 +64,7 @@ class ShelfList : public QObject {
 
   private:
     /**
-     * @brief Publishes Shelves, SelectedShelf, ShelfFields, UpsertShelf, RemoveShelf.
+     * @brief Publishes Shelves, SelectedShelf, ShelfFields, UpsertShelf, RemoveShelf, MoveShelf.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
@@ -88,6 +88,19 @@ class ShelfList : public QObject {
     void removeShelf(const std::string &shelfId);
 
     /**
+     * @brief Moves one user shelf in the list and republishes.
+     * @param shelfId Shelf id to move.
+     * @param toIndex Destination index among user shelves.
+     */
+    void moveShelf(const std::string &shelfId, std::size_t toIndex);
+
+    /**
+     * @brief Applies MoveShelf JSON from QML.
+     * @param payload Object with `id` and `toIndex`.
+     */
+    void moveFromJson(const nlohmann::json &payload);
+
+    /**
      * @brief Publishes filterable fields for every entity except project.
      */
     void publishShelfFields();
@@ -99,6 +112,7 @@ class ShelfList : public QObject {
     module::JsonAttribute *shelf_fields_ = nullptr;   ///< Filterable fields for the editor.
     module::JsonAttribute *upsert_shelf_ = nullptr;   ///< Write a shelf object to create/update.
     module::StringAttribute *remove_shelf_ = nullptr; ///< Write an id to delete.
+    module::JsonAttribute *move_shelf_ = nullptr;     ///< Write {id, toIndex} to reorder.
 };
 
 } // namespace xstudio::mikros_shotbrowser

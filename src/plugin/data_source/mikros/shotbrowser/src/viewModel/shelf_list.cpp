@@ -79,6 +79,8 @@ void ShelfList::initQmlAttributes(plugin::StandardPlugin &panel) {
     upsert_shelf_->expose_in_ui_attrs_group(kAttrsGroup);
     remove_shelf_ = panel.add_string_attribute("RemoveShelf", "RemoveShelf", "");
     remove_shelf_->expose_in_ui_attrs_group(kAttrsGroup);
+    move_shelf_ = panel.add_json_attribute("MoveShelf", "MoveShelf", nlohmann::json::object());
+    move_shelf_->expose_in_ui_attrs_group(kAttrsGroup);
 }
 
 void ShelfList::publishShelves() {
@@ -192,6 +194,26 @@ void ShelfList::removeShelf(const std::string &shelfId) {
     publishShelves();
 }
 
+void ShelfList::moveShelf(const std::string &shelfId, std::size_t toIndex) {
+    if (!store_.moveTo(shelfId, toIndex)) {
+        return;
+    }
+    store_.save(panel_);
+    publishShelves();
+}
+
+void ShelfList::moveFromJson(const nlohmann::json &payload) {
+    if (!payload.is_object()) {
+        return;
+    }
+    const std::string id = payload.value("id", std::string());
+    if (id.empty() || !payload.contains("toIndex") || !payload.at("toIndex").is_number_integer()) {
+        return;
+    }
+    const auto toIndex = payload.at("toIndex").get<std::size_t>();
+    moveShelf(id, toIndex);
+}
+
 void ShelfList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
     if (role != module::Attribute::Value) {
         return;
@@ -211,6 +233,11 @@ void ShelfList::attribute_changed(const utility::Uuid &attr_uuid, int role) {
         if (!id.empty()) {
             removeShelf(id);
         }
+        return;
+    }
+    if (move_shelf_ && attr_uuid == move_shelf_->uuid()) {
+        moveFromJson(move_shelf_->value());
+        move_shelf_->set_value(utility::JsonStore(nlohmann::json::object()));
     }
 }
 

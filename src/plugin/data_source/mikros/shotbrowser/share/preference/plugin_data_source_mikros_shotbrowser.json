@@ -41,6 +41,26 @@
                     "description": "User shelves: named FieldExpr filters for versions or playlists.",
                     "path": "/plugin/data_source/mikros_shotbrowser/shelves",
                     "value": []
+                },
+                "shelf_edit_popup_width": {
+                    "context": [
+                        "PLUGIN"
+                    ],
+                    "datatype": "double",
+                    "default_value": 520.0,
+                    "description": "Width in pixels of the shelf editor popup.",
+                    "path": "/plugin/data_source/mikros_shotbrowser/shelf_edit_popup_width",
+                    "value": 520.0
+                },
+                "shelf_edit_popup_height": {
+                    "context": [
+                        "PLUGIN"
+                    ],
+                    "datatype": "double",
+                    "default_value": 440.0,
+                    "description": "Height in pixels of the shelf editor popup.",
+                    "path": "/plugin/data_source/mikros_shotbrowser/shelf_edit_popup_height",
+                    "value": 440.0
                 }
             }
         }

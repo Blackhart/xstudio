@@ -22,14 +22,14 @@ TEST_CASE("schema loads the project entity") {
     CHECK(id->type == "int");
     CHECK(id->filter);
     CHECK_FALSE(id->canSet);
-    CHECK(id->ops.size() == 2);
+    CHECK(id->ops.size() == 7);
 
     const FieldSpec *name = project->field("name");
     REQUIRE(name != nullptr);
     CHECK(name->type == "string");
     CHECK(name->filter);
     CHECK(name->canSet);
-    CHECK(name->ops.size() == 3);
+    CHECK(name->ops.size() == 8);
     CHECK(std::find(name->ops.begin(), name->ops.end(), "contains") != name->ops.end());
 
     const FieldSpec *code = project->field("code");
@@ -123,7 +123,9 @@ TEST_CASE("schema loads the playlist entity") {
     CHECK(playlist->field("category") != nullptr);
     const FieldSpec *author = playlist->field("author");
     REQUIRE(author != nullptr);
+    CHECK(author->type == "entity");
     CHECK(author->filter);
+    CHECK(std::find(author->ops.begin(), author->ops.end(), "name_contains") != author->ops.end());
     CHECK(schema.allowsInParent(*playlist, "project"));
 }
 
@@ -164,13 +166,18 @@ TEST_CASE("schema loads the version entity") {
 
     const FieldSpec *author = version->field("author");
     REQUIRE(author != nullptr);
-    CHECK(author->type == "string");
+    CHECK(author->type == "entity");
     CHECK(author->filter);
 
     const FieldSpec *status = version->field("status");
     REQUIRE(status != nullptr);
     CHECK(status->type == "string");
     CHECK(status->filter);
+
+    const FieldSpec *created = version->field("created_at");
+    REQUIRE(created != nullptr);
+    CHECK(created->type == "datetime");
+    CHECK(std::find(created->ops.begin(), created->ops.end(), "in_last") != created->ops.end());
 
     const FieldSpec *openNotes = version->field("open_notes_count");
     REQUIRE(openNotes != nullptr);

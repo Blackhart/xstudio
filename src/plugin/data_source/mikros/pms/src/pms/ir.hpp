@@ -27,12 +27,27 @@ enum class Op {
  * @brief Operator stored on an expression node.
  */
 enum class ExprOp {
-    Eq,       ///< Field equals the leaf value.
-    Ne,       ///< Field differs from the leaf value.
-    Contains, ///< String field contains the leaf substring (case-insensitive).
-    And,      ///< Group that requires every child.
-    Or,       ///< Group that requires one child.
-    Not,      ///< Group with exactly one child.
+    Eq,              ///< Field equals the leaf value.
+    Ne,              ///< Field differs from the leaf value.
+    Contains,        ///< String field contains the leaf substring (case-insensitive).
+    NotContains,     ///< String field does not contain the leaf.
+    StartsWith,      ///< String field starts with the leaf.
+    EndsWith,        ///< String field ends with the leaf.
+    In,              ///< Field is one of the leaf values.
+    NotIn,           ///< Field is none of the leaf values.
+    Gt,              ///< Field is greater than the leaf.
+    Lt,              ///< Field is less than the leaf.
+    Between,         ///< Field lies in the inclusive [low, high] bounds.
+    InLast,          ///< Datetime is inside a past period.
+    InCalendarDay,   ///< Datetime falls on a day offset from today.
+    InCalendarWeek,  ///< Datetime falls in a week offset from this week.
+    InCalendarMonth, ///< Datetime falls in a month offset from this month.
+    NameContains,    ///< Linked entity name contains the leaf.
+    NameStartsWith,  ///< Linked entity name starts with the leaf.
+    NameIs,          ///< Linked entity name equals the leaf.
+    And,             ///< Group that requires every child.
+    Or,              ///< Group that requires one child.
+    Not,             ///< Group with exactly one child.
 };
 
 /**
@@ -46,7 +61,7 @@ enum class ExprKind {
 /**
  * @brief One immutable node of an In or Where tree.
  *
- * A field node has `key`, `op` (`eq`, `ne`, or `contains`), and `value`. For
+ * A field node has `key`, a comparison `op`, and `value`. For
  * In() leaves, `parent` holds the domain parent name (`shot`, `playlist`, …).
  * Where() leaves leave `parent` empty. A group node has `op` (`and`, `or`, or
  * `not`) and `args`. Nodes are shared and never mutated after the builder

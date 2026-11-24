@@ -12,6 +12,7 @@ Popup {
     rightPadding: 0
 
     property bool repositioned: false
+    property bool lockPosition: false ///< When true, size changes do not re-anchor the popup.
 
     background: XsGradientRectangle {
         implicitWidth: 100
@@ -29,13 +30,13 @@ Popup {
     }
 
     onWidthChanged: {
-        if (visible) {
+        if (visible && !lockPosition) {
             repositionPopupMenu(this, this.parent, x, y, undefined)
         }
     }
 
     onHeightChanged: {
-        if (visible) {
+        if (visible && !lockPosition) {
             repositionPopupMenu(this, this.parent, x, y, undefined)
         }
     }

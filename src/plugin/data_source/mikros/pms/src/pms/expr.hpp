@@ -28,7 +28,11 @@ template <typename T> struct NonDeduced {
  * @brief Compile-time name of one domain field.
  *
  * The proxy is not the value. Comparing it builds a FieldExpr and leaves the
- * proxy unchanged. `==`, `!=`, and `contains()` are the field operators.
+ * proxy unchanged. `==`, `!=`, `contains()`, `notContains()`, `startsWith()`,
+ * `endsWith()`, `isIn()`, `isNotIn()`, `greaterThan()`, `lessThan()`,
+ * `between()`, `inLast()`, `inCalendarDay()` / `inCalendarWeek()` /
+ * `inCalendarMonth()`, and `nameContains()` / `nameStartsWith()` / `nameIs()`
+ * are the field operators.
  *
  * @tparam Entity Entity tag that owns the field.
  * @tparam T C++ type of the field value.
@@ -62,7 +66,7 @@ template <typename Entity> struct FieldExpr {
  * @tparam Entity Entity tag that owns the field.
  * @tparam T C++ type of the field value.
  * @param field Proxy that supplies the YAML key.
- * @param op `Eq`, `Ne`, or `Contains`.
+ * @param op Comparison operator stored on the leaf.
  * @param value Scalar stored on the leaf.
  * @return Expression holding the new node.
  */
@@ -117,6 +121,18 @@ FieldExpr<Entity> contains(const Field<Entity, std::string> &field, const std::s
 }
 
 /**
+ * @brief Tests whether a string field does not contain a substring.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field String proxy on the left.
+ * @param text Substring that must be absent.
+ * @return A field leaf with `op` NotContains.
+ */
+template <typename Entity>
+FieldExpr<Entity> notContains(const Field<Entity, std::string> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::NotContains, Value{text});
+}
+
+/**
  * @brief Compares a date field with an ISO string.
  * @tparam Entity Entity tag that owns the field.
  * @param field Date proxy on the left.
@@ -140,6 +156,314 @@ FieldExpr<Entity> operator==(const Field<Entity, Date> &field, const std::string
 template <typename Entity>
 FieldExpr<Entity> operator!=(const Field<Entity, Date> &field, const std::string &text) {
     return makeComparison(field, ExprOp::Ne, Value{parseDate(text)});
+}
+
+/**
+ * @brief Tests whether a string field starts with a prefix.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field String proxy on the left.
+ * @param text Prefix to look for.
+ * @return A field leaf with `op` StartsWith.
+ */
+template <typename Entity>
+FieldExpr<Entity> startsWith(const Field<Entity, std::string> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::StartsWith, Value{text});
+}
+
+/**
+ * @brief Tests whether a string field ends with a suffix.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field String proxy on the left.
+ * @param text Suffix to look for.
+ * @return A field leaf with `op` EndsWith.
+ */
+template <typename Entity>
+FieldExpr<Entity> endsWith(const Field<Entity, std::string> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::EndsWith, Value{text});
+}
+
+/**
+ * @brief Tests whether a string field is one of the given values.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field String proxy on the left.
+ * @param values Accepted values. Empty is rejected at validation.
+ * @return A field leaf with `op` In.
+ */
+template <typename Entity>
+FieldExpr<Entity> isIn(
+    const Field<Entity, std::string> &field, std::vector<std::string> values) {
+    return makeComparison(field, ExprOp::In, Value{std::move(values)});
+}
+
+/**
+ * @brief Tests whether an int field is one of the given values.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Int proxy on the left.
+ * @param values Accepted values. Empty is rejected at validation.
+ * @return A field leaf with `op` In.
+ */
+template <typename Entity>
+FieldExpr<Entity> isIn(
+    const Field<Entity, std::int64_t> &field, std::vector<std::int64_t> values) {
+    return makeComparison(field, ExprOp::In, Value{std::move(values)});
+}
+
+/**
+ * @brief Tests whether a string field is none of the given values.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field String proxy on the left.
+ * @param values Rejected values. Empty is rejected at validation.
+ * @return A field leaf with `op` NotIn.
+ */
+template <typename Entity>
+FieldExpr<Entity> isNotIn(
+    const Field<Entity, std::string> &field, std::vector<std::string> values) {
+    return makeComparison(field, ExprOp::NotIn, Value{std::move(values)});
+}
+
+/**
+ * @brief Tests whether an int field is none of the given values.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Int proxy on the left.
+ * @param values Rejected values. Empty is rejected at validation.
+ * @return A field leaf with `op` NotIn.
+ */
+template <typename Entity>
+FieldExpr<Entity> isNotIn(
+    const Field<Entity, std::int64_t> &field, std::vector<std::int64_t> values) {
+    return makeComparison(field, ExprOp::NotIn, Value{std::move(values)});
+}
+
+/**
+ * @brief Tests whether an int field is greater than a number.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Int proxy on the left.
+ * @param value Exclusive lower bound.
+ * @return A field leaf with `op` Gt.
+ */
+template <typename Entity>
+FieldExpr<Entity> greaterThan(const Field<Entity, std::int64_t> &field, std::int64_t value) {
+    return makeComparison(field, ExprOp::Gt, Value{value});
+}
+
+/**
+ * @brief Tests whether an int field is less than a number.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Int proxy on the left.
+ * @param value Exclusive upper bound.
+ * @return A field leaf with `op` Lt.
+ */
+template <typename Entity>
+FieldExpr<Entity> lessThan(const Field<Entity, std::int64_t> &field, std::int64_t value) {
+    return makeComparison(field, ExprOp::Lt, Value{value});
+}
+
+/**
+ * @brief Tests whether a date field is after a calendar day.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Date proxy on the left.
+ * @param text Day in the form `YYYY-MM-DD`.
+ * @return A date leaf with `op` Gt.
+ * @throw Error When `text` is not a real calendar day.
+ */
+template <typename Entity>
+FieldExpr<Entity> greaterThan(const Field<Entity, Date> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::Gt, Value{parseDate(text)});
+}
+
+/**
+ * @brief Tests whether a date field is before a calendar day.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Date proxy on the left.
+ * @param text Day in the form `YYYY-MM-DD`.
+ * @return A date leaf with `op` Lt.
+ * @throw Error When `text` is not a real calendar day.
+ */
+template <typename Entity>
+FieldExpr<Entity> lessThan(const Field<Entity, Date> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::Lt, Value{parseDate(text)});
+}
+
+/**
+ * @brief Compares a datetime field with a calendar day.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param text Day in the form `YYYY-MM-DD`.
+ * @return A date leaf with `op` Eq.
+ * @throw Error When `text` is not a real calendar day.
+ */
+template <typename Entity>
+FieldExpr<Entity> operator==(const Field<Entity, DateTime> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::Eq, Value{parseDate(text)});
+}
+
+/**
+ * @brief Compares a datetime field with a calendar day for inequality.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param text Day in the form `YYYY-MM-DD`.
+ * @return A date leaf with `op` Ne.
+ * @throw Error When `text` is not a real calendar day.
+ */
+template <typename Entity>
+FieldExpr<Entity> operator!=(const Field<Entity, DateTime> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::Ne, Value{parseDate(text)});
+}
+
+/**
+ * @brief Tests whether a datetime field is after a calendar day.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param text Day in the form `YYYY-MM-DD`.
+ * @return A date leaf with `op` Gt.
+ * @throw Error When `text` is not a real calendar day.
+ */
+template <typename Entity>
+FieldExpr<Entity> greaterThan(const Field<Entity, DateTime> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::Gt, Value{parseDate(text)});
+}
+
+/**
+ * @brief Tests whether a datetime field is before a calendar day.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param text Day in the form `YYYY-MM-DD`.
+ * @return A date leaf with `op` Lt.
+ * @throw Error When `text` is not a real calendar day.
+ */
+template <typename Entity>
+FieldExpr<Entity> lessThan(const Field<Entity, DateTime> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::Lt, Value{parseDate(text)});
+}
+
+/**
+ * @brief Tests whether a datetime field falls in a past period.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param count Positive number of units.
+ * @param unit `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR`.
+ * @return A period leaf with `op` InLast.
+ */
+template <typename Entity>
+FieldExpr<Entity> inLast(
+    const Field<Entity, DateTime> &field, std::int64_t count, const std::string &unit) {
+    return makeComparison(field, ExprOp::InLast, Value{Period{count, unit}});
+}
+
+/**
+ * @brief Tests whether a datetime field falls on a day offset from today.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param offset `0` is today, `1` is tomorrow, `-1` is yesterday.
+ * @return An int leaf with `op` InCalendarDay.
+ */
+template <typename Entity>
+FieldExpr<Entity> inCalendarDay(const Field<Entity, DateTime> &field, std::int64_t offset) {
+    return makeComparison(field, ExprOp::InCalendarDay, Value{offset});
+}
+
+/**
+ * @brief Tests whether a datetime field falls in a week offset from this week.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param offset `0` is this week, `1` is next week, `-1` is last week.
+ * @return An int leaf with `op` InCalendarWeek.
+ */
+template <typename Entity>
+FieldExpr<Entity> inCalendarWeek(const Field<Entity, DateTime> &field, std::int64_t offset) {
+    return makeComparison(field, ExprOp::InCalendarWeek, Value{offset});
+}
+
+/**
+ * @brief Tests whether a datetime field falls in a month offset from this month.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param offset `0` is this month, `1` is next month, `-1` is last month.
+ * @return An int leaf with `op` InCalendarMonth.
+ */
+template <typename Entity>
+FieldExpr<Entity> inCalendarMonth(const Field<Entity, DateTime> &field, std::int64_t offset) {
+    return makeComparison(field, ExprOp::InCalendarMonth, Value{offset});
+}
+
+/**
+ * @brief Tests whether an int field lies in an inclusive range.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Int proxy on the left.
+ * @param low Inclusive lower bound.
+ * @param high Inclusive upper bound.
+ * @return A field leaf with `op` Between.
+ */
+template <typename Entity>
+FieldExpr<Entity> between(
+    const Field<Entity, std::int64_t> &field, std::int64_t low, std::int64_t high) {
+    return makeComparison(field, ExprOp::Between, Value{IntBounds{low, high}});
+}
+
+/**
+ * @brief Tests whether a date field lies in an inclusive day range.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Date proxy on the left.
+ * @param low First day as `YYYY-MM-DD`.
+ * @param high Last day as `YYYY-MM-DD`.
+ * @return A field leaf with `op` Between.
+ * @throw Error When a bound is not a real calendar day.
+ */
+template <typename Entity>
+FieldExpr<Entity> between(
+    const Field<Entity, Date> &field, const std::string &low, const std::string &high) {
+    return makeComparison(field, ExprOp::Between, Value{DateBounds{parseDate(low), parseDate(high)}});
+}
+
+/**
+ * @brief Tests whether a datetime field lies in an inclusive day range.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param low First day as `YYYY-MM-DD`.
+ * @param high Last day as `YYYY-MM-DD`.
+ * @return A field leaf with `op` Between.
+ * @throw Error When a bound is not a real calendar day.
+ */
+template <typename Entity>
+FieldExpr<Entity> between(
+    const Field<Entity, DateTime> &field, const std::string &low, const std::string &high) {
+    return makeComparison(field, ExprOp::Between, Value{DateBounds{parseDate(low), parseDate(high)}});
+}
+
+/**
+ * @brief Tests whether a linked entity name contains a substring.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Entity proxy on the left.
+ * @param text Substring to look for in the linked name.
+ * @return A field leaf with `op` NameContains.
+ */
+template <typename Entity>
+FieldExpr<Entity> nameContains(const Field<Entity, EntityRef> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::NameContains, Value{text});
+}
+
+/**
+ * @brief Tests whether a linked entity name starts with a prefix.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Entity proxy on the left.
+ * @param text Prefix to look for in the linked name.
+ * @return A field leaf with `op` NameStartsWith.
+ */
+template <typename Entity>
+FieldExpr<Entity> nameStartsWith(const Field<Entity, EntityRef> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::NameStartsWith, Value{text});
+}
+
+/**
+ * @brief Tests whether a linked entity name equals a label.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Entity proxy on the left.
+ * @param text Exact linked name.
+ * @return A field leaf with `op` NameIs.
+ */
+template <typename Entity>
+FieldExpr<Entity> nameIs(const Field<Entity, EntityRef> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::NameIs, Value{text});
 }
 
 /**

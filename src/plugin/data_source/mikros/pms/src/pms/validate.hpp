@@ -14,7 +14,7 @@ namespace pms {
  * @brief Checks that a find or count query matches the schema.
  *
  * The entity must exist. Each where-leaf must name a filterable field, use an
- * allowed operator, and carry a value of the field type. `and` and `or` need
+ * allowed operator, and carry a value that operator accepts. `and` and `or` need
  * two children, `not` needs one. A null where-tree is legal and lists every row.
  * For Find, when `limit` is set it must be greater than zero, and a cursor
  * without a limit is rejected. For Count, `limit` and `cursor` are rejected.

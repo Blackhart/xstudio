@@ -32,9 +32,10 @@ std::string escape(const std::string &text) {
 }
 
 /**
- * @brief Renders one scalar the way the tests compare it.
- * @param value String, int, or date.
- * @return A quoted string, a decimal integer, or `YYYY-MM-DD`.
+ * @brief Renders one filter value the way the tests compare it.
+ * @param value String, int, date, list, or period.
+ * @return A quoted string, a decimal integer, `YYYY-MM-DD`, `["a", "b"]`, or `7 DAY`.
+ * @throw Error When the value is a links list.
  */
 std::string dumpValue(const Value &value) {
     if (const auto *text = std::get_if<std::string>(&value)) {
@@ -42,6 +43,44 @@ std::string dumpValue(const Value &value) {
     }
     if (const auto *number = std::get_if<std::int64_t>(&value)) {
         return std::to_string(*number);
+    }
+    if (const auto *texts = std::get_if<std::vector<std::string>>(&value)) {
+        std::ostringstream out;
+        out << '[';
+        for (std::size_t i = 0; i < texts->size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << '"' << escape((*texts)[i]) << '"';
+        }
+        out << ']';
+        return out.str();
+    }
+    if (const auto *numbers = std::get_if<std::vector<std::int64_t>>(&value)) {
+        std::ostringstream out;
+        out << '[';
+        for (std::size_t i = 0; i < numbers->size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << (*numbers)[i];
+        }
+        out << ']';
+        return out.str();
+    }
+    if (const auto *period = std::get_if<Period>(&value)) {
+        return std::to_string(period->count) + " " + period->unit;
+    }
+    if (const auto *bounds = std::get_if<IntBounds>(&value)) {
+        return std::to_string(bounds->low) + " .. " + std::to_string(bounds->high);
+    }
+    if (const auto *bounds = std::get_if<DateBounds>(&value)) {
+        std::ostringstream out;
+        out << std::setfill('0') << std::setw(4) << bounds->low.year << '-' << std::setw(2)
+            << bounds->low.month << '-' << std::setw(2) << bounds->low.day << " .. "
+            << std::setw(4) << bounds->high.year << '-' << std::setw(2) << bounds->high.month
+            << '-' << std::setw(2) << bounds->high.day;
+        return out.str();
     }
     if (std::holds_alternative<std::vector<Link>>(value)) {
         throw Error("dump: links are not a filter value");
@@ -56,7 +95,7 @@ std::string dumpValue(const Value &value) {
 /**
  * @brief Returns the dump token of an expression operator.
  * @param op Comparison or group operator.
- * @return `eq`, `ne`, `contains`, `and`, `or`, or `not`.
+ * @return The domain token, such as `eq`, `in_last`, or `and`.
  */
 const char *exprOpName(ExprOp op) {
     switch (op) {
@@ -66,6 +105,36 @@ const char *exprOpName(ExprOp op) {
         return "ne";
     case ExprOp::Contains:
         return "contains";
+    case ExprOp::NotContains:
+        return "not_contains";
+    case ExprOp::StartsWith:
+        return "starts_with";
+    case ExprOp::EndsWith:
+        return "ends_with";
+    case ExprOp::In:
+        return "in";
+    case ExprOp::NotIn:
+        return "not_in";
+    case ExprOp::Gt:
+        return "gt";
+    case ExprOp::Lt:
+        return "lt";
+    case ExprOp::Between:
+        return "between";
+    case ExprOp::InLast:
+        return "in_last";
+    case ExprOp::InCalendarDay:
+        return "in_calendar_day";
+    case ExprOp::InCalendarWeek:
+        return "in_calendar_week";
+    case ExprOp::InCalendarMonth:
+        return "in_calendar_month";
+    case ExprOp::NameContains:
+        return "name_contains";
+    case ExprOp::NameStartsWith:
+        return "name_starts_with";
+    case ExprOp::NameIs:
+        return "name_is";
     case ExprOp::And:
         return "and";
     case ExprOp::Or:

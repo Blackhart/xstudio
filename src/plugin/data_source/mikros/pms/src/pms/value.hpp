@@ -37,6 +37,78 @@ struct Date {
 };
 
 /**
+ * @brief Proxy tag for a datetime field such as created_at.
+ *
+ * The record still stores the ShotGrid timestamp as a string. Only the
+ * generated Field proxy uses this type, so date operators do not apply to
+ * every string field.
+ */
+struct DateTime {};
+
+/**
+ * @brief Proxy tag for an entity field such as author.
+ *
+ * The record still stores the linked entity label as a string. Only the
+ * generated Field proxy uses this type, so name_* operators do not apply to
+ * plain text fields.
+ */
+struct EntityRef {};
+
+/**
+ * @brief Inclusive pair passed to between on an int field.
+ */
+struct IntBounds {
+    std::int64_t low = 0;  ///< Inclusive lower bound.
+    std::int64_t high = 0; ///< Inclusive upper bound.
+
+    /**
+     * @brief Compares two int ranges.
+     * @param other Range to compare with.
+     * @return True when both bounds are equal.
+     */
+    bool operator==(const IntBounds &other) const {
+        return low == other.low && high == other.high;
+    }
+};
+
+/**
+ * @brief Inclusive pair of calendar days passed to between on date / datetime.
+ */
+struct DateBounds {
+    Date low;  ///< Inclusive first day.
+    Date high; ///< Inclusive last day.
+
+    /**
+     * @brief Compares two date ranges.
+     * @param other Range to compare with.
+     * @return True when both bounds are equal.
+     */
+    bool operator==(const DateBounds &other) const {
+        return low == other.low && high == other.high;
+    }
+};
+
+/**
+ * @brief Relative span passed to in_last.
+ *
+ * `count` is a positive number of `unit` steps. ShotGrid receives
+ * `[count, unit]`.
+ */
+struct Period {
+    std::int64_t count = 0; ///< Positive count of units.
+    std::string unit;       ///< `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR`.
+
+    /**
+     * @brief Compares two periods by count and unit.
+     * @param other Period to compare with.
+     * @return True when both fields are equal.
+     */
+    bool operator==(const Period &other) const {
+        return count == other.count && unit == other.unit;
+    }
+};
+
+/**
  * @brief One linked row carried on a parent, such as a shot on a sequence.
  *
  * `id` is the linked entity id. `name` is the label ShotGrid puts on the link.
@@ -57,10 +129,22 @@ struct Link {
  * @brief Value stored in a filter leaf or in a record field.
  *
  * `string` maps to `std::string`, `int` to `std::int64_t`, `date` to Date, and
- * `links` to a list of Link. A filter leaf stays a scalar. Only a record field
- * such as `shots` stores the list.
+ * `links` to a list of Link. An `in` leaf stores a list of strings or ints.
+ * An `in_last` leaf stores a Period. A `between` leaf stores IntBounds or
+ * DateBounds. `DateTime` and `EntityRef` are field proxies, not values. A
+ * record field such as `shots` stores the link list. `created_at` and
+ * `author` stay strings on the record.
  */
-using Value = std::variant<std::string, std::int64_t, Date, std::vector<Link>>;
+using Value = std::variant<
+    std::string,
+    std::int64_t,
+    Date,
+    std::vector<Link>,
+    std::vector<std::string>,
+    std::vector<std::int64_t>,
+    Period,
+    IntBounds,
+    DateBounds>;
 
 /**
  * @brief One row returned by find(), keyed by the domain YAML names.

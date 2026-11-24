@@ -1,9 +1,11 @@
 # Domain schema for this slice. Project, sequence, shot, asset, playlist, version.
 types:
-  string: { ops: [eq, ne, contains] }
-  int:    { ops: [eq, ne] }
-  date:   { ops: [eq, ne] }
-  links:  { ops: [] }
+  string:   { ops: [eq, ne, contains, not_contains, starts_with, ends_with, in, not_in] }
+  int:      { ops: [eq, ne, gt, lt, between, in, not_in] }
+  date:     { ops: [eq, ne, gt, lt, between] }
+  datetime: { ops: [eq, ne, gt, lt, between, in_last, in_calendar_day, in_calendar_week, in_calendar_month] }
+  entity:   { ops: [name_contains, name_starts_with, name_is] }
+  links:    { ops: [] }
 
 entities:
   project:
@@ -46,9 +48,9 @@ entities:
       versions:         { type: links,  filter: false, set: false }
       open_notes_count: { type: int,    filter: true,  set: false }
       departments:      { type: string, filter: true,  set: false }
-      created_at:       { type: string, filter: true,  set: false }
+      created_at:       { type: datetime, filter: true, set: false }
       category:         { type: string, filter: true,  set: false }
-      author:           { type: string, filter: true,  set: false }
+      author:           { type: entity, filter: true,  set: false }
     scope: [project]
 
   version:
@@ -57,8 +59,8 @@ entities:
       id:    { type: int,    filter: true, set: false }
       name:  { type: string, filter: true, set: true }
       image: { type: string, filter: false, set: false, providers: [http, file] }
-      author:           { type: string, filter: true,  set: false }
-      created_at:       { type: string, filter: true,  set: false }
+      author:           { type: entity, filter: true,  set: false }
+      created_at:       { type: datetime, filter: true, set: false }
       frame_range:      { type: string, filter: true,  set: false }
       description:      { type: string, filter: true,  set: false }
       step:             { type: string, filter: true,  set: false }

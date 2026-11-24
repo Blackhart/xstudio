@@ -82,18 +82,19 @@ Item {
             id: tt
 
             text: widget.text
-            property color bgColor: XsStyleSheet.primaryTextColor
-            property color textColor: XsStyleSheet.panelBgColor
-
             visible: false
 
-            font.pixelSize: XsStyleSheet.fontSize*scaling
+            // Dark xStudio chrome; palette covers platforms that ignore background.
+            palette.toolTipBase: XsStyleSheet.baseColor
+            palette.toolTipText: XsStyleSheet.primaryTextColor
+
+            font.pixelSize: XsStyleSheet.fontSize * scaling
             font.family: XsStyleSheet.fontFamily
 
             property var autoWidth: fixedWidth != 0.0 ? fixedWidth : dummyText.contentWidth + (XsStyleSheet.panelPadding*3)
 
             width: autoWidth > maxWidth ? maxWidth : autoWidth
-            height: dummyText2.height + XsStyleSheet.panelPadding*2
+            height: dummyText2.height + XsStyleSheet.panelPadding * 2
 
             rightPadding: XsStyleSheet.panelPadding
             leftPadding: XsStyleSheet.panelPadding
@@ -102,13 +103,11 @@ Item {
                 id: textDiv
                 text: tt.text
                 font: tt.font
-                color: XsStyleSheet.panelBgColor
+                color: XsStyleSheet.primaryTextColor
                 wrapMode: Text.Wrap
             }
 
-            // We need this to get the 'natural' width of the rendered text
-            // without wrapping, in case this is less than the maxWidth or
-            // fixedWidth
+            // Natural unwrapped width, used when under maxWidth / fixedWidth.
             Text {
                 id: dummyText
                 text: tt.text
@@ -125,21 +124,11 @@ Item {
                 opacity: 0
             }
 
-            // This background shadow doesn't work, you can't see it
-            // probably because it is clipped by the parent.
-            /*background: Rectangle {
-
-                color: XsStyleSheet.primaryTextColor
-
-                Rectangle {
-                    id: shadowDiv
-                    color: "#000000"
-                    opacity: 0.2
-                    x: 20
-                    y: -20
-                    z: -1
-                }
-            }*/
+            background: Rectangle {
+                color: XsStyleSheet.baseColor
+                border.color: XsStyleSheet.menuBorderColor
+                border.width: XsStyleSheet.widgetBorderWidth
+            }
 
         }
 

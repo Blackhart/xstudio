@@ -81,7 +81,7 @@ std::string trimNewline(std::string text) {
 
 /**
  * @brief Renders one record field value for the page log.
- * @param value String, int, date, or list of links.
+ * @param value String, int, date, link list, filter list, or period.
  * @return Text that fits inside a `{ key: … }` line.
  */
 std::string formatFieldValue(const Value &value) {
@@ -90,6 +90,44 @@ std::string formatFieldValue(const Value &value) {
     }
     if (const auto *number = std::get_if<std::int64_t>(&value)) {
         return std::to_string(*number);
+    }
+    if (const auto *texts = std::get_if<std::vector<std::string>>(&value)) {
+        std::ostringstream out;
+        out << '[';
+        for (std::size_t i = 0; i < texts->size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << '"' << escapeQuoted((*texts)[i]) << '"';
+        }
+        out << ']';
+        return out.str(); ///< Filter list, so a log never reads it as a date.
+    }
+    if (const auto *numbers = std::get_if<std::vector<std::int64_t>>(&value)) {
+        std::ostringstream out;
+        out << '[';
+        for (std::size_t i = 0; i < numbers->size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << (*numbers)[i];
+        }
+        out << ']';
+        return out.str();
+    }
+    if (const auto *period = std::get_if<Period>(&value)) {
+        return std::to_string(period->count) + " " + period->unit;
+    }
+    if (const auto *bounds = std::get_if<IntBounds>(&value)) {
+        return std::to_string(bounds->low) + " .. " + std::to_string(bounds->high);
+    }
+    if (const auto *bounds = std::get_if<DateBounds>(&value)) {
+        std::ostringstream out;
+        out << std::setfill('0') << std::setw(4) << bounds->low.year << '-' << std::setw(2)
+            << bounds->low.month << '-' << std::setw(2) << bounds->low.day << " .. "
+            << std::setw(4) << bounds->high.year << '-' << std::setw(2) << bounds->high.month
+            << '-' << std::setw(2) << bounds->high.day;
+        return out.str();
     }
     if (const auto *links = std::get_if<std::vector<Link>>(&value)) {
         std::ostringstream out;

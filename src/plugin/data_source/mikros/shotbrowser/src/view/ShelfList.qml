@@ -6,8 +6,14 @@ import xStudio 1.0
 import xstudio.qml.models 1.0
 
 // Studio + User shelves (mediaBrowser-like). All lives under Studio.
+// User shelves reorder via the grip handle (menu icon).
 Item {
     id: shelves
+
+    property string draggingShelfId: "" ///< User shelf id while the grip drag is active.
+    property int dragFromUserIndex: -1
+    property string dropHoverShelfId: "" ///< User shelf under the cursor during drag.
+    property bool dropAbove: true ///< Insert above the highlighted row when true.
 
     XsModuleData {
         id: attributes
@@ -44,6 +50,12 @@ Item {
         model: attributes
     }
 
+    XsAttributeValue {
+        id: moveShelf
+        attributeTitle: "MoveShelf"
+        model: attributes
+    }
+
     function shelfRows() {
         const raw = shelvesAttr.value
         if (Array.isArray(raw))
@@ -55,6 +67,15 @@ Item {
         return shelves.shelfRows().filter(function(row) {
             return row.section === section
         })
+    }
+
+    function userIndexOf(id) {
+        const items = shelves.rowsFor("user")
+        for (let i = 0; i < items.length; i++) {
+            if (String(items[i].id) === String(id))
+                return i
+        }
+        return -1
     }
 
     function treeRows() {
@@ -118,6 +139,72 @@ Item {
         selectedShelf.value = id
     }
 
+    // Track which user shelf is under the cursor during a grip drag.
+    function updateDropTarget(listView, contentX, contentY) {
+        if (!listView || shelves.dragFromUserIndex < 0) {
+            dropHoverShelfId = ""
+            return
+        }
+        const listIndex = listView.indexAt(contentX, contentY)
+        if (listIndex < 0) {
+            dropHoverShelfId = ""
+            return
+        }
+        const rows = shelves.treeRows()
+        if (listIndex >= rows.length) {
+            dropHoverShelfId = ""
+            return
+        }
+        const row = rows[listIndex]
+        if (!row || row.kind !== "shelf" || !row.editable) {
+            dropHoverShelfId = ""
+            return
+        }
+        const targetId = String(row.id)
+        dropHoverShelfId = targetId
+        if (targetId === shelves.draggingShelfId) {
+            dropAbove = true
+            return
+        }
+        const item = listView.itemAtIndex(listIndex)
+        if (item) {
+            const local = listView.contentItem.mapToItem(item, contentX, contentY)
+            dropAbove = local.y < item.height / 2
+        } else {
+            dropAbove = true
+        }
+    }
+
+    function dropToIndex() {
+        if (!shelves.draggingShelfId || shelves.dragFromUserIndex < 0)
+            return -1
+        if (!shelves.dropHoverShelfId)
+            return -1
+        if (shelves.dropHoverShelfId === shelves.draggingShelfId)
+            return shelves.dragFromUserIndex
+        const userIndex = shelves.userIndexOf(shelves.dropHoverShelfId)
+        if (userIndex < 0)
+            return -1
+        let dest = shelves.dropAbove ? userIndex : userIndex + 1
+        if (shelves.dragFromUserIndex < dest)
+            dest -= 1
+        const last = shelves.rowsFor("user").length - 1
+        return Math.max(0, Math.min(dest, last))
+    }
+
+    function finishShelfDrag() {
+        const toIndex = shelves.dropToIndex()
+        if (shelves.draggingShelfId && toIndex >= 0 && toIndex !== shelves.dragFromUserIndex) {
+            moveShelf.value = {
+                id: shelves.draggingShelfId,
+                toIndex: toIndex
+            }
+        }
+        shelves.draggingShelfId = ""
+        shelves.dragFromUserIndex = -1
+        shelves.dropHoverShelfId = ""
+    }
+
     ShelfEditPopup {
         id: editor
         onSaved: function(shelf) {
@@ -164,9 +251,16 @@ Item {
             readonly property real indent: depth * (XsStyleSheet.widgetStdHeight / 1.2)
             readonly property bool chosen: isShelf && shelfId === String(selectedShelf.value ?? "")
             readonly property bool showActions: isShelf && editable && rowHover.hovered
+            readonly property bool isDragging: shelves.draggingShelfId === line.shelfId
+            readonly property int userIndex: line.editable && line.isShelf
+                                            ? shelves.userIndexOf(line.shelfId) : -1
+            readonly property bool showDropLine: shelves.draggingShelfId.length > 0
+                && line.shelfId === shelves.dropHoverShelfId
+                && !line.isDragging
 
             width: ListView.view.width - (ListView.view.rightSpacing || 0)
             height: XsStyleSheet.widgetStdHeight
+            opacity: line.isDragging ? 0.45 : 1
             color: chosen
                    ? Qt.darker(XsStyleSheet.accentColor, 2)
                    : (isShelf && rowHover.hovered
@@ -174,11 +268,70 @@ Item {
                       : "transparent")
             border.width: 1
             border.color: isShelf && rowHover.hovered ? XsStyleSheet.accentColor : "transparent"
+            z: line.isDragging ? 2 : 0
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: shelves.dropAbove ? parent.top : undefined
+                anchors.bottom: shelves.dropAbove ? undefined : parent.bottom
+                height: 2
+                visible: line.showDropLine
+                color: XsStyleSheet.accentColor
+                z: 3
+            }
 
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: line.indent
                 spacing: 1
+
+                // Grip: three bars. Drag starts here only; name tap still selects.
+                Item {
+                    Layout.preferredWidth: line.editable && line.isShelf
+                                           ? XsStyleSheet.widgetStdHeight : 0
+                    Layout.preferredHeight: XsStyleSheet.widgetStdHeight
+                    visible: line.editable && line.isShelf
+
+                    XsIcon {
+                        anchors.centerIn: parent
+                        width: parent.height - 6
+                        height: width
+                        source: "qrc:/icons/menu.svg"
+                        imgOverlayColor: dragGrip.pressed
+                                         ? XsStyleSheet.accentColor
+                                         : XsStyleSheet.hintColor
+                    }
+
+                    MouseArea {
+                        id: dragGrip
+                        anchors.fill: parent
+                        cursorShape: Qt.SizeAllCursor
+                        preventStealing: true
+                        hoverEnabled: true
+                        onPressed: function(mouse) {
+                            shelves.draggingShelfId = line.shelfId
+                            shelves.dragFromUserIndex = shelves.userIndexOf(line.shelfId)
+                            shelves.dropHoverShelfId = line.shelfId
+                            shelves.dropAbove = true
+                        }
+                        onPositionChanged: function(mouse) {
+                            if (!pressed || shelves.dragFromUserIndex < 0)
+                                return
+                            const list = line.ListView.view
+                            if (!list)
+                                return
+                            const p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                            shelves.updateDropTarget(list, p.x, p.y)
+                        }
+                        onReleased: shelves.finishShelfDrag()
+                        onCanceled: {
+                            shelves.draggingShelfId = ""
+                            shelves.dragFromUserIndex = -1
+                            shelves.dropHoverShelfId = ""
+                        }
+                    }
+                }
 
                 XsText {
                     Layout.fillWidth: true
@@ -197,7 +350,7 @@ Item {
                     opacity: line.isEmpty ? 0.6 : 1
 
                     TapHandler {
-                        enabled: line.isShelf
+                        enabled: line.isShelf && shelves.draggingShelfId.length === 0
                         onTapped: shelves.chooseShelf(line.shelfId)
                     }
                 }

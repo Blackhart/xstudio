@@ -16,7 +16,7 @@ namespace {
 /**
  * @brief Maps a leaf operator to the YAML name stored on a type.
  * @param op Operator on the expression node.
- * @return `"eq"`, `"ne"`, or `"contains"`, or null when `op` is a group operator.
+ * @return The domain token, or null when `op` is a group operator.
  */
 const char *comparisonName(ExprOp op) {
     switch (op) {
@@ -26,6 +26,36 @@ const char *comparisonName(ExprOp op) {
         return "ne";
     case ExprOp::Contains:
         return "contains";
+    case ExprOp::NotContains:
+        return "not_contains";
+    case ExprOp::StartsWith:
+        return "starts_with";
+    case ExprOp::EndsWith:
+        return "ends_with";
+    case ExprOp::In:
+        return "in";
+    case ExprOp::NotIn:
+        return "not_in";
+    case ExprOp::Gt:
+        return "gt";
+    case ExprOp::Lt:
+        return "lt";
+    case ExprOp::Between:
+        return "between";
+    case ExprOp::InLast:
+        return "in_last";
+    case ExprOp::InCalendarDay:
+        return "in_calendar_day";
+    case ExprOp::InCalendarWeek:
+        return "in_calendar_week";
+    case ExprOp::InCalendarMonth:
+        return "in_calendar_month";
+    case ExprOp::NameContains:
+        return "name_contains";
+    case ExprOp::NameStartsWith:
+        return "name_starts_with";
+    case ExprOp::NameIs:
+        return "name_is";
     case ExprOp::And:
     case ExprOp::Or:
     case ExprOp::Not:
@@ -35,20 +65,172 @@ const char *comparisonName(ExprOp op) {
 }
 
 /**
- * @brief Reports whether a leaf value has the C++ type named by the schema.
- * @param type YAML type name: `string`, `int`, or `date`.
- * @param value Scalar stored on the leaf.
- * @return True when the alternative in `value` matches `type`.
+ * @brief Reports whether a leaf is a calendar day.
+ *
+ * The C++ API stores a Date. Shelf JSON stores `YYYY-MM-DD` as text.
+ *
+ * @param value Leaf value.
+ * @return True when `value` is a Date or a real `YYYY-MM-DD` string.
  */
-bool valueMatches(const std::string &type, const Value &value) {
+bool isCalendarDay(const Value &value) {
+    if (std::holds_alternative<Date>(value)) {
+        return true;
+    }
+    const auto *text = std::get_if<std::string>(&value);
+    if (!text) {
+        return false;
+    }
+    try {
+        parseDate(*text); ///< Shelf JSON stores the day as text.
+        return true;
+    } catch (const Error &) {
+        return false;
+    }
+}
+
+/**
+ * @brief Reports whether a leaf is a positive in_last period.
+ * @param value Leaf value.
+ * @return True when count is at least 1 and the unit is one ShotGrid accepts.
+ */
+bool isPeriod(const Value &value) {
+    const auto *period = std::get_if<Period>(&value);
+    if (!period || period->count < 1) {
+        return false;
+    }
+    return period->unit == "HOUR" || period->unit == "DAY" || period->unit == "WEEK" ||
+           period->unit == "MONTH" || period->unit == "YEAR";
+}
+
+/**
+ * @brief Reports whether `left` is on or before `right`.
+ * @param left First day.
+ * @param right Second day.
+ * @return True when `left` <= `right` by year, month, day.
+ */
+bool dateOnOrBefore(const Date &left, const Date &right) {
+    if (left.year != right.year) {
+        return left.year < right.year;
+    }
+    if (left.month != right.month) {
+        return left.month < right.month;
+    }
+    return left.day <= right.day;
+}
+
+/**
+ * @brief Reads a calendar day from a Date or a `YYYY-MM-DD` string.
+ * @param value Leaf value.
+ * @param out Filled when the value is a calendar day.
+ * @return True when `out` was set.
+ */
+bool asCalendarDay(const Value &value, Date &out) {
+    if (const auto *date = std::get_if<Date>(&value)) {
+        out = *date;
+        return true;
+    }
+    const auto *text = std::get_if<std::string>(&value);
+    if (!text) {
+        return false;
+    }
+    try {
+        out = parseDate(*text);
+        return true;
+    } catch (const Error &) {
+        return false;
+    }
+}
+
+/**
+ * @brief Reports whether a between leaf has ordered int bounds.
+ *
+ * Accepts IntBounds from the C++ builder, or a two-int list from shelf JSON.
+ *
+ * @param value Leaf value.
+ * @return True when low <= high.
+ */
+bool isIntBetween(const Value &value) {
+    if (const auto *bounds = std::get_if<IntBounds>(&value)) {
+        return bounds->low <= bounds->high;
+    }
+    const auto *items = std::get_if<std::vector<std::int64_t>>(&value);
+    return items && items->size() == 2 && (*items)[0] <= (*items)[1];
+}
+
+/**
+ * @brief Reports whether a between leaf has ordered calendar-day bounds.
+ *
+ * Accepts DateBounds from the C++ builder, or two day strings from shelf JSON.
+ *
+ * @param value Leaf value.
+ * @return True when both bounds are days and low <= high.
+ */
+bool isDateBetween(const Value &value) {
+    if (const auto *bounds = std::get_if<DateBounds>(&value)) {
+        return dateOnOrBefore(bounds->low, bounds->high);
+    }
+    const auto *items = std::get_if<std::vector<std::string>>(&value);
+    if (!items || items->size() != 2) {
+        return false;
+    }
+    Date low;
+    Date high;
+    if (!asCalendarDay(Value{(*items)[0]}, low) || !asCalendarDay(Value{(*items)[1]}, high)) {
+        return false;
+    }
+    return dateOnOrBefore(low, high);
+}
+
+/**
+ * @brief Reports whether a leaf value matches the operator and the field type.
+ * @param type YAML type name: `string`, `int`, `date`, `datetime`, or `entity`.
+ * @param op Comparison operator already allowed on that type.
+ * @param value Leaf value.
+ * @return True when the shape is legal for that pair.
+ */
+bool leafValueOk(const std::string &type, ExprOp op, const Value &value) {
+    if (op == ExprOp::In || op == ExprOp::NotIn) {
+        if (type == "string") {
+            const auto *items = std::get_if<std::vector<std::string>>(&value);
+            return items && !items->empty();
+        }
+        if (type == "int") {
+            const auto *items = std::get_if<std::vector<std::int64_t>>(&value);
+            return items && !items->empty();
+        }
+        return false;
+    }
+    if (op == ExprOp::Between) {
+        if (type == "int") {
+            return isIntBetween(value);
+        }
+        if (type == "date" || type == "datetime") {
+            return isDateBetween(value);
+        }
+        return false;
+    }
+    if (op == ExprOp::InLast) {
+        return type == "datetime" && isPeriod(value);
+    }
+    if (op == ExprOp::InCalendarDay || op == ExprOp::InCalendarWeek ||
+        op == ExprOp::InCalendarMonth) {
+        return type == "datetime" && std::holds_alternative<std::int64_t>(value);
+    }
+    if (op == ExprOp::NameContains || op == ExprOp::NameStartsWith || op == ExprOp::NameIs) {
+        const auto *text = std::get_if<std::string>(&value);
+        return type == "entity" && text && !text->empty();
+    }
+    if (type == "date" || type == "datetime") {
+        return isCalendarDay(value);
+    }
     if (type == "string") {
         return std::holds_alternative<std::string>(value);
     }
     if (type == "int") {
         return std::holds_alternative<std::int64_t>(value);
     }
-    if (type == "date") {
-        return std::holds_alternative<Date>(value);
+    if (type == "entity") {
+        return false; ///< Only name_* reach here after the checks above.
     }
     return false;
 }
@@ -113,7 +295,7 @@ void checkWhere(const ExprNode &node, const EntitySpec &entity) {
     if (std::find(spec->ops.begin(), spec->ops.end(), opName) == spec->ops.end()) {
         throw Error("where: operator not allowed on \"" + node.key + "\"");
     }
-    if (!node.value || !valueMatches(spec->type, *node.value)) {
+    if (!node.value || !leafValueOk(spec->type, node.op, *node.value)) {
         throw Error("where: type mismatch on \"" + node.key + "\"");
     }
 }
@@ -161,7 +343,7 @@ void checkIn(const ExprNode &node, const EntitySpec &entity, const Schema &schem
     if (std::find(spec->ops.begin(), spec->ops.end(), opName) == spec->ops.end()) {
         throw Error("in: operator not allowed on \"" + node.parent + "." + node.key + "\"");
     }
-    if (!node.value || !valueMatches(spec->type, *node.value)) {
+    if (!node.value || !leafValueOk(spec->type, node.op, *node.value)) {
         throw Error("in: type mismatch on \"" + node.parent + "." + node.key + "\"");
     }
 }

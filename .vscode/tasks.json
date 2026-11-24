@@ -80,6 +80,22 @@
         "panel": "dedicated",
         "focus": true
       }
+    },
+    {
+      "label": "xstudio: test (mikros shotbrowser / pms)",
+      "type": "shell",
+      "command": "bash",
+      "args": ["devenv/run-shotbrowser-tests.sh"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": ["$gcc"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
     }
   ]
 }

@@ -141,6 +141,28 @@ void ShelfStore::remove(const std::string &id) {
     }
 }
 
+bool ShelfStore::moveTo(const std::string &id, std::size_t toIndex) {
+    if (id.empty() || id == kAllShelfId || shelves_.empty()) {
+        return false;
+    }
+    const auto from = std::find_if(
+        shelves_.begin(),
+        shelves_.end(),
+        [&id](const poco::Shelf &row) { return row.id == id; });
+    if (from == shelves_.end()) {
+        return false;
+    }
+    const std::size_t fromIndex = static_cast<std::size_t>(from - shelves_.begin());
+    const std::size_t dest = std::min(toIndex, shelves_.size() - 1);
+    if (fromIndex == dest) {
+        return false;
+    }
+    poco::Shelf row = std::move(*from);
+    shelves_.erase(from);
+    shelves_.insert(shelves_.begin() + static_cast<std::ptrdiff_t>(dest), std::move(row));
+    return true;
+}
+
 std::optional<poco::Shelf> ShelfStore::findById(const std::string &id) const {
     for (const poco::Shelf &row : shelves_) {
         if (row.id == id) {

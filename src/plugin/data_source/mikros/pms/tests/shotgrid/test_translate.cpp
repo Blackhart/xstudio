@@ -50,6 +50,245 @@ TEST_CASE("filters for version where name contains") {
     CHECK(filters[2] == "comp");
 }
 
+TEST_CASE("filters for version status in a list") {
+    const ShotGridMapping mapping = filledMapping();
+    Ir ir = Version().Where(isIn(pms::version::status, std::vector<std::string>{"ip", "rev"})).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
+    REQUIRE(filters.is_array());
+    CHECK(filters[0] == "sg_status_list");
+    CHECK(filters[1] == "in");
+    CHECK(filters[2] == nlohmann::json::array({"ip", "rev"}));
+}
+
+TEST_CASE("filters for version created in the last week") {
+    const ShotGridMapping mapping = filledMapping();
+    Ir ir = Version().Where(inLast(pms::version::createdAt, 7, "DAY")).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
+    REQUIRE(filters.is_array());
+    CHECK(filters[0] == "created_at");
+    CHECK(filters[1] == "in_last");
+    CHECK(filters[2] == nlohmann::json::array({7, "DAY"}));
+}
+
+TEST_CASE("filters for version created this calendar week") {
+    const ShotGridMapping mapping = filledMapping();
+    Ir ir = Version().Where(inCalendarWeek(pms::version::createdAt, 0)).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
+    REQUIRE(filters.is_array());
+    CHECK(filters[0] == "created_at");
+    CHECK(filters[1] == "in_calendar_week");
+    CHECK(filters[2] == 0);
+}
+
+TEST_CASE("filters for version with open notes") {
+    const ShotGridMapping mapping = filledMapping();
+    Ir ir = Version().Where(greaterThan(pms::version::openNotesCount, std::int64_t{0})).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
+    REQUIRE(filters.is_array());
+    CHECK(filters[0] == "open_notes_count");
+    CHECK(filters[1] == "greater_than");
+    CHECK(filters[2] == 0);
+}
+
+TEST_CASE("filters for every leaf operator match the REST relation and value shape") {
+    const ShotGridMapping mapping = filledMapping();
+    auto filtersOf = [&](Ir ir) {
+        ir.op = Op::Find;
+        return shotgridFiltersFromIr(ir, mapping);
+    };
+
+    // string: is / is_not / starts_with / ends_with
+    {
+        const nlohmann::json filters = filtersOf(Project().Where(code != "PAW01").ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"code", "is_not", "PAW01"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(startsWith(pms::version::name, "paw")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"code", "starts_with", "paw"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(endsWith(pms::version::name, "_comp")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"code", "ends_with", "_comp"}));
+    }
+
+    // string / int: not_in and in on an int field
+    {
+        const nlohmann::json filters = filtersOf(
+            Version()
+                .Where(isNotIn(pms::version::status, std::vector<std::string>{"omt", "na"}))
+                .ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array(
+                             {"sg_status_list", "not_in", nlohmann::json::array({"omt", "na"})}));
+    }
+    {
+        const nlohmann::json filters = filtersOf(
+            Version()
+                .Where(isIn(pms::version::openNotesCount, std::vector<std::int64_t>{0, 1, 2}))
+                .ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array(
+                             {"open_notes_count", "in", nlohmann::json::array({0, 1, 2})}));
+    }
+    {
+        const nlohmann::json filters = filtersOf(
+            Version()
+                .Where(isNotIn(pms::version::openNotesCount, std::vector<std::int64_t>{0}))
+                .ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array(
+                             {"open_notes_count", "not_in", nlohmann::json::array({0})}));
+    }
+
+    // int: less_than
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(lessThan(pms::version::openNotesCount, std::int64_t{5})).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"open_notes_count", "less_than", 5}));
+    }
+
+    // datetime: is / is_not / greater_than / less_than / calendar day and month
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(pms::version::createdAt == "2024-03-01").ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_at", "is", "2024-03-01"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(pms::version::createdAt != "2024-03-01").ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_at", "is_not", "2024-03-01"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(greaterThan(pms::version::createdAt, "2024-03-01")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_at", "greater_than", "2024-03-01"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(lessThan(pms::version::createdAt, "2024-03-01")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_at", "less_than", "2024-03-01"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(inCalendarDay(pms::version::createdAt, 0)).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_at", "in_calendar_day", 0}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(inCalendarMonth(pms::version::createdAt, -1)).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_at", "in_calendar_month", -1}));
+    }
+}
+
+TEST_CASE("filters for not_contains between and name_* match the REST shapes") {
+    const ShotGridMapping mapping = filledMapping();
+    auto filtersOf = [&](Ir ir) {
+        ir.op = Op::Find;
+        return shotgridFiltersFromIr(ir, mapping);
+    };
+
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(notContains(pms::version::name, "temp")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"code", "not_contains", "temp"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(between(pms::version::openNotesCount, 0, 5)).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"open_notes_count", "between", nlohmann::json::array({0, 5})}));
+    }
+    {
+        const nlohmann::json filters = filtersOf(
+            Version().Where(between(pms::version::createdAt, "2024-01-01", "2024-03-01")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array(
+                             {"created_at",
+                              "between",
+                              nlohmann::json::array({"2024-01-01", "2024-03-01"})}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(nameContains(pms::version::author, "Ada")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_by", "name_contains", "Ada"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(nameStartsWith(pms::version::author, "Ad")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_by", "name_starts_with", "Ad"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(nameIs(pms::version::author, "Ada")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"created_by", "name_is", "Ada"}));
+    }
+}
+
+TEST_CASE("filters for and or and not match the REST hash and is inversion") {
+    const ShotGridMapping mapping = filledMapping();
+    auto filtersOf = [&](Ir ir) {
+        ir.op = Op::Find;
+        return shotgridFiltersFromIr(ir, mapping);
+    };
+
+    {
+        const nlohmann::json filters =
+            filtersOf(Project().Where(code == "PAW01" && name != "archive").ir());
+        REQUIRE(filters.is_object());
+        CHECK(filters["logical_operator"] == "and");
+        REQUIRE(filters["conditions"].size() == 2);
+        CHECK(filters["conditions"][0] == nlohmann::json::array({"code", "is", "PAW01"}));
+        CHECK(filters["conditions"][1] == nlohmann::json::array({"name", "is_not", "archive"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Project().Where(code == "PAW01" || code == "PAW02").ir());
+        REQUIRE(filters.is_object());
+        CHECK(filters["logical_operator"] == "or");
+        REQUIRE(filters["conditions"].size() == 2);
+        CHECK(filters["conditions"][0] == nlohmann::json::array({"code", "is", "PAW01"}));
+        CHECK(filters["conditions"][1] == nlohmann::json::array({"code", "is", "PAW02"}));
+    }
+    {
+        const nlohmann::json filters = filtersOf(Project().Where(!(code == "PAW01")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"code", "is_not", "PAW01"}));
+    }
+    {
+        const nlohmann::json filters = filtersOf(Project().Where(!(code != "PAW01")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"code", "is", "PAW01"}));
+    }
+    {
+        Ir ir = Project().Where(!(contains(name, "paw"))).ir();
+        ir.op = Op::Find;
+        CHECK_THROWS_WITH_AS(
+            shotgridFiltersFromIr(ir, mapping),
+            "shotgrid: not only inverts is and is_not",
+            Error);
+    }
+}
+
 TEST_CASE("filters for sequence in project by id") {
     const ShotGridMapping mapping = filledMapping();
     Ir ir = Sequence().In(project::id == std::int64_t{7}).ir();

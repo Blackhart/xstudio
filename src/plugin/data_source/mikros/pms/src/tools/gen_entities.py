@@ -14,6 +14,8 @@ TYPE_CPP = {
     "string": "std::string",
     "int": "std::int64_t",
     "date": "Date",
+    "datetime": "DateTime",
+    "entity": "EntityRef",
 }
 
 
