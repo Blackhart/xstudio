@@ -7,8 +7,17 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace xstudio::mikros_media_details::poco {
+
+/**
+ * @brief One playlist link on a version.
+ */
+struct PlaylistLink {
+    std::int64_t id = 0; ///< Domain playlist id.
+    std::string name;    ///< Domain playlist name.
+};
 
 /**
  * @brief One version as shown in Media Details.
@@ -22,13 +31,21 @@ struct VersionDetail {
     std::string author;            ///< Person who created the version.
     std::string created_at;        ///< Creation time as ShotGrid sent it.
     std::string frame_range;       ///< Frame range text.
+    std::int64_t frame_count = 0;  ///< Frame count.
     std::string description;       ///< Version description.
+    std::string client_code;       ///< Client-facing version name.
+    bool client_reviewed = false;  ///< True when the client reviewed.
+    bool client_approved = false;  ///< True when the client approved.
+    bool is_latest = false;        ///< True when this is the latest version.
+    std::int64_t version_number = 0; ///< Tank version number.
+    std::string task;              ///< Task name.
     std::string step;              ///< Pipeline step name.
     std::string status;            ///< Technical status.
     std::string artistic_status;   ///< Artistic status.
     std::string sites;             ///< ShotGrid site names, joined by commas.
     std::int64_t open_notes_count = 0; ///< Open notes count.
     bool synced_to_client = false;     ///< True when sent to the client.
+    std::string work_source_scene;     ///< Work source scene path.
     std::string frames;                ///< Image-sequence path.
     std::string frames_provider;       ///< `fileSeq`, or empty.
     std::string movie;                 ///< On-disk movie path.
@@ -37,6 +54,7 @@ struct VersionDetail {
     std::string uploaded_movie_provider; ///< `signedurl`, or empty.
     std::string image;                 ///< Thumbnail URL or path.
     std::string image_provider;        ///< `http` / `file`, or empty.
+    std::vector<PlaylistLink> playlists; ///< Playlists that contain this version.
     std::int64_t project_id = 0;       ///< Linked project id. 0 when none.
     std::string project_name;          ///< Linked project name.
     std::string entity_type;           ///< `Shot`, `Sequence`, or `Asset`.

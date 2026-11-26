@@ -65,7 +65,8 @@ TEST_CASE("the fake backend lists sequences in a project") {
     REQUIRE(rows.size() == FakeBackend::sequencesPerProject);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010");
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw20_sq020");
-    CHECK(rows[0].fields.count("project") == 0);
+    CHECK(std::get<std::string>(rows[0].at("project")) == "paw20");
+    CHECK(std::get<std::int64_t>(rows[0].at("project_id")) == 1);
     const auto &shots = std::get<std::vector<Link>>(rows[0].at("shots"));
     REQUIRE(shots.size() == FakeBackend::shotsPerSequence);
     CHECK(shots[0].name == "paw20_sq010_sh010");
@@ -104,7 +105,8 @@ TEST_CASE("the fake backend lists shots in a sequence") {
     REQUIRE(rows.size() == FakeBackend::shotsPerSequence);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010_sh010");
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw20_sq010_sh020");
-    CHECK(rows[0].fields.count("sequence") == 0);
+    CHECK(std::get<std::string>(rows[0].at("sequence")) == "paw20_sq010");
+    CHECK(std::get<std::int64_t>(rows[0].at("sequence_id")) == sequenceId);
 }
 
 TEST_CASE("the fake backend lists assets in a project") {
@@ -116,7 +118,8 @@ TEST_CASE("the fake backend lists assets in a project") {
     REQUIRE(rows.size() == FakeBackend::assetsPerProject);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_ast01");
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw20_ast02");
-    CHECK(rows[0].fields.count("project") == 0);
+    CHECK(std::get<std::string>(rows[0].at("project")) == "paw20");
+    CHECK(std::get<std::int64_t>(rows[0].at("project_id")) == 1);
 }
 
 TEST_CASE("the fake backend accepts a fields projection on versions") {

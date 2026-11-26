@@ -62,6 +62,8 @@ qt_add_qml_module(${PROJECT_NAME}
 	QML_FILES
 		view/MediaDetailsPanel.qml
 		view/DetailSections.qml
+		view/DetailLinkText.qml
+		view/DetailFieldRow.qml
 		view/StatusBadge.qml
 )
 

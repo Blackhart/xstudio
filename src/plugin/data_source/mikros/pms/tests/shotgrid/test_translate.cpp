@@ -649,15 +649,14 @@ TEST_CASE("version project and entity keep id name and type") {
     const ShotGridMapping mapping = filledMapping();
     const ShotGridSchema *version = mapping.findSchema("version");
     REQUIRE(version != nullptr);
+    const nlohmann::json projectData = {{"type", "Project"}, {"id", 1}, {"name", "Show"}};
+    const nlohmann::json entityData = {{"type", "Shot"}, {"id", 10}, {"name", "SH010"}};
     const nlohmann::json row = {
         {"type", "Version"},
         {"id", 99},
         {"attributes", {{"code", "v003"}}},
         {"relationships",
-         {{"project",
-           {{"data", {{"type", "Project"}, {"id", 1}, {"name", "Show"}}}}},
-          {"entity",
-           {{"data", {{"type", "Shot"}, {"id", 10}, {"name", "SH010"}}}}}}};
+         {{"project", {{"data", projectData}}}, {"entity", {{"data", entityData}}}}}};
     const Record record = shotgridRecordFromJson(row, *version);
     CHECK(std::get<std::string>(record.at("project")) == "Show");
     CHECK(std::get<std::int64_t>(record.at("project_id")) == 1);

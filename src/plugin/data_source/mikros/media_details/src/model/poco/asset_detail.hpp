@@ -16,6 +16,8 @@ namespace xstudio::mikros_media_details::poco {
 struct AssetDetail {
     std::int64_t id = 0;          ///< Domain asset id.
     std::string name;             ///< Domain asset name.
+    std::string description;      ///< Asset description.
+    std::string status;           ///< ShotGrid status.
     std::int64_t project_id = 0;  ///< Linked project id. 0 when none.
     std::string project_name;     ///< Linked project name.
 };

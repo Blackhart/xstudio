@@ -13,28 +13,43 @@ entities:
   sequence:
     shotgrid: Sequence
     fields:
-      id:      { shotgrid: id }
-      name:    { shotgrid: code }
-      shots:   { shotgrid: shots }
-      project: { shotgrid: project }
+      id:                     { shotgrid: id }
+      name:                   { shotgrid: code }
+      description:            { shotgrid: description }
+      status:                 { shotgrid: sg_status_list }
+      cut_duration_in_sec:    { shotgrid: sg_cut_duration_in_sec }
+      estimated_frames_count: { shotgrid: sg_estimated_frames_count }
+      estimated_shots_count:  { shotgrid: sg_estimated_shots_count }
+      shot_count:             { shotgrid: sg_query_shot_count }
+      sequence_order:         { shotgrid: sg_sequence_order }
+      shots:                  { shotgrid: shots }
+      project:                { shotgrid: project }
     links:
       project: { shotgrid: project, target: project }
 
   shot:
     shotgrid: Shot
     fields:
-      id:       { shotgrid: id }
-      name:     { shotgrid: code }
-      sequence: { shotgrid: sg_sequence }
+      id:                  { shotgrid: id }
+      name:                { shotgrid: code }
+      description:         { shotgrid: description }
+      status:              { shotgrid: sg_status_list }
+      cut_duration_in_sec: { shotgrid: sg_cut_duration_in_sec }
+      cut_in:              { shotgrid: sg_cut_in }
+      cut_out:             { shotgrid: sg_cut_out }
+      cut_order:           { shotgrid: sg_cut_order }
+      sequence:            { shotgrid: sg_sequence }
     links:
       sequence: { shotgrid: sg_sequence, target: sequence }
 
   asset:
     shotgrid: Asset
     fields:
-      id:      { shotgrid: id }
-      name:    { shotgrid: code }
-      project: { shotgrid: project }
+      id:          { shotgrid: id }
+      name:        { shotgrid: code }
+      description: { shotgrid: description }
+      status:      { shotgrid: sg_status_list }
+      project:     { shotgrid: project }
     links:
       project: { shotgrid: project, target: project }
 
@@ -58,21 +73,30 @@ entities:
       id:    { shotgrid: id }
       name:  { shotgrid: code }
       image: { shotgrid: image, provider: http }
-      author:           { shotgrid: created_by }
-      created_at:       { shotgrid: created_at }
-      frame_range:      { shotgrid: frame_range }
-      description:      { shotgrid: description }
-      step:             { shotgrid: sg_task.Task.step }
-      status:           { shotgrid: sg_status_list }
-      artistic_status:  { shotgrid: sg_status_artistique }
-      open_notes_count: { shotgrid: open_notes_count }
-      synced_to_client: { shotgrid: sg_synced_to_client }
-      sites:            { shotgrid: sg_published_file.PublishedFile.sg_sites }
-      frames:           { shotgrid: sg_path_to_frames, provider: fileSeq }
-      movie:            { shotgrid: sg_path_to_movie, provider: file }
-      uploaded_movie:   { shotgrid: sg_uploaded_movie_mp4, provider: signedurl }
-      project:          { shotgrid: project }
-      entity:           { shotgrid: entity }
+      author:            { shotgrid: created_by }
+      created_at:        { shotgrid: created_at }
+      frame_range:       { shotgrid: frame_range }
+      frame_count:       { shotgrid: frame_count }
+      description:       { shotgrid: description }
+      client_code:       { shotgrid: client_code }
+      client_reviewed:   { shotgrid: sg_client_reviewed }
+      client_approved:   { shotgrid: client_approved }
+      is_latest:         { shotgrid: sg_is_latest }
+      version_number:    { shotgrid: sg_query_tank_version_number }
+      task:              { shotgrid: sg_task }
+      step:              { shotgrid: sg_task.Task.step }
+      status:            { shotgrid: sg_status_list }
+      artistic_status:   { shotgrid: sg_status_artistique }
+      open_notes_count:  { shotgrid: open_notes_count }
+      synced_to_client:  { shotgrid: sg_synced_to_client }
+      sites:             { shotgrid: sg_published_file.PublishedFile.sg_sites }
+      work_source_scene: { shotgrid: sg_work_source_scene }
+      frames:            { shotgrid: sg_path_to_frames, provider: fileSeq }
+      movie:             { shotgrid: sg_path_to_movie, provider: file }
+      uploaded_movie:    { shotgrid: sg_uploaded_movie_mp4, provider: signedurl }
+      playlists:         { shotgrid: playlists }
+      project:           { shotgrid: project }
+      entity:            { shotgrid: entity }
     links:
       project:  { shotgrid: project, target: project }
       shot:     { shotgrid: entity, target: shot }

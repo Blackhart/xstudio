@@ -21,26 +21,41 @@ entities:
   sequence:
     creatable: false
     fields:
-      id:      { type: int,    filter: true,  set: false }
-      name:    { type: string, filter: true,  set: true }
-      shots:   { type: links,  filter: false, set: false }
-      project: { type: entity, filter: true,  set: false }
+      id:                     { type: int,    filter: true,  set: false }
+      name:                   { type: string, filter: true,  set: true }
+      description:            { type: string, filter: true,  set: false }
+      status:                 { type: string, filter: true,  set: false }
+      cut_duration_in_sec:    { type: int,    filter: true,  set: false }
+      estimated_frames_count: { type: int,    filter: true,  set: false }
+      estimated_shots_count:  { type: int,    filter: true,  set: false }
+      shot_count:             { type: int,    filter: true,  set: false }
+      sequence_order:         { type: int,    filter: true,  set: false }
+      shots:                  { type: links,  filter: false, set: false }
+      project:                { type: entity, filter: true,  set: false }
     scope: [project]
 
   shot:
     creatable: false
     fields:
-      id:       { type: int,    filter: true, set: false }
-      name:     { type: string, filter: true, set: true }
-      sequence: { type: entity, filter: true, set: false }
+      id:                  { type: int,    filter: true, set: false }
+      name:                { type: string, filter: true, set: true }
+      description:         { type: string, filter: true, set: false }
+      status:              { type: string, filter: true, set: false }
+      cut_duration_in_sec: { type: int,    filter: true, set: false }
+      cut_in:              { type: int,    filter: true, set: false }
+      cut_out:             { type: int,    filter: true, set: false }
+      cut_order:           { type: int,    filter: true, set: false }
+      sequence:            { type: entity, filter: true, set: false }
     scope: [sequence]
 
   asset:
     creatable: false
     fields:
-      id:      { type: int,    filter: true, set: false }
-      name:    { type: string, filter: true, set: true }
-      project: { type: entity, filter: true, set: false }
+      id:          { type: int,    filter: true, set: false }
+      name:        { type: string, filter: true, set: true }
+      description: { type: string, filter: true, set: false }
+      status:      { type: string, filter: true, set: false }
+      project:     { type: entity, filter: true, set: false }
     scope: [project]
 
   playlist:
@@ -62,19 +77,28 @@ entities:
       id:    { type: int,    filter: true, set: false }
       name:  { type: string, filter: true, set: true }
       image: { type: string, filter: false, set: false, providers: [http, file] }
-      author:           { type: entity, filter: true,  set: false }
-      created_at:       { type: datetime, filter: true, set: false }
-      frame_range:      { type: string, filter: true,  set: false }
-      description:      { type: string, filter: true,  set: false }
-      step:             { type: string, filter: true,  set: false }
-      status:           { type: string, filter: true,  set: false }
-      artistic_status:  { type: string, filter: true,  set: false }
-      sites:            { type: string, filter: true,  set: false }
-      open_notes_count: { type: int,    filter: true,  set: false }
-      synced_to_client: { type: int,    filter: true,  set: false }
-      frames:           { type: string, filter: false, set: false, providers: [fileSeq] }
-      movie:            { type: string, filter: false, set: false, providers: [file] }
-      uploaded_movie:   { type: string, filter: false, set: false, providers: [signedurl] }
-      project:          { type: entity, filter: true,  set: false }
-      entity:           { type: entity, filter: true,  set: false }
+      author:            { type: entity, filter: true,  set: false }
+      created_at:        { type: datetime, filter: true, set: false }
+      frame_range:       { type: string, filter: true,  set: false }
+      frame_count:       { type: int,    filter: true,  set: false }
+      description:       { type: string, filter: true,  set: false }
+      client_code:       { type: string, filter: true,  set: false }
+      client_reviewed:   { type: int,    filter: true,  set: false }
+      client_approved:   { type: int,    filter: true,  set: false }
+      is_latest:         { type: int,    filter: true,  set: false }
+      version_number:    { type: int,    filter: true,  set: false }
+      task:              { type: entity, filter: true,  set: false }
+      step:              { type: string, filter: true,  set: false }
+      status:            { type: string, filter: true,  set: false }
+      artistic_status:   { type: string, filter: true,  set: false }
+      sites:             { type: string, filter: true,  set: false }
+      open_notes_count:  { type: int,    filter: true,  set: false }
+      synced_to_client:  { type: int,    filter: true,  set: false }
+      work_source_scene: { type: string, filter: true,  set: false }
+      frames:            { type: string, filter: false, set: false, providers: [fileSeq] }
+      movie:             { type: string, filter: false, set: false, providers: [file] }
+      uploaded_movie:    { type: string, filter: false, set: false, providers: [signedurl] }
+      playlists:         { type: links,  filter: false, set: false }
+      project:           { type: entity, filter: true,  set: false }
+      entity:            { type: entity, filter: true,  set: false }
     scope: [shot, sequence, asset, playlist]

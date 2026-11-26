@@ -139,7 +139,9 @@ TEST_CASE("schema loads the version entity") {
     CHECK(version->scope[1] == "sequence");
     CHECK(version->scope[2] == "asset");
     CHECK(version->scope[3] == "playlist");
-    CHECK(version->field("project") == nullptr);
+    const FieldSpec *project = version->field("project");
+    REQUIRE(project != nullptr);
+    CHECK(project->type == "entity");
     CHECK(schema.allowsInParent(*version, "shot"));
     CHECK(schema.allowsInParent(*version, "sequence"));
     CHECK(schema.allowsInParent(*version, "asset"));

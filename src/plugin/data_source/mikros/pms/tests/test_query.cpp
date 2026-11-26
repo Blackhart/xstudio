@@ -216,3 +216,11 @@ TEST_CASE("without fields the dump omits the projection line") {
     CHECK_FALSE(ir.fields.has_value());
     CHECK(dump(ir).find("fields:") == std::string::npos);
 }
+
+TEST_CASE("fields by key includes links and always keeps id and name") {
+    const Ir ir = Sequence().Fields(std::vector<std::string>{"shots"}).ir();
+    REQUIRE(ir.fields.has_value());
+    CHECK(std::find(ir.fields->begin(), ir.fields->end(), "shots") != ir.fields->end());
+    CHECK(std::find(ir.fields->begin(), ir.fields->end(), "id") != ir.fields->end());
+    CHECK(std::find(ir.fields->begin(), ir.fields->end(), "name") != ir.fields->end());
+}

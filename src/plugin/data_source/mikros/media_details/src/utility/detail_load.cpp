@@ -21,6 +21,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace trace = xstudio::mikros_media_details::log;
 
@@ -85,6 +86,70 @@ nlohmann::json namedObject(std::int64_t id, const std::string &name) {
 }
 
 /**
+ * @brief Builds the sequence JSON object from a loaded row.
+ * @param row Loaded sequence detail.
+ * @return Sequence section for QML.
+ */
+nlohmann::json sequenceJson(const poco::SequenceDetail &row) {
+    return nlohmann::json{
+        {"id", row.id},
+        {"name", row.name},
+        {"description", row.description},
+        {"status", row.status},
+        {"cutDurationInSec", row.cut_duration_in_sec},
+        {"estimatedFramesCount", row.estimated_frames_count},
+        {"estimatedShotsCount", row.estimated_shots_count},
+        {"shotCount", row.shot_count},
+        {"sequenceOrder", row.sequence_order}};
+}
+
+/**
+ * @brief Builds the shot JSON object from a loaded row.
+ * @param row Loaded shot detail.
+ * @return Shot section for QML.
+ */
+nlohmann::json shotJson(const poco::ShotDetail &row) {
+    return nlohmann::json{
+        {"id", row.id},
+        {"name", row.name},
+        {"description", row.description},
+        {"status", row.status},
+        {"cutDurationInSec", row.cut_duration_in_sec},
+        {"cutIn", row.cut_in},
+        {"cutOut", row.cut_out},
+        {"cutOrder", row.cut_order}};
+}
+
+/**
+ * @brief Builds the asset JSON object from a loaded row.
+ * @param row Loaded asset detail.
+ * @return Asset section for QML.
+ */
+nlohmann::json assetJson(const poco::AssetDetail &row) {
+    return nlohmann::json{
+        {"id", row.id},
+        {"name", row.name},
+        {"description", row.description},
+        {"status", row.status}};
+}
+
+/**
+ * @brief Builds the playlists JSON array from version links.
+ * @param playlists Playlist id/name pairs.
+ * @return Array of `{id,name}` objects.
+ */
+nlohmann::json playlistsJson(const std::vector<poco::PlaylistLink> &playlists) {
+    nlohmann::json list = nlohmann::json::array();
+    for (const poco::PlaylistLink &link : playlists) {
+        if (link.id <= 0) {
+            continue;
+        }
+        list.push_back({{"id", link.id}, {"name", link.name}});
+    }
+    return list;
+}
+
+/**
  * @brief Mails one catalog payload to the panel, or does nothing when gone.
  * @param weak Panel actor.
  * @param requestId Generation of the load.
@@ -144,7 +209,7 @@ std::int64_t loadSequenceDetailsFromId(
         return 0;
     }
     if (const auto row = dal::findSequenceDetailById(sequenceId)) {
-        outSequence = namedObject(row->id, row->name);
+        outSequence = sequenceJson(*row);
         return row->project_id;
     }
     outSequence = namedObject(sequenceId, fallbackName);
@@ -163,7 +228,7 @@ void loadShotParentDetailsFromId(
         return;
     }
     if (const auto shotRow = dal::findShotDetailById(shotId)) {
-        parents.shot = namedObject(shotRow->id, shotRow->name);
+        parents.shot = shotJson(*shotRow);
         const std::int64_t projectId = loadSequenceDetailsFromId(
             shotRow->sequence_id, shotRow->sequence_name, parents.sequence);
         if (projectId > 0) {
@@ -186,7 +251,7 @@ void loadAssetParentDetailsFromId(
         return;
     }
     if (const auto assetRow = dal::findAssetDetailById(assetId)) {
-        parents.asset = namedObject(assetRow->id, assetRow->name);
+        parents.asset = assetJson(*assetRow);
         if (assetRow->project_id > 0) {
             parents.project_id = assetRow->project_id;
         }
@@ -236,10 +301,19 @@ nlohmann::json versionSectionsJson(const poco::VersionDetail &version) {
          {{"id", version.id},
           {"name", version.name},
           {"step", version.step},
+          {"task", version.task},
           {"createdAt", version.created_at},
           {"description", version.description},
           {"author", version.author},
-          {"frameRange", version.frame_range}}},
+          {"clientCode", version.client_code},
+          {"clientReviewed", version.client_reviewed},
+          {"clientApproved", version.client_approved},
+          {"isLatest", version.is_latest},
+          {"versionNumber", version.version_number},
+          {"frameRange", version.frame_range},
+          {"frameCount", version.frame_count},
+          {"workSourceScene", version.work_source_scene},
+          {"playlists", playlistsJson(version.playlists)}}},
         {"status",
          {{"technical", version.status}, {"artistic", version.artistic_status}}},
         {"team", {{"department", version.step}, {"artist", version.author}}},

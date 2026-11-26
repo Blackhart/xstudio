@@ -7,7 +7,7 @@ import xstudio.qml.clipboard 1.0
 
 import xStudio 1.0
 
-// Sticky identity header + scroll body (Context / Media / Paths).
+// Sticky identity header + scroll body (Version / parents / Paths / Media).
 Item {
     id: root
 
@@ -31,6 +31,7 @@ Item {
     readonly property var team: detail && detail.team ? detail.team : ({})
     readonly property var media: detail && detail.media ? detail.media : ({})
     readonly property var files: detail && detail.files ? detail.files : ({})
+    readonly property var playlists: version && version.playlists ? version.playlists : []
 
     Clipboard {
         id: clipboard
@@ -56,19 +57,31 @@ Item {
         return textOrEmpty(value) !== ""
     }
 
+    function hasNumber(value) {
+        return value !== undefined && value !== null && Number(value) !== 0
+    }
+
+    function isTrue(value) {
+        return value === true || value === 1 || value === "1"
+    }
+
     function shotgridUrl(entityType, entityId) {
         if (!shotgridBaseUrl || !entityType || !entityId)
             return ""
         let base = String(shotgridBaseUrl)
         if (base.endsWith("/"))
             base = base.slice(0, -1)
-        return base + "/detail/" + entityType + "/" + String(entityId)
+        return base + "/Detail/" + entityType + "/" + String(entityId)
     }
 
     function openUrl(url) {
         if (!url)
             return
         Qt.openUrlExternally(url)
+    }
+
+    function openEntity(entityType, entityId) {
+        openUrl(shotgridUrl(entityType, entityId))
     }
 
     function copyText(value) {
@@ -151,11 +164,79 @@ Item {
         return count === 1 ? "1 note" : String(count) + " notes"
     }
 
+    function reviewLine() {
+        const parts = []
+        if (isTrue(version.clientReviewed))
+            parts.push("client reviewed")
+        if (isTrue(version.clientApproved))
+            parts.push("approved")
+        return parts.join(" · ")
+    }
+
+    function framesLine() {
+        const parts = []
+        if (hasText(version.frameRange))
+            parts.push(String(version.frameRange))
+        if (hasNumber(version.frameCount))
+            parts.push(String(version.frameCount))
+        if (hasNumber(version.versionNumber))
+            parts.push("v" + String(version.versionNumber))
+        if (isTrue(version.isLatest))
+            parts.push("latest")
+        return parts.join(" · ")
+    }
+
+    function taskStepLine() {
+        const parts = []
+        if (hasText(version.task))
+            parts.push(String(version.task))
+        if (hasText(version.step))
+            parts.push(String(version.step))
+        return parts.join(" / ")
+    }
+
+    function statusLine() {
+        const parts = []
+        if (hasText(status.technical))
+            parts.push("tech " + String(status.technical))
+        if (hasText(status.artistic))
+            parts.push("art " + String(status.artistic))
+        return parts.join(" · ")
+    }
+
+    function sequenceShotsLine() {
+        const parts = []
+        if (hasNumber(sequence.shotCount) || hasNumber(sequence.estimatedShotsCount)) {
+            const current = hasNumber(sequence.shotCount) ? String(sequence.shotCount) : "—"
+            const estimated = hasNumber(sequence.estimatedShotsCount)
+                             ? String(sequence.estimatedShotsCount) + " estimated"
+                             : ""
+            parts.push(estimated !== "" ? current + " / " + estimated : current)
+        }
+        if (hasNumber(sequence.estimatedFramesCount))
+            parts.push(String(sequence.estimatedFramesCount) + " frames est.")
+        return parts.join(" · ")
+    }
+
+    function shotCutLine() {
+        const parts = []
+        if (hasNumber(shot.cutIn))
+            parts.push("in " + String(shot.cutIn))
+        if (hasNumber(shot.cutOut))
+            parts.push("out " + String(shot.cutOut))
+        if (hasNumber(shot.cutOrder))
+            parts.push("order " + String(shot.cutOrder))
+        return parts.join(" · ")
+    }
+
+    function durationSec(value) {
+        return hasNumber(value) ? String(value) + " s" : ""
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
-        // Empty / not_mikros / error — centered, minimal chrome.
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -175,7 +256,6 @@ Item {
                     font.family: XsStyleSheet.fontFamily
                     text: root.centerTitle()
                 }
-
                 Text {
                     visible: detailState === "not_mikros" && hasText(media.path)
                     Layout.fillWidth: true
@@ -186,13 +266,10 @@ Item {
                     font.family: XsStyleSheet.fontFamily
                     text: textOrEmpty(media.path)
                 }
-
                 Text {
-                    visible: {
-                        if (detailState === "not_mikros")
-                            return root.notMikrosMeta() !== ""
-                        return root.centerSubtitle() !== ""
-                    }
+                    visible: detailState === "not_mikros"
+                             ? root.notMikrosMeta() !== ""
+                             : root.centerSubtitle() !== ""
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -204,7 +281,6 @@ Item {
             }
         }
 
-        // Sticky identity header (loading + ready).
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: headerRow.implicitHeight + XsStyleSheet.panelPadding * 2
@@ -218,7 +294,6 @@ Item {
                 anchors.margins: XsStyleSheet.panelPadding
                 spacing: XsStyleSheet.panelPadding
 
-                // Thumb 16:9 — skeleton while loading.
                 Rectangle {
                     Layout.preferredWidth: 140
                     Layout.preferredHeight: 79
@@ -233,7 +308,6 @@ Item {
                         color: XsStyleSheet.widgetBgNormalColor
                         opacity: 0.85
                     }
-
                     Image {
                         anchors.centerIn: parent
                         width: parent.width
@@ -250,12 +324,10 @@ Item {
                     Layout.alignment: Qt.AlignTop
                     spacing: 4
 
-                    // Loading skeleton lines.
                     ColumnLayout {
                         visible: root.isLoading
                         Layout.fillWidth: true
                         spacing: 6
-
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 10
@@ -276,49 +348,31 @@ Item {
                         }
                     }
 
-                    // Ready identity.
                     ColumnLayout {
                         visible: root.isReady
                         Layout.fillWidth: true
                         spacing: 4
 
-                        Text {
+                        DetailLinkText {
                             Layout.fillWidth: true
                             text: shown(version.name)
-                            color: XsStyleSheet.accentColor
+                            entityType: "Version"
+                            entityId: version.id
                             font.pixelSize: XsStyleSheet.fontSize * 1.1
-                            font.family: XsStyleSheet.fontFamily
                             font.bold: true
-                            font.underline: hasId(version) && root.shotgridUrl("Version", version.id) !== ""
                             wrapMode: Text.WordWrap
-                            elide: Text.ElideRight
-
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: hasId(version)
-                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                onClicked: root.openUrl(root.shotgridUrl("Version", version.id))
-                            }
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
                         }
 
-                        // Breadcrumb: Project / Sequence / Shot|Asset
                         Flow {
                             Layout.fillWidth: true
                             spacing: 4
-
-                            Text {
+                            DetailLinkText {
                                 visible: hasId(project)
                                 text: shown(project.name)
-                                color: XsStyleSheet.accentColor
-                                font.pixelSize: XsStyleSheet.fontSize
-                                font.family: XsStyleSheet.fontFamily
-                                font.underline: true
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.openUrl(root.shotgridUrl("Project", project.id))
-                                }
+                                entityType: "Project"
+                                entityId: project.id
+                                onEntityClicked: function(type, id) { root.openEntity(type, id) }
                             }
                             Text {
                                 visible: hasId(project) && (hasId(sequence) || hasId(shot) || hasId(asset))
@@ -327,19 +381,12 @@ Item {
                                 font.pixelSize: XsStyleSheet.fontSize
                                 font.family: XsStyleSheet.fontFamily
                             }
-                            Text {
+                            DetailLinkText {
                                 visible: hasId(sequence)
                                 text: shown(sequence.name)
-                                color: XsStyleSheet.accentColor
-                                font.pixelSize: XsStyleSheet.fontSize
-                                font.family: XsStyleSheet.fontFamily
-                                font.underline: true
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.openUrl(root.shotgridUrl("Sequence", sequence.id))
-                                }
+                                entityType: "Sequence"
+                                entityId: sequence.id
+                                onEntityClicked: function(type, id) { root.openEntity(type, id) }
                             }
                             Text {
                                 visible: hasId(sequence) && (hasId(shot) || hasId(asset))
@@ -348,48 +395,32 @@ Item {
                                 font.pixelSize: XsStyleSheet.fontSize
                                 font.family: XsStyleSheet.fontFamily
                             }
-                            Text {
+                            DetailLinkText {
                                 visible: hasId(shot)
                                 text: shown(shot.name)
-                                color: XsStyleSheet.accentColor
-                                font.pixelSize: XsStyleSheet.fontSize
-                                font.family: XsStyleSheet.fontFamily
-                                font.underline: true
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.openUrl(root.shotgridUrl("Shot", shot.id))
-                                }
+                                entityType: "Shot"
+                                entityId: shot.id
+                                onEntityClicked: function(type, id) { root.openEntity(type, id) }
                             }
-                            Text {
+                            DetailLinkText {
                                 visible: !hasId(shot) && hasId(asset)
                                 text: shown(asset.name)
-                                color: XsStyleSheet.accentColor
-                                font.pixelSize: XsStyleSheet.fontSize
-                                font.family: XsStyleSheet.fontFamily
-                                font.underline: true
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.openUrl(root.shotgridUrl("Asset", asset.id))
-                                }
+                                entityType: "Asset"
+                                entityId: asset.id
+                                onEntityClicked: function(type, id) { root.openEntity(type, id) }
                             }
                         }
 
-                        // Badges: tech + artistic + step + notes
                         Flow {
                             Layout.fillWidth: true
                             spacing: 6
-
                             StatusBadge {
-                                code: hasText(status.technical) ? String(status.technical) : ""
                                 visible: hasText(status.technical)
+                                code: hasText(status.technical) ? String(status.technical) : ""
                             }
                             StatusBadge {
-                                code: hasText(status.artistic) ? String(status.artistic) : ""
                                 visible: hasText(status.artistic)
+                                code: hasText(status.artistic) ? String(status.artistic) : ""
                             }
                             Rectangle {
                                 visible: hasText(version.step)
@@ -399,7 +430,6 @@ Item {
                                 border.width: 1
                                 border.color: XsStyleSheet.widgetBgNormalColor
                                 radius: 2
-
                                 Text {
                                     id: stepChipText
                                     anchors.centerIn: parent
@@ -417,11 +447,44 @@ Item {
                                 border.width: 1
                                 border.color: XsStyleSheet.widgetBgNormalColor
                                 radius: 2
-
                                 Text {
                                     id: notesChipText
                                     anchors.centerIn: parent
                                     text: root.openNotesLabel()
+                                    color: XsStyleSheet.secondaryTextColor
+                                    font.pixelSize: XsStyleSheet.fontSize
+                                    font.family: XsStyleSheet.fontFamily
+                                }
+                            }
+                            Rectangle {
+                                visible: isTrue(version.isLatest)
+                                implicitHeight: XsStyleSheet.widgetStdHeight - 4
+                                implicitWidth: latestChipText.implicitWidth + 12
+                                color: "transparent"
+                                border.width: 1
+                                border.color: XsStyleSheet.widgetBgNormalColor
+                                radius: 2
+                                Text {
+                                    id: latestChipText
+                                    anchors.centerIn: parent
+                                    text: "latest"
+                                    color: XsStyleSheet.secondaryTextColor
+                                    font.pixelSize: XsStyleSheet.fontSize
+                                    font.family: XsStyleSheet.fontFamily
+                                }
+                            }
+                            Rectangle {
+                                visible: isTrue(files.syncedToClient)
+                                implicitHeight: XsStyleSheet.widgetStdHeight - 4
+                                implicitWidth: syncChipText.implicitWidth + 12
+                                color: "transparent"
+                                border.width: 1
+                                border.color: XsStyleSheet.widgetBgNormalColor
+                                radius: 2
+                                Text {
+                                    id: syncChipText
+                                    anchors.centerIn: parent
+                                    text: "synced"
                                     color: XsStyleSheet.secondaryTextColor
                                     font.pixelSize: XsStyleSheet.fontSize
                                     font.family: XsStyleSheet.fontFamily
@@ -443,7 +506,6 @@ Item {
             }
         }
 
-        // Scroll body — Context / Media / Paths.
         ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -461,7 +523,6 @@ Item {
                     color: XsStyleSheet.widgetBgNormalColor
                 }
 
-                // Context
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: XsStyleSheet.panelPadding
@@ -469,131 +530,289 @@ Item {
                     Layout.topMargin: XsStyleSheet.panelPadding
                     spacing: 6
 
-                    Text {
-                        text: "Context"
-                        color: XsStyleSheet.primaryTextColor
-                        font.pixelSize: XsStyleSheet.fontSize
-                        font.family: XsStyleSheet.fontFamily
+                    DetailLinkText {
+                        text: "Version"
+                        entityType: "Version"
+                        entityId: version.id
                         font.bold: true
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                    }
+                    DetailFieldRow {
+                        label: "Client name"
+                        value: textOrEmpty(version.clientCode)
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Description"
+                        value: textOrEmpty(version.description)
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Artist"
+                        value: textOrEmpty(version.author)
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Task / Step"
+                        value: root.taskStepLine()
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Status"
+                        value: root.statusLine()
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Review"
+                        value: root.reviewLine()
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Frames"
+                        value: root.framesLine()
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Scene"
+                        value: textOrEmpty(version.workSourceScene)
+                        copyable: true
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        visible: hasId(project)
-
+                        visible: playlists && playlists.length > 0
                         Text {
                             Layout.preferredWidth: 88
-                            text: "Project"
+                            Layout.alignment: Qt.AlignTop
+                            text: "Playlists"
                             color: XsStyleSheet.secondaryTextColor
                             font.pixelSize: XsStyleSheet.fontSize
                             font.family: XsStyleSheet.fontFamily
                         }
-                        Text {
-                            text: shown(project.name)
-                            color: XsStyleSheet.accentColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            font.underline: true
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.openUrl(root.shotgridUrl("Project", project.id))
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Repeater {
+                                model: root.playlists
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    implicitHeight: XsStyleSheet.widgetStdHeight - 4
+                                    implicitWidth: playlistChipText.implicitWidth + 12
+                                    color: "transparent"
+                                    border.width: 1
+                                    border.color: XsStyleSheet.widgetBgNormalColor
+                                    radius: 2
+                                    Text {
+                                        id: playlistChipText
+                                        anchors.centerIn: parent
+                                        text: modelData && modelData.name ? String(modelData.name) : ""
+                                        color: XsStyleSheet.accentColor
+                                        font.pixelSize: XsStyleSheet.fontSize
+                                        font.family: XsStyleSheet.fontFamily
+                                        font.underline: true
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (modelData && modelData.id)
+                                                root.openEntity("Playlist", modelData.id)
+                                        }
+                                    }
+                                }
                             }
                         }
-                        Text {
-                            visible: hasText(project.type) || hasText(project.code)
-                            Layout.fillWidth: true
-                            text: "· " + (hasText(project.type) ? String(project.type) : String(project.code))
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            elide: Text.ElideRight
-                        }
                     }
+                }
 
-                    RowLayout {
+                ColumnLayout {
+                    visible: hasId(shot)
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Rectangle {
                         Layout.fillWidth: true
-                        spacing: 8
-                        visible: hasId(sequence)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Sequence"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: shown(sequence.name)
-                            color: XsStyleSheet.accentColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            font.underline: true
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.openUrl(root.shotgridUrl("Sequence", sequence.id))
-                            }
-                        }
+                        Layout.preferredHeight: 1
+                        Layout.topMargin: XsStyleSheet.panelPadding
+                        color: XsStyleSheet.widgetBgNormalColor
                     }
-
-                    RowLayout {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 8
-                        visible: hasId(shot)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Shot"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
+                        Layout.leftMargin: XsStyleSheet.panelPadding
+                        Layout.rightMargin: XsStyleSheet.panelPadding
+                        Layout.topMargin: XsStyleSheet.panelPadding
+                        spacing: 6
+                        DetailLinkText {
                             text: shown(shot.name)
-                            color: XsStyleSheet.accentColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            font.underline: true
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.openUrl(root.shotgridUrl("Shot", shot.id))
-                            }
+                            entityType: "Shot"
+                            entityId: shot.id
+                            font.bold: true
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        }
+                        DetailFieldRow {
+                            label: "Status"
+                            value: textOrEmpty(shot.status)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Description"
+                            value: textOrEmpty(shot.description)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Cut"
+                            value: root.shotCutLine()
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Duration"
+                            value: root.durationSec(shot.cutDurationInSec)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
                         }
                     }
+                }
 
-                    RowLayout {
+                ColumnLayout {
+                    visible: !hasId(shot) && hasId(asset)
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Rectangle {
                         Layout.fillWidth: true
-                        spacing: 8
-                        visible: !hasId(shot) && hasId(asset)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Asset"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        Layout.topMargin: XsStyleSheet.panelPadding
+                        color: XsStyleSheet.widgetBgNormalColor
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: XsStyleSheet.panelPadding
+                        Layout.rightMargin: XsStyleSheet.panelPadding
+                        Layout.topMargin: XsStyleSheet.panelPadding
+                        spacing: 6
+                        DetailLinkText {
                             text: shown(asset.name)
-                            color: XsStyleSheet.accentColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            font.underline: true
+                            entityType: "Asset"
+                            entityId: asset.id
+                            font.bold: true
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        }
+                        DetailFieldRow {
+                            label: "Status"
+                            value: textOrEmpty(asset.status)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Description"
+                            value: textOrEmpty(asset.description)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                    }
+                }
 
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.openUrl(root.shotgridUrl("Asset", asset.id))
-                            }
+                ColumnLayout {
+                    visible: hasId(sequence)
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        Layout.topMargin: XsStyleSheet.panelPadding
+                        color: XsStyleSheet.widgetBgNormalColor
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: XsStyleSheet.panelPadding
+                        Layout.rightMargin: XsStyleSheet.panelPadding
+                        Layout.topMargin: XsStyleSheet.panelPadding
+                        spacing: 6
+                        DetailLinkText {
+                            text: shown(sequence.name)
+                            entityType: "Sequence"
+                            entityId: sequence.id
+                            font.bold: true
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        }
+                        DetailFieldRow {
+                            label: "Status"
+                            value: textOrEmpty(sequence.status)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Description"
+                            value: textOrEmpty(sequence.description)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Order"
+                            value: hasNumber(sequence.sequenceOrder) ? String(sequence.sequenceOrder) : ""
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Duration"
+                            value: root.durationSec(sequence.cutDurationInSec)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Shots"
+                            value: root.sequenceShotsLine()
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: hasId(project)
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        Layout.topMargin: XsStyleSheet.panelPadding
+                        color: XsStyleSheet.widgetBgNormalColor
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: XsStyleSheet.panelPadding
+                        Layout.rightMargin: XsStyleSheet.panelPadding
+                        Layout.topMargin: XsStyleSheet.panelPadding
+                        spacing: 6
+                        DetailLinkText {
+                            text: shown(project.name)
+                            entityType: "Project"
+                            entityId: project.id
+                            font.bold: true
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        }
+                        DetailFieldRow {
+                            label: "Code"
+                            value: textOrEmpty(project.code)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
+                        }
+                        DetailFieldRow {
+                            label: "Status"
+                            value: textOrEmpty(project.status)
+                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                            onCopyRequested: function(text) { root.copyText(text) }
                         }
                     }
                 }
@@ -605,192 +824,12 @@ Item {
                     color: XsStyleSheet.widgetBgNormalColor
                 }
 
-                // Media
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: XsStyleSheet.panelPadding
                     Layout.rightMargin: XsStyleSheet.panelPadding
                     Layout.topMargin: XsStyleSheet.panelPadding
                     spacing: 6
-
-                    Text {
-                        text: "Media"
-                        color: XsStyleSheet.primaryTextColor
-                        font.pixelSize: XsStyleSheet.fontSize
-                        font.family: XsStyleSheet.fontFamily
-                        font.bold: true
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Type"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: shown(media.kind)
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: hasText(media.path)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Path"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: textOrEmpty(media.path)
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            elide: Text.ElideMiddle
-
-                            ToolTip.visible: mediaPathHover.hovered
-                            ToolTip.delay: 400
-                            ToolTip.text: textOrEmpty(media.path)
-
-                            HoverHandler {
-                                id: mediaPathHover
-                            }
-                        }
-                        XsPrimaryButton {
-                            Layout.preferredWidth: 48
-                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight - 4
-                            text: "Copy"
-                            onClicked: root.copyText(media.path)
-                        }
-                    }
-
-                    // Sequence extras
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: media.kind === "sequence" && (hasText(media.frameRange) || media.frameCount)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Frames"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: {
-                                const parts = []
-                                if (hasText(media.frameRange))
-                                    parts.push(String(media.frameRange))
-                                if (media.frameCount)
-                                    parts.push(String(media.frameCount))
-                                return parts.join(" · ")
-                            }
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                    }
-
-                    // Video extras
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: media.kind === "video" && hasText(media.container)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Container"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: shown(media.container)
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: media.kind === "video" && media.fps
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "FPS"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: Number(media.fps).toFixed(3)
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: media.kind === "video" && (media.frameCount || media.duration)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Duration"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: {
-                                const parts = []
-                                if (media.frameCount)
-                                    parts.push(String(media.frameCount) + " frames")
-                                if (media.duration)
-                                    parts.push(Number(media.duration).toFixed(3) + " s")
-                                return parts.join(" · ")
-                            }
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    Layout.topMargin: XsStyleSheet.panelPadding
-                    color: XsStyleSheet.widgetBgNormalColor
-                }
-
-                // Paths — only non-empty rows; no thumbnail text line.
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.leftMargin: XsStyleSheet.panelPadding
-                    Layout.rightMargin: XsStyleSheet.panelPadding
-                    Layout.topMargin: XsStyleSheet.panelPadding
-                    spacing: 6
-
                     Text {
                         text: "Paths"
                         color: XsStyleSheet.primaryTextColor
@@ -798,156 +837,115 @@ Item {
                         font.family: XsStyleSheet.fontFamily
                         font.bold: true
                     }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: hasText(files.frames)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Frames"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: textOrEmpty(files.frames)
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            elide: Text.ElideMiddle
-
-                            ToolTip.visible: framesPathHover.hovered
-                            ToolTip.delay: 400
-                            ToolTip.text: textOrEmpty(files.frames)
-
-                            HoverHandler {
-                                id: framesPathHover
-                            }
-                        }
-                        XsPrimaryButton {
-                            Layout.preferredWidth: 48
-                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight - 4
-                            text: "Copy"
-                            onClicked: root.copyText(files.frames)
-                        }
+                    DetailFieldRow {
+                        label: "Frames"
+                        value: textOrEmpty(files.frames)
+                        copyable: true
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
                     }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: hasText(files.movie)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Movie"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: textOrEmpty(files.movie)
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            elide: Text.ElideMiddle
-
-                            ToolTip.visible: moviePathHover.hovered
-                            ToolTip.delay: 400
-                            ToolTip.text: textOrEmpty(files.movie)
-
-                            HoverHandler {
-                                id: moviePathHover
-                            }
-                        }
-                        XsPrimaryButton {
-                            Layout.preferredWidth: 48
-                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight - 4
-                            text: "Copy"
-                            onClicked: root.copyText(files.movie)
-                        }
+                    DetailFieldRow {
+                        label: "Movie"
+                        value: textOrEmpty(files.movie)
+                        copyable: true
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
                     }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: hasText(files.uploadedMovie)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Uploaded"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: textOrEmpty(files.uploadedMovie)
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            elide: Text.ElideMiddle
-
-                            ToolTip.visible: uploadedPathHover.hovered
-                            ToolTip.delay: 400
-                            ToolTip.text: textOrEmpty(files.uploadedMovie)
-
-                            HoverHandler {
-                                id: uploadedPathHover
-                            }
-                        }
-                        XsPrimaryButton {
-                            Layout.preferredWidth: 48
-                            Layout.preferredHeight: XsStyleSheet.widgetStdHeight - 4
-                            text: "Copy"
-                            onClicked: root.copyText(files.uploadedMovie)
-                        }
+                    DetailFieldRow {
+                        label: "Uploaded"
+                        value: textOrEmpty(files.uploadedMovie)
+                        copyable: true
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
                     }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: hasText(files.sites)
-
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Sites"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: textOrEmpty(files.sites)
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
-                            elide: Text.ElideRight
-                        }
+                    DetailFieldRow {
+                        label: "Sites"
+                        value: textOrEmpty(files.sites)
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
                     }
+                    DetailFieldRow {
+                        label: "Client"
+                        value: isTrue(files.syncedToClient) ? "Synced" : ""
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: files.syncedToClient === true
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    Layout.topMargin: XsStyleSheet.panelPadding
+                    color: XsStyleSheet.widgetBgNormalColor
+                }
 
-                        Text {
-                            Layout.preferredWidth: 88
-                            text: "Client"
-                            color: XsStyleSheet.secondaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: XsStyleSheet.panelPadding
+                    Layout.rightMargin: XsStyleSheet.panelPadding
+                    Layout.topMargin: XsStyleSheet.panelPadding
+                    spacing: 6
+                    Text {
+                        text: "Media"
+                        color: XsStyleSheet.primaryTextColor
+                        font.pixelSize: XsStyleSheet.fontSize
+                        font.family: XsStyleSheet.fontFamily
+                        font.bold: true
+                    }
+                    DetailFieldRow {
+                        label: "Type"
+                        value: textOrEmpty(media.kind)
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Path"
+                        value: textOrEmpty(media.path)
+                        copyable: true
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Frames"
+                        value: {
+                            if (media.kind !== "sequence")
+                                return ""
+                            const parts = []
+                            if (hasText(media.frameRange))
+                                parts.push(String(media.frameRange))
+                            if (media.frameCount)
+                                parts.push(String(media.frameCount))
+                            return parts.join(" · ")
                         }
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Synced"
-                            color: XsStyleSheet.primaryTextColor
-                            font.pixelSize: XsStyleSheet.fontSize
-                            font.family: XsStyleSheet.fontFamily
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Container"
+                        value: media.kind === "video" ? textOrEmpty(media.container) : ""
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "FPS"
+                        value: media.kind === "video" && media.fps ? Number(media.fps).toFixed(3) : ""
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
+                    }
+                    DetailFieldRow {
+                        label: "Duration"
+                        value: {
+                            if (media.kind !== "video")
+                                return ""
+                            const parts = []
+                            if (media.frameCount)
+                                parts.push(String(media.frameCount) + " frames")
+                            if (media.duration)
+                                parts.push(Number(media.duration).toFixed(3) + " s")
+                            return parts.join(" · ")
                         }
+                        onEntityClicked: function(type, id) { root.openEntity(type, id) }
+                        onCopyRequested: function(text) { root.copyText(text) }
                     }
                 }
 

@@ -146,6 +146,28 @@ template <typename Entity> class Query {
     }
 
     /**
+     * @brief Restricts which domain fields find() loads, by key name.
+     *
+     * Use this when a field has no proxy (for example `links` fields such as
+     * `shots`, `versions`, or `playlists`). `id` and `name` are always kept.
+     *
+     * @param keys Domain field names from the schema.
+     * @return A new query. This query is unchanged.
+     */
+    Query Fields(std::vector<std::string> keys) const {
+        Query copy = *this;
+        auto ensure = [&keys](const char *key) {
+            if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
+                keys.push_back(key);
+            }
+        };
+        ensure("id");
+        ensure("name");
+        copy.fields_ = std::move(keys);
+        return copy;
+    }
+
+    /**
      * @brief Returns the trees without a verb and without validation.
      * @return Intermediate representation with an empty `op`.
      */

@@ -139,8 +139,16 @@ Records makeSequences() {
             const std::string sequenceNumber =
                 (shotNumber < 100 ? "0" : "") + std::to_string(shotNumber);
             Record row;
-            row.fields["id"] = sequenceId++;
+            const std::int64_t id = sequenceId++;
+            row.fields["id"] = id;
             row.fields["name"] = "paw" + projectNumber + "_sq" + sequenceNumber;
+            row.fields["description"] = "Sequence " + sequenceNumber;
+            row.fields["status"] = std::string((index % 2) == 0 ? "ip" : "apr");
+            row.fields["cut_duration_in_sec"] = std::int64_t{120 + static_cast<std::int64_t>(index) * 10};
+            row.fields["estimated_frames_count"] = std::int64_t{2400};
+            row.fields["estimated_shots_count"] = std::int64_t{12};
+            row.fields["shot_count"] = std::int64_t{FakeBackend::shotsPerSequence};
+            row.fields["sequence_order"] = std::int64_t{static_cast<std::int64_t>(index) * 10};
             row.fields["project"] = std::int64_t{projectId};
             rows.push_back(std::move(row));
         }
@@ -164,8 +172,17 @@ Records makeShots(const Records &sequences) {
             const std::string shotLabel =
                 (shotNumber < 100 ? "0" : "") + std::to_string(shotNumber);
             Record row;
-            row.fields["id"] = shotId++;
+            const std::int64_t id = shotId++;
+            const std::int64_t cutIn = 1001;
+            const std::int64_t cutOut = 1100;
+            row.fields["id"] = id;
             row.fields["name"] = sequenceName + "_sh" + shotLabel;
+            row.fields["description"] = "Shot " + shotLabel;
+            row.fields["status"] = std::string((index % 2) == 0 ? "ip" : "rev");
+            row.fields["cut_duration_in_sec"] = std::int64_t{4};
+            row.fields["cut_in"] = cutIn;
+            row.fields["cut_out"] = cutOut;
+            row.fields["cut_order"] = std::int64_t{static_cast<std::int64_t>(index) * 10};
             row.fields["sequence"] = sequence.fields.at("id");
             row.fields["project"] = sequence.fields.at("project");
             rows.push_back(std::move(row));
@@ -192,6 +209,8 @@ Records makeAssets() {
             Record row;
             row.fields["id"] = assetId++;
             row.fields["name"] = "paw" + projectNumber + "_ast" + assetNumber;
+            row.fields["description"] = "Asset " + assetNumber;
+            row.fields["status"] = std::string((index % 2) == 0 ? "ip" : "apr");
             row.fields["project"] = std::int64_t{projectId};
             rows.push_back(std::move(row));
         }
@@ -612,13 +631,21 @@ void fillVersionCard(Record &row, std::size_t index) {
     row.fields["created_at"] =
         formatIsoDay(addDays(todayUtc(), -static_cast<int>(index - 1)));
     row.fields["frame_range"] = std::string("1001-1005");
+    row.fields["frame_count"] = std::int64_t{5};
     row.fields["description"] = std::string(descriptions[pick]);
+    row.fields["client_code"] = name + "_CLIENT";
+    row.fields["client_reviewed"] = std::int64_t{(id % 4) == 0 ? 1 : 0};
+    row.fields["client_approved"] = std::int64_t{(id % 5) == 0 ? 1 : 0};
+    row.fields["is_latest"] = std::int64_t{(index == 1) ? 1 : 0};
+    row.fields["version_number"] = std::int64_t{static_cast<std::int64_t>(index)};
+    row.fields["task"] = std::string(steps[pick]) + " Task";
     row.fields["step"] = std::string(steps[pick]);
     row.fields["status"] = std::string(statuses[pick]);
     row.fields["artistic_status"] = std::string(artistic[pick]);
     row.fields["sites"] = std::string(sites[pick]);
     row.fields["open_notes_count"] = std::int64_t{(id % 2) == 0 ? 2 : 0};
     row.fields["synced_to_client"] = std::int64_t{(id % 3) == 0 ? 1 : 0};
+    row.fields["work_source_scene"] = "/work/" + name + ".ma";
     row.fields["uploaded_movie"] = "https://example.test/movies/" + name + ".mp4";
     row.fields["uploaded_movie_provider"] = std::string("signedurl");
 
@@ -1287,6 +1314,13 @@ void attachParentEntity(
  */
 Record publicSequence(const Record &row, const Records &projects) {
     Record out = publicNamed(row);
+    copyPresent(out, row, "description");
+    copyPresent(out, row, "status");
+    copyPresent(out, row, "cut_duration_in_sec");
+    copyPresent(out, row, "estimated_frames_count");
+    copyPresent(out, row, "estimated_shots_count");
+    copyPresent(out, row, "shot_count");
+    copyPresent(out, row, "sequence_order");
     attachParentEntity(out, row, projects, "project", "project", "Project");
     return out;
 }
@@ -1299,6 +1333,12 @@ Record publicSequence(const Record &row, const Records &projects) {
  */
 Record publicShot(const Record &row, const Records &sequences) {
     Record out = publicNamed(row);
+    copyPresent(out, row, "description");
+    copyPresent(out, row, "status");
+    copyPresent(out, row, "cut_duration_in_sec");
+    copyPresent(out, row, "cut_in");
+    copyPresent(out, row, "cut_out");
+    copyPresent(out, row, "cut_order");
     attachParentEntity(out, row, sequences, "sequence", "sequence", "Sequence");
     return out;
 }
@@ -1311,6 +1351,8 @@ Record publicShot(const Record &row, const Records &sequences) {
  */
 Record publicAsset(const Record &row, const Records &projects) {
     Record out = publicNamed(row);
+    copyPresent(out, row, "description");
+    copyPresent(out, row, "status");
     attachParentEntity(out, row, projects, "project", "project", "Project");
     return out;
 }
@@ -1340,13 +1382,21 @@ Record publicVersion(
     copyPresent(out, row, "author");
     copyPresent(out, row, "created_at");
     copyPresent(out, row, "frame_range");
+    copyPresent(out, row, "frame_count");
     copyPresent(out, row, "description");
+    copyPresent(out, row, "client_code");
+    copyPresent(out, row, "client_reviewed");
+    copyPresent(out, row, "client_approved");
+    copyPresent(out, row, "is_latest");
+    copyPresent(out, row, "version_number");
+    copyPresent(out, row, "task");
     copyPresent(out, row, "step");
     copyPresent(out, row, "status");
     copyPresent(out, row, "artistic_status");
     copyPresent(out, row, "sites");
     copyPresent(out, row, "open_notes_count");
     copyPresent(out, row, "synced_to_client");
+    copyPresent(out, row, "work_source_scene");
     copyPresent(out, row, "frames");
     copyPresent(out, row, "frames_provider");
     copyPresent(out, row, "movie");
@@ -1647,8 +1697,27 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(version, *ir.where)) {
                 continue;
             }
-            rows.push_back(
-                publicVersion(version, projects_, sequences_, shots_, assets_));
+            Record row =
+                publicVersion(version, projects_, sequences_, shots_, assets_);
+            const auto versionId = std::get<std::int64_t>(version.fields.at("id"));
+            const auto membership = version_playlists_.find(versionId);
+            if (membership != version_playlists_.end()) {
+                std::vector<Link> playlists;
+                for (const std::int64_t playlistId : membership->second) {
+                    const Record *playlist = parentById(playlists_, playlistId);
+                    if (!playlist) {
+                        continue;
+                    }
+                    Link link;
+                    link.id = playlistId;
+                    link.name = std::get<std::string>(playlist->fields.at("name"));
+                    playlists.push_back(std::move(link));
+                }
+                if (!playlists.empty()) {
+                    row.fields["playlists"] = std::move(playlists);
+                }
+            }
+            rows.push_back(std::move(row));
         }
     } else {
         throw Error("fake backend: entity \"" + ir.entity + "\" is not available");

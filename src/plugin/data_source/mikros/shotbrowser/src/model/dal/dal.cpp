@@ -505,14 +505,20 @@ std::size_t readPageLimit() {
 }
 
 RowPage<poco::Project> findProjects(std::size_t limit, std::optional<std::string> cursor) {
-    return fetchPage<poco::Project>(pms::Project(), limit, cursor);
+    using namespace pms::project;
+    return fetchPage<poco::Project>(
+        pms::Project().Fields(id, name, code, status, type), limit, cursor);
 }
 
 RowPage<poco::SequenceShots> findSequenceShots(
     std::int64_t projectId, std::size_t limit, std::optional<std::string> cursor) {
     try {
         const pms::Page page = findLimitedPage(
-            pms::Sequence().In(pms::project::id == projectId), limit, cursor);
+            pms::Sequence()
+                .In(pms::project::id == projectId)
+                .Fields(std::vector<std::string>{"id", "name", "shots"}),
+            limit,
+            cursor);
         RowPage<poco::SequenceShots> out;
         out.next_cursor = page.next_cursor;
         out.rows.reserve(page.rows.size());
@@ -535,11 +541,12 @@ RowPage<poco::Asset> findAssets(
     std::size_t limit,
     std::optional<std::string> cursor,
     std::optional<std::string> nameOrId) {
+    using namespace pms::asset;
     return fetchPage<poco::Asset>(
         applyNameOrId(
-            pms::Asset().In(pms::project::id == projectId),
-            pms::asset::id,
-            pms::asset::name,
+            pms::Asset().In(pms::project::id == projectId).Fields(id, name),
+            id,
+            name,
             nameOrId),
         limit,
         cursor);
@@ -552,10 +559,21 @@ RowPage<poco::Playlist> findPlaylists(
     std::optional<std::string> nameOrId,
     std::shared_ptr<const pms::ExprNode> where) {
     try {
+        using namespace pms::playlist;
         auto query = applyNameOrId(
-            pms::Playlist().In(pms::project::id == projectId),
-            pms::playlist::id,
-            pms::playlist::name,
+            pms::Playlist()
+                .In(pms::project::id == projectId)
+                .Fields(std::vector<std::string>{
+                    "id",
+                    "name",
+                    "versions",
+                    "open_notes_count",
+                    "departments",
+                    "created_at",
+                    "category",
+                    "author"}),
+            id,
+            name,
             nameOrId);
         if (where) {
             query = query.Where(pms::FieldExpr<struct pms::Playlist>{where}); ///< Shelf FieldExpr.

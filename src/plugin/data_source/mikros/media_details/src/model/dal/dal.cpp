@@ -13,6 +13,7 @@
 
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace xstudio::mikros_media_details::dal {
 namespace {
@@ -58,6 +59,28 @@ bool optionalFlag(const pms::Record &record, const std::string &key) {
 }
 
 /**
+ * @brief Copies playlist links from a version record.
+ * @param record Domain version row.
+ * @return Playlist id/name pairs in record order.
+ */
+std::vector<poco::PlaylistLink> playlistLinksFromRecord(const pms::Record &record) {
+    std::vector<poco::PlaylistLink> playlists;
+    const auto found = record.fields.find("playlists");
+    if (found == record.fields.end()) {
+        return playlists;
+    }
+    const auto *links = std::get_if<std::vector<pms::Link>>(&found->second);
+    if (!links) {
+        return playlists;
+    }
+    playlists.reserve(links->size());
+    for (const pms::Link &link : *links) {
+        playlists.push_back(poco::PlaylistLink{link.id, link.name});
+    }
+    return playlists;
+}
+
+/**
  * @brief Maps one pms record onto a VersionDetail POCO.
  * @param record Domain row from find.
  * @return Filled detail row.
@@ -69,13 +92,21 @@ poco::VersionDetail mapVersion(const pms::Record &record) {
     row.author = optionalString(record, "author");
     row.created_at = optionalString(record, "created_at");
     row.frame_range = optionalString(record, "frame_range");
+    row.frame_count = optionalInt(record, "frame_count");
     row.description = optionalString(record, "description");
+    row.client_code = optionalString(record, "client_code");
+    row.client_reviewed = optionalFlag(record, "client_reviewed");
+    row.client_approved = optionalFlag(record, "client_approved");
+    row.is_latest = optionalFlag(record, "is_latest");
+    row.version_number = optionalInt(record, "version_number");
+    row.task = optionalString(record, "task");
     row.step = optionalString(record, "step");
     row.status = optionalString(record, "status");
     row.artistic_status = optionalString(record, "artistic_status");
     row.sites = optionalString(record, "sites");
     row.open_notes_count = optionalInt(record, "open_notes_count");
     row.synced_to_client = optionalFlag(record, "synced_to_client");
+    row.work_source_scene = optionalString(record, "work_source_scene");
     row.frames = optionalString(record, "frames");
     row.frames_provider = optionalString(record, "frames_provider");
     row.movie = optionalString(record, "movie");
@@ -84,6 +115,7 @@ poco::VersionDetail mapVersion(const pms::Record &record) {
     row.uploaded_movie_provider = optionalString(record, "uploaded_movie_provider");
     row.image = optionalString(record, "image");
     row.image_provider = optionalString(record, "image_provider");
+    row.playlists = playlistLinksFromRecord(record);
     row.project_id = optionalInt(record, "project_id");
     row.project_name = optionalString(record, "project");
     row.entity_name = optionalString(record, "entity");
@@ -101,6 +133,12 @@ poco::ShotDetail mapShot(const pms::Record &record) {
     poco::ShotDetail row;
     row.id = std::get<std::int64_t>(record.at("id"));
     row.name = std::get<std::string>(record.at("name"));
+    row.description = optionalString(record, "description");
+    row.status = optionalString(record, "status");
+    row.cut_duration_in_sec = optionalInt(record, "cut_duration_in_sec");
+    row.cut_in = optionalInt(record, "cut_in");
+    row.cut_out = optionalInt(record, "cut_out");
+    row.cut_order = optionalInt(record, "cut_order");
     row.sequence_id = optionalInt(record, "sequence_id");
     row.sequence_name = optionalString(record, "sequence");
     return row;
@@ -115,6 +153,13 @@ poco::SequenceDetail mapSequence(const pms::Record &record) {
     poco::SequenceDetail row;
     row.id = std::get<std::int64_t>(record.at("id"));
     row.name = std::get<std::string>(record.at("name"));
+    row.description = optionalString(record, "description");
+    row.status = optionalString(record, "status");
+    row.cut_duration_in_sec = optionalInt(record, "cut_duration_in_sec");
+    row.estimated_frames_count = optionalInt(record, "estimated_frames_count");
+    row.estimated_shots_count = optionalInt(record, "estimated_shots_count");
+    row.shot_count = optionalInt(record, "shot_count");
+    row.sequence_order = optionalInt(record, "sequence_order");
     row.project_id = optionalInt(record, "project_id");
     row.project_name = optionalString(record, "project");
     return row;
@@ -129,6 +174,8 @@ poco::AssetDetail mapAsset(const pms::Record &record) {
     poco::AssetDetail row;
     row.id = std::get<std::int64_t>(record.at("id"));
     row.name = std::get<std::string>(record.at("name"));
+    row.description = optionalString(record, "description");
+    row.status = optionalString(record, "status");
     row.project_id = optionalInt(record, "project_id");
     row.project_name = optionalString(record, "project");
     return row;
@@ -163,25 +210,34 @@ std::optional<poco::VersionDetail> findVersionDetailById(std::int64_t versionId)
         using namespace pms::version;
         const pms::Page page = pms::Version()
                                    .Where(id == versionId)
-                                   .Fields(
-                                       id,
-                                       name,
-                                       author,
-                                       createdAt,
-                                       frameRange,
-                                       description,
-                                       step,
-                                       status,
-                                       artisticStatus,
-                                       sites,
-                                       openNotesCount,
-                                       syncedToClient,
-                                       frames,
-                                       movie,
-                                       uploadedMovie,
-                                       image,
-                                       project,
-                                       entity)
+                                   .Fields(std::vector<std::string>{
+                                       "id",
+                                       "name",
+                                       "author",
+                                       "created_at",
+                                       "frame_range",
+                                       "frame_count",
+                                       "description",
+                                       "client_code",
+                                       "client_reviewed",
+                                       "client_approved",
+                                       "is_latest",
+                                       "version_number",
+                                       "task",
+                                       "step",
+                                       "status",
+                                       "artistic_status",
+                                       "sites",
+                                       "open_notes_count",
+                                       "synced_to_client",
+                                       "work_source_scene",
+                                       "frames",
+                                       "movie",
+                                       "uploaded_movie",
+                                       "image",
+                                       "playlists",
+                                       "project",
+                                       "entity"})
                                    .Limit(1)
                                    .find(pms::sharedSession());
         if (page.rows.empty()) {
@@ -200,9 +256,20 @@ std::optional<poco::ShotDetail> findShotDetailById(std::int64_t shotId) {
     }
     try {
         using namespace pms::shot;
-        const pms::Page page =
-            pms::Shot().Where(id == shotId).Fields(id, name, sequence).Limit(1).find(
-                pms::sharedSession());
+        const pms::Page page = pms::Shot()
+                                   .Where(id == shotId)
+                                   .Fields(
+                                       id,
+                                       name,
+                                       description,
+                                       status,
+                                       cutDurationInSec,
+                                       cutIn,
+                                       cutOut,
+                                       cutOrder,
+                                       sequence)
+                                   .Limit(1)
+                                   .find(pms::sharedSession());
         if (page.rows.empty()) {
             return std::nullopt;
         }
@@ -219,9 +286,21 @@ std::optional<poco::SequenceDetail> findSequenceDetailById(std::int64_t sequence
     }
     try {
         using namespace pms::sequence;
-        const pms::Page page =
-            pms::Sequence().Where(id == sequenceId).Fields(id, name, project).Limit(1).find(
-                pms::sharedSession());
+        const pms::Page page = pms::Sequence()
+                                   .Where(id == sequenceId)
+                                   .Fields(
+                                       id,
+                                       name,
+                                       description,
+                                       status,
+                                       cutDurationInSec,
+                                       estimatedFramesCount,
+                                       estimatedShotsCount,
+                                       shotCount,
+                                       sequenceOrder,
+                                       project)
+                                   .Limit(1)
+                                   .find(pms::sharedSession());
         if (page.rows.empty()) {
             return std::nullopt;
         }
@@ -238,9 +317,11 @@ std::optional<poco::AssetDetail> findAssetDetailById(std::int64_t assetId) {
     }
     try {
         using namespace pms::asset;
-        const pms::Page page =
-            pms::Asset().Where(id == assetId).Fields(id, name, project).Limit(1).find(
-                pms::sharedSession());
+        const pms::Page page = pms::Asset()
+                                   .Where(id == assetId)
+                                   .Fields(id, name, description, status, project)
+                                   .Limit(1)
+                                   .find(pms::sharedSession());
         if (page.rows.empty()) {
             return std::nullopt;
         }
