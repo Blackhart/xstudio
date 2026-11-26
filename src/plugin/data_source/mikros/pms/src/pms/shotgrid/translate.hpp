@@ -6,6 +6,7 @@
 #pragma once
 
 #include "pms/ir.hpp"
+#include "pms/shotgrid/field_schema.hpp"
 #include "pms/shotgrid/mapping.hpp"
 #include "pms/value.hpp"
 
@@ -27,12 +28,23 @@ namespace pms {
  * criterion returns null. The HTTP body still sends `filters: []`, because the
  * site rejects a body that omits the key.
  *
+ * When `fieldSchema` is set, a `name_*` leaf whose ShotGrid `data_type` is
+ * `multi_entity` is rewritten to `path.<valid_type>.cached_display_name` with
+ * `contains`, `starts_with`, or `is`. Several `valid_types` become an `or`.
+ * An `entity` leaf keeps `name_*`. An empty `fieldSchema` leaves `name_*`
+ * unchanged.
+ *
  * @param ir Validated find query (op may be set).
  * @param mapping Complete domain ↔ ShotGrid map.
+ * @param fieldSchema ShotGrid field schema. Empty in tests that do not rewrite.
  * @return A hash-style filter, or null when the find has no criterion.
- * @throw Error When an entity, field, or link cannot be resolved.
+ * @throw Error When an entity, field, or link cannot be resolved, or a
+ *     multi_entity field has no `valid_types`.
  */
-nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mapping);
+nlohmann::json shotgridFiltersFromIr(
+    const Ir &ir,
+    const ShotGridMapping &mapping,
+    const FieldSchemaResolve &fieldSchema = {});
 
 /**
  * @brief Lists ShotGrid attribute names to request for an entity.

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "pms/backend.hpp"
+#include "pms/shotgrid/field_schema.hpp"
 #include "pms/shotgrid/mapping.hpp"
 
 #include <cpp-httplib/httplib.h>
@@ -168,10 +169,13 @@ class ShotGridBackend : public Backend {
 
     /**
      * @brief Builds the search body. An empty array when the find has no criterion.
+     *
+     * A `name_*` filter may GET the ShotGrid field schema and cache it.
+     *
      * @param ir Incoming query.
      * @return JSON object sent as the POST body.
      */
-    nlohmann::json buildRequestBody(const Ir &ir) const;
+    nlohmann::json buildRequestBody(const Ir &ir);
 
     /**
      * @brief Builds `/api/v1.1/entity/{collection}/_search` with no query parameters.
@@ -192,7 +196,29 @@ class ShotGridBackend : public Backend {
      * @param ir Incoming count query.
      * @return JSON object sent as the POST body.
      */
-    nlohmann::json buildSummarizeBody(const Ir &ir) const;
+    nlohmann::json buildSummarizeBody(const Ir &ir);
+
+    /**
+     * @brief Returns the ShotGrid schema for one field, fetching it on a cache miss.
+     * @param ownerType Entity type that owns the field, such as `PublishedFile`.
+     * @param field Leaf field name, such as `sg_sites`.
+     * @return `data_type` and `valid_types`.
+     * @throw Error When the schema request fails or the body has no `data_type`.
+     */
+    ShotGridFieldInfo fieldSchema(const std::string &ownerType, const std::string &field);
+
+    /**
+     * @brief GET `/api/v1.1/schema/{entity}/fields/{field}`.
+     *
+     * `{entity}` is the snake_case form of `ownerType`. A 401 drops the token
+     * and retries once.
+     *
+     * @param ownerType Entity type that owns the field.
+     * @param field Leaf field name.
+     * @return Parsed JSON body.
+     * @throw Error When auth fails or the status is not 2xx.
+     */
+    nlohmann::json fetchFieldSchema(const std::string &ownerType, const std::string &field);
 
     /**
      * @brief Reads `data.summaries.id` from a summarize response.
@@ -278,6 +304,7 @@ class ShotGridBackend : public Backend {
 
     ShotGridSite site_;
     ShotGridMapping mapping_;
+    ShotGridFieldSchemaCache fieldSchemas_; ///< Lazy schema of ShotGrid fields, keyed by type and name.
     std::function<void(const std::string &)> searchLog_; ///< Search path and body. Empty when off.
     std::function<void(const std::string &)> authLog_;   ///< Auth result line. Empty when off.
     std::optional<std::string> access_token_;

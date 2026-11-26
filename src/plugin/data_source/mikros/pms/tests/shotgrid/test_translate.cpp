@@ -665,3 +665,112 @@ TEST_CASE("version project and entity keep id name and type") {
     CHECK(std::get<std::int64_t>(record.at("entity_id")) == 10);
     CHECK(std::get<std::string>(record.at("entity_type")) == "Shot");
 }
+
+namespace {
+
+FieldSchemaResolve schemaOf(std::vector<std::pair<std::string, std::string>> &lookedUp,
+                            const std::string &owner,
+                            const std::string &field,
+                            ShotGridFieldInfo info) {
+    return [&lookedUp, owner, field, info](const std::string &gotOwner, const std::string &gotField) {
+        lookedUp.emplace_back(gotOwner, gotField);
+        if (gotOwner == owner && gotField == field) {
+            return info;
+        }
+        throw Error("unexpected schema lookup \"" + gotOwner + "." + gotField + "\"");
+    };
+}
+
+} // namespace
+
+TEST_CASE("filters rewrite name_contains on a deep multi_entity field") {
+    const ShotGridMapping mapping = filledMapping();
+    std::vector<std::pair<std::string, std::string>> lookedUp;
+    const FieldSchemaResolve resolve = schemaOf(
+        lookedUp,
+        "PublishedFile",
+        "sg_sites",
+        ShotGridFieldInfo{"multi_entity", {"CustomNonProjectEntity01"}});
+    Ir ir = Version().Where(nameContains(pms::version::sites, "Paris")).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping, resolve);
+    REQUIRE(lookedUp.size() == 1);
+    CHECK(lookedUp[0].first == "PublishedFile");
+    CHECK(lookedUp[0].second == "sg_sites");
+    CHECK(filters == nlohmann::json::array(
+                         {"sg_published_file.PublishedFile.sg_sites.CustomNonProjectEntity01."
+                          "cached_display_name",
+                          "contains",
+                          "Paris"}));
+}
+
+TEST_CASE("filters rewrite name_is on a direct multi_entity field") {
+    const ShotGridMapping mapping = filledMapping();
+    std::vector<std::pair<std::string, std::string>> lookedUp;
+    const FieldSchemaResolve resolve = schemaOf(
+        lookedUp, "Playlist", "sg_departments", ShotGridFieldInfo{"multi_entity", {"Department"}});
+    Ir ir = Playlist().Where(nameIs(pms::playlist::departments, "Comp")).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping, resolve);
+    REQUIRE(lookedUp.size() == 1);
+    CHECK(lookedUp[0].first == "Playlist");
+    CHECK(lookedUp[0].second == "sg_departments");
+    CHECK(filters == nlohmann::json::array(
+                         {"sg_departments.Department.cached_display_name", "is", "Comp"}));
+}
+
+TEST_CASE("filters keep name_contains on an entity field") {
+    const ShotGridMapping mapping = filledMapping();
+    std::vector<std::pair<std::string, std::string>> lookedUp;
+    const FieldSchemaResolve resolve =
+        schemaOf(lookedUp, "Version", "created_by", ShotGridFieldInfo{"entity", {"HumanUser"}});
+    Ir ir = Version().Where(nameContains(pms::version::author, "Ada")).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping, resolve);
+    REQUIRE(lookedUp.size() == 1);
+    CHECK(lookedUp[0].first == "Version");
+    CHECK(lookedUp[0].second == "created_by");
+    CHECK(filters == nlohmann::json::array({"created_by", "name_contains", "Ada"}));
+}
+
+TEST_CASE("filters or every valid type of a multi_entity field") {
+    const ShotGridMapping mapping = filledMapping();
+    std::vector<std::pair<std::string, std::string>> lookedUp;
+    const FieldSchemaResolve resolve = schemaOf(
+        lookedUp,
+        "PublishedFile",
+        "sg_sites",
+        ShotGridFieldInfo{"multi_entity", {"Site", "CustomEntity02"}});
+    Ir ir = Version().Where(nameStartsWith(pms::version::sites, "Par")).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping, resolve);
+    REQUIRE(filters.is_object());
+    CHECK(filters["logical_operator"] == "or");
+    REQUIRE(filters["conditions"].size() == 2);
+    CHECK(filters["conditions"][0] ==
+          nlohmann::json::array({"sg_published_file.PublishedFile.sg_sites.Site.cached_display_name",
+                                 "starts_with",
+                                 "Par"}));
+    CHECK(filters["conditions"][1] ==
+          nlohmann::json::array(
+              {"sg_published_file.PublishedFile.sg_sites.CustomEntity02.cached_display_name",
+               "starts_with",
+               "Par"}));
+}
+
+TEST_CASE("filters rewrite name_contains on a multi_entity parent field") {
+    const ShotGridMapping mapping = filledMapping();
+    std::vector<std::pair<std::string, std::string>> lookedUp;
+    const FieldSchemaResolve resolve = schemaOf(
+        lookedUp, "Playlist", "sg_departments", ShotGridFieldInfo{"multi_entity", {"Department"}});
+    Ir ir = Version().In(nameContains(pms::playlist::departments, "Comp")).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping, resolve);
+    REQUIRE(lookedUp.size() == 1);
+    CHECK(lookedUp[0].first == "Playlist");
+    CHECK(lookedUp[0].second == "sg_departments");
+    CHECK(filters == nlohmann::json::array(
+                         {"playlists.Playlist.sg_departments.Department.cached_display_name",
+                          "contains",
+                          "Comp"}));
+}

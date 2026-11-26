@@ -4,8 +4,9 @@ types:
   int:      { ops: [eq, ne, gt, lt, between, in, not_in] }
   date:     { ops: [eq, ne, gt, lt, between] }
   datetime: { ops: [eq, ne, gt, lt, between, in_last, in_calendar_day, in_calendar_week, in_calendar_month] }
-  entity:   { ops: [name_contains, name_starts_with, name_is] }
-  links:    { ops: [] }
+  entity:       { ops: [name_contains, name_starts_with, name_is] }
+  multi_entity: { ops: [name_contains, name_starts_with, name_is] }
+  links:        { ops: [] }
 
 entities:
   project:
@@ -65,7 +66,7 @@ entities:
       name:             { type: string, filter: true,  set: true }
       versions:         { type: links,  filter: false, set: false }
       open_notes_count: { type: int,    filter: true,  set: false }
-      departments:      { type: string, filter: true,  set: false }
+      departments:      { type: multi_entity, filter: true,  set: false }
       created_at:       { type: datetime, filter: true, set: false }
       category:         { type: string, filter: true,  set: false }
       author:           { type: entity, filter: true,  set: false }
@@ -91,7 +92,7 @@ entities:
       step:              { type: entity, filter: true,  set: false }
       status:            { type: string, filter: true,  set: false }
       artistic_status:   { type: string, filter: true,  set: false }
-      sites:             { type: string, filter: true,  set: false }
+      sites:             { type: multi_entity, filter: true,  set: false }
       open_notes_count:  { type: int,    filter: true,  set: false }
       synced_to_client:  { type: int,    filter: true,  set: false }
       work_source_scene: { type: string, filter: true,  set: false }

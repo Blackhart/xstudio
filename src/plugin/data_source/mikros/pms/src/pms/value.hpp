@@ -46,11 +46,13 @@ struct Date {
 struct DateTime {};
 
 /**
- * @brief Proxy tag for an entity field such as author.
+ * @brief Proxy tag for an entity or multi_entity field.
  *
- * The record still stores the linked entity label as a string. Only the
- * generated Field proxy uses this type, so name_* operators do not apply to
- * plain text fields.
+ * `author` is one linked record. `sites` and `departments` are a list of
+ * linked records. Both use this tag, so they share `nameContains`,
+ * `nameStartsWith`, and `nameIs`. The record still stores the label as a
+ * string. Only the generated Field proxy uses this type, so those operators
+ * do not apply to plain text fields.
  */
 struct EntityRef {};
 

@@ -65,6 +65,7 @@ set(PMS_LIB_SOURCES
     "${PMS_SRC_DIR}/pms/env.cpp"
     "${PMS_SRC_DIR}/pms/shared_session.cpp"
     "${PMS_SRC_DIR}/pms/shotgrid/mapping.cpp"
+    "${PMS_SRC_DIR}/pms/shotgrid/field_schema.cpp"
     "${PMS_SRC_DIR}/pms/shotgrid/translate.cpp"
     "${PMS_SRC_DIR}/pms/shotgrid/backend.cpp"
 )
@@ -138,6 +139,7 @@ if(BUILD_TESTING)
         "${PMS_TEST_DIR}/test_expr_json.cpp"
         "${PMS_TEST_DIR}/test_caching_backend.cpp"
         "${PMS_TEST_DIR}/shotgrid/test_mapping.cpp"
+        "${PMS_TEST_DIR}/shotgrid/test_field_schema.cpp"
         "${PMS_TEST_DIR}/shotgrid/test_translate.cpp"
     )
     if(EXISTS "${PMS_TEST_DIR}/fake/test_fake_backend.cpp"

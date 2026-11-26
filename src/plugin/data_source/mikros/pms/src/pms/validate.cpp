@@ -183,7 +183,7 @@ bool isDateBetween(const Value &value) {
 
 /**
  * @brief Reports whether a leaf value matches the operator and the field type.
- * @param type YAML type name: `string`, `int`, `date`, `datetime`, or `entity`.
+ * @param type YAML type name: `string`, `int`, `date`, `datetime`, `entity`, or `multi_entity`.
  * @param op Comparison operator already allowed on that type.
  * @param value Leaf value.
  * @return True when the shape is legal for that pair.
@@ -218,7 +218,8 @@ bool leafValueOk(const std::string &type, ExprOp op, const Value &value) {
     }
     if (op == ExprOp::NameContains || op == ExprOp::NameStartsWith || op == ExprOp::NameIs) {
         const auto *text = std::get_if<std::string>(&value);
-        return type == "entity" && text && !text->empty();
+        const bool namedLink = type == "entity" || type == "multi_entity";
+        return namedLink && text && !text->empty(); ///< Both link types filter by display name.
     }
     if (type == "date" || type == "datetime") {
         return isCalendarDay(value);
@@ -229,7 +230,7 @@ bool leafValueOk(const std::string &type, ExprOp op, const Value &value) {
     if (type == "int") {
         return std::holds_alternative<std::int64_t>(value);
     }
-    if (type == "entity") {
+    if (type == "entity" || type == "multi_entity") {
         return false; ///< Only name_* reach here after the checks above.
     }
     return false;

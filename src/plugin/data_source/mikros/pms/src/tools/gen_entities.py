@@ -16,6 +16,7 @@ TYPE_CPP = {
     "date": "Date",
     "datetime": "DateTime",
     "entity": "EntityRef",
+    "multi_entity": "EntityRef",
 }
 
 

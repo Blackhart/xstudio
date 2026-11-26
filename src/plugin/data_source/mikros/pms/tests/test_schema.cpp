@@ -118,7 +118,15 @@ TEST_CASE("schema loads the playlist entity") {
     CHECK(openNotes->filter);
     const FieldSpec *departments = playlist->field("departments");
     REQUIRE(departments != nullptr);
+    CHECK(departments->type == "multi_entity");
     CHECK(departments->filter);
+    CHECK(departments->ops.size() == 3);
+    CHECK(std::find(departments->ops.begin(), departments->ops.end(), "name_contains") !=
+          departments->ops.end());
+    CHECK(std::find(departments->ops.begin(), departments->ops.end(), "name_starts_with") !=
+          departments->ops.end());
+    CHECK(std::find(departments->ops.begin(), departments->ops.end(), "name_is") !=
+          departments->ops.end());
     CHECK(playlist->field("created_at") != nullptr);
     CHECK(playlist->field("category") != nullptr);
     const FieldSpec *author = playlist->field("author");
@@ -185,6 +193,15 @@ TEST_CASE("schema loads the version entity") {
     REQUIRE(openNotes != nullptr);
     CHECK(openNotes->type == "int");
     CHECK(openNotes->filter);
+
+    const FieldSpec *sites = version->field("sites");
+    REQUIRE(sites != nullptr);
+    CHECK(sites->type == "multi_entity");
+    CHECK(sites->filter);
+    CHECK(sites->ops.size() == 3);
+    CHECK(std::find(sites->ops.begin(), sites->ops.end(), "name_contains") != sites->ops.end());
+    CHECK(std::find(sites->ops.begin(), sites->ops.end(), "name_starts_with") != sites->ops.end());
+    CHECK(std::find(sites->ops.begin(), sites->ops.end(), "name_is") != sites->ops.end());
 
     const FieldSpec *synced = version->field("synced_to_client");
     REQUIRE(synced != nullptr);

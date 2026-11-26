@@ -219,19 +219,108 @@ std::string pathField(const std::vector<LinkHop> &hops, const std::string &leaf 
 }
 
 /**
+ * @brief Maps a domain name operator to the text operator used on `cached_display_name`.
+ * @param op Domain operator.
+ * @return `contains`, `starts_with`, or `is`. Null when `op` is not a name operator.
+ */
+const char *displayNameOp(ExprOp op) {
+    switch (op) {
+    case ExprOp::NameContains:
+        return "contains";
+    case ExprOp::NameStartsWith:
+        return "starts_with";
+    case ExprOp::NameIs:
+        return "is";
+    default:
+        return nullptr;
+    }
+}
+
+/**
+ * @brief Builds one condition, or an `or`, that filters a multi-entity list by label.
+ * @param path ShotGrid path of the multi_entity field.
+ * @param textOp `contains`, `starts_with`, or `is`.
+ * @param value Filter text.
+ * @param validTypes Linked types from the ShotGrid field schema.
+ * @return One basic condition when a single type is legal, otherwise an `or`.
+ * @throw Error When `validTypes` is empty or a type name is empty.
+ */
+nlohmann::json multiEntityNameCondition(
+    const std::string &path,
+    const char *textOp,
+    const nlohmann::json &value,
+    const std::vector<std::string> &validTypes) {
+    if (validTypes.empty()) {
+        throw Error("shotgrid: multi_entity path \"" + path + "\" has no valid_types");
+    }
+    nlohmann::json conditions = nlohmann::json::array();
+    for (const std::string &typeName : validTypes) {
+        if (typeName.empty()) {
+            throw Error("shotgrid: multi_entity path \"" + path + "\" has an empty valid type");
+        }
+        conditions.push_back(nlohmann::json::array(
+            {path + "." + typeName + ".cached_display_name", textOp, value}));
+    }
+    if (conditions.size() == 1) {
+        return conditions[0]; ///< One linked type stays a basic condition.
+    }
+    nlohmann::json combined;
+    combined["logical_operator"] = "or"; ///< Every valid type can carry the same label.
+    combined["conditions"] = std::move(conditions);
+    return combined;
+}
+
+/**
+ * @brief Builds the ShotGrid condition for one mapped field path.
+ *
+ * A `name_*` leaf asks `resolve` about the path's leaf. `multi_entity` is
+ * rewritten onto `cached_display_name`. `entity` keeps the `name_*` operator.
+ * Any other operator is copied through.
+ *
+ * @param exprOp Domain operator.
+ * @param shotgridOp ShotGrid operator from `comparisonOp`.
+ * @param path Mapped ShotGrid path, possibly dotted.
+ * @param value Filter value already converted to JSON.
+ * @param fallbackOwner ShotGrid type used when `path` has no dot.
+ * @param resolve Field schema. Empty leaves `name_*` unchanged.
+ * @return A basic condition, or an `or` of display-name conditions.
+ * @throw Error When a multi_entity field has no `valid_types`.
+ */
+nlohmann::json conditionOnPath(
+    ExprOp exprOp,
+    const char *shotgridOp,
+    const std::string &path,
+    const nlohmann::json &value,
+    const std::string &fallbackOwner,
+    const FieldSchemaResolve &resolve) {
+    const char *textOp = displayNameOp(exprOp);
+    if (!textOp || !resolve) {
+        return nlohmann::json::array({path, shotgridOp, value}); ///< Not a name filter, or no schema.
+    }
+    const ShotGridFieldPathLeaf leaf = splitShotGridFieldPath(path, fallbackOwner);
+    const ShotGridFieldInfo info = resolve(leaf.owner, leaf.field);
+    if (info.data_type != "multi_entity") {
+        return nlohmann::json::array({path, shotgridOp, value}); ///< entity keeps the name_* operator.
+    }
+    return multiEntityNameCondition(path, textOp, value, info.valid_types);
+}
+
+/**
  * @brief One ShotGrid condition for a parent field along one ownership path.
  * @param node In field leaf (`parent` + `key` + value).
  * @param mapping Domain ↔ ShotGrid map for the parent field mapping.
  * @param hops One path from `linkPathsTo` (link fields from mapping.links).
  * @param op ShotGrid comparison (`is`, `is_not`, `contains`, …).
- * @return A basic condition array.
+ * @param resolve Field schema used when the leaf is `name_*`.
+ * @return A basic condition array, or an `or` when the leaf is multi_entity.
  * @throw Error When the parent field is unmapped or the value is missing.
  */
 nlohmann::json pathCondition(
     const ExprNode &node,
     const ShotGridMapping &mapping,
     const std::vector<LinkHop> &hops,
-    const char *op) {
+    const char *op,
+    const FieldSchemaResolve &resolve) {
     if (!node.value) {
         throw Error("shotgrid: parent field \"" + node.parent + "." + node.key + "\" has no value");
     }
@@ -253,11 +342,13 @@ nlohmann::json pathCondition(
         throw Error(
             "shotgrid: parent \"" + node.parent + "\" field \"" + node.key + "\" is not mapped");
     }
-    nlohmann::json condition = nlohmann::json::array();
-    condition.push_back(pathField(hops, field->shotgrid));
-    condition.push_back(op);
-    condition.push_back(valueJson(*node.value));
-    return condition;
+    return conditionOnPath(
+        node.op,
+        op,
+        pathField(hops, field->shotgrid),
+        valueJson(*node.value),
+        hops.back().type_name,
+        resolve);
 }
 
 /**
@@ -265,10 +356,14 @@ nlohmann::json pathCondition(
  * @param node Field leaf stamped with domain `parent`.
  * @param mapping Domain ↔ ShotGrid map.
  * @param entity Queried domain entity.
+ * @param resolve Field schema used when the leaf is `name_*`.
  * @return One condition, or an `or` of paths when several ownership links exist.
  */
 nlohmann::json parentFieldCondition(
-    const ExprNode &node, const ShotGridMapping &mapping, const std::string &entity) {
+    const ExprNode &node,
+    const ShotGridMapping &mapping,
+    const std::string &entity,
+    const FieldSchemaResolve &resolve) {
     const char *op = comparisonOp(node.op);
     if (!op || node.parent.empty()) {
         throw Error("shotgrid: invalid In leaf on \"" + node.key + "\"");
@@ -276,7 +371,7 @@ nlohmann::json parentFieldCondition(
     const std::vector<std::vector<LinkHop>> paths = linkPathsTo(mapping, entity, node.parent);
     nlohmann::json conditions = nlohmann::json::array();
     for (const std::vector<LinkHop> &hops : paths) {
-        conditions.push_back(pathCondition(node, mapping, hops, op));
+        conditions.push_back(pathCondition(node, mapping, hops, op, resolve));
     }
     if (conditions.size() == 1) {
         return conditions[0]; ///< One path stays a basic condition.
@@ -287,7 +382,16 @@ nlohmann::json parentFieldCondition(
     return combined;
 }
 
-nlohmann::json fieldCondition(const ExprNode &node, const ShotGridSchema &schema) {
+/**
+ * @brief Builds the ShotGrid condition for one where-field leaf.
+ * @param node Field leaf on the queried entity.
+ * @param schema ShotGrid schema for the queried entity.
+ * @param resolve Field schema used when the leaf is `name_*`.
+ * @return A basic condition, or an `or` when the leaf is multi_entity.
+ * @throw Error When the field is unmapped or the value is missing.
+ */
+nlohmann::json fieldCondition(
+    const ExprNode &node, const ShotGridSchema &schema, const FieldSchemaResolve &resolve) {
     const char *op = comparisonOp(node.op);
     if (!op || !node.value) {
         throw Error("shotgrid: invalid field leaf on \"" + node.key + "\"");
@@ -296,20 +400,22 @@ nlohmann::json fieldCondition(const ExprNode &node, const ShotGridSchema &schema
     if (!field || field->shotgrid.empty()) {
         throw Error("shotgrid: field \"" + schema.domainName + "." + node.key + "\" is not mapped");
     }
-    return nlohmann::json::array({field->shotgrid, op, valueJson(*node.value)});
+    return conditionOnPath(
+        node.op, op, field->shotgrid, valueJson(*node.value), schema.shotgridName, resolve);
 }
 
 nlohmann::json exprToJson(
     const ExprNode &node,
     const ShotGridMapping &mapping,
     const ShotGridSchema &schema,
-    bool isIn) {
+    bool isIn,
+    const FieldSchemaResolve &resolve) {
     if (node.kind == ExprKind::Group) {
         if (node.op == ExprOp::Not) {
             if (node.args.size() != 1 || !node.args[0]) {
                 throw Error("shotgrid: not expects one child");
             }
-            nlohmann::json child = exprToJson(*node.args[0], mapping, schema, isIn);
+            nlohmann::json child = exprToJson(*node.args[0], mapping, schema, isIn, resolve);
             if (!child.is_array() || child.size() < 2) {
                 throw Error("shotgrid: not only inverts a leaf");
             }
@@ -333,7 +439,7 @@ nlohmann::json exprToJson(
             if (!child) {
                 throw Error("shotgrid: empty child");
             }
-            out["conditions"].push_back(exprToJson(*child, mapping, schema, isIn));
+            out["conditions"].push_back(exprToJson(*child, mapping, schema, isIn, resolve));
         }
         return out;
     }
@@ -341,9 +447,9 @@ nlohmann::json exprToJson(
         throw Error("shotgrid: invalid expression leaf");
     }
     if (isIn) {
-        return parentFieldCondition(node, mapping, schema.domainName);
+        return parentFieldCondition(node, mapping, schema.domainName, resolve);
     }
-    return fieldCondition(node, schema);
+    return fieldCondition(node, schema, resolve);
 }
 
 nlohmann::json andCombine(nlohmann::json left, nlohmann::json right) {
@@ -528,17 +634,18 @@ const nlohmann::json *findFieldValue(
 
 } // namespace
 
-nlohmann::json shotgridFiltersFromIr(const Ir &ir, const ShotGridMapping &mapping) {
+nlohmann::json shotgridFiltersFromIr(
+    const Ir &ir, const ShotGridMapping &mapping, const FieldSchemaResolve &fieldSchema) {
     const ShotGridSchema *schema = mapping.findSchema(ir.entity);
     if (!schema || schema->shotgridName.empty()) {
         throw Error("shotgrid: entity \"" + ir.entity + "\" is not mapped");
     }
     nlohmann::json filters = nlohmann::json::object();
     if (ir.in) {
-        filters = exprToJson(*ir.in, mapping, *schema, true);
+        filters = exprToJson(*ir.in, mapping, *schema, true, fieldSchema);
     }
     if (ir.where) {
-        nlohmann::json where = exprToJson(*ir.where, mapping, *schema, false);
+        nlohmann::json where = exprToJson(*ir.where, mapping, *schema, false, fieldSchema);
         filters =
             filters.empty() ? std::move(where) : andCombine(std::move(filters), std::move(where));
     }

@@ -7,6 +7,7 @@
 #include "pms/shotgrid/backend.hpp"
 
 #include "pms/error.hpp"
+#include "pms/shotgrid/field_schema.hpp"
 #include "pms/shotgrid/translate.hpp"
 
 #include <cpp-httplib/httplib.h>
@@ -179,9 +180,53 @@ void ShotGridBackend::forgetTokens() {
     refresh_token_.reset();
 }
 
-nlohmann::json ShotGridBackend::buildRequestBody(const Ir &ir) const {
+nlohmann::json ShotGridBackend::fetchFieldSchema(
+    const std::string &ownerType, const std::string &field) {
+    const std::string url = std::string(kApiRoot) + "/schema/" + shotGridSchemaEntityName(ownerType) +
+                            "/fields/" + field;
+    auto send = [this, &url]() {
+        connectIfNeeded(); ///< The schema read uses the same bearer token as search.
+        auto client = openHttpClient(site_.base_url);
+        const httplib::Headers headers = {
+            {"Authorization", "Bearer " + *access_token_},
+            {"Accept", kAcceptJson},
+        };
+        if (searchLog_) {
+            searchLog_("GET " + url); ///< A name_* filter shows which schema leaf was read.
+        }
+        return client->Get(url, headers);
+    };
+    httplib::Result response = send();
+    if (!response) {
+        throwIfNoHttpResponse("schema request failed", response);
+    }
+    if (response->status == 401) {
+        forgetTokens(); ///< A stale token is not reused for the retry.
+        response = send();
+        if (!response) {
+            throwIfNoHttpResponse("schema request failed after re-auth", response);
+        }
+    }
+    if (response->status < 200 || response->status >= 300) {
+        throw Error(
+            "shotgrid: schema HTTP " + std::to_string(response->status) + ": " + response->body);
+    }
+    return nlohmann::json::parse(response->body);
+}
+
+ShotGridFieldInfo ShotGridBackend::fieldSchema(const std::string &ownerType, const std::string &field) {
+    return cachedFieldInfo(
+        fieldSchemas_, ownerType, field, [this](const std::string &owner, const std::string &name) {
+            return fetchFieldSchema(owner, name);
+        });
+}
+
+nlohmann::json ShotGridBackend::buildRequestBody(const Ir &ir) {
     nlohmann::json body = nlohmann::json::object();
-    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping_);
+    const FieldSchemaResolve resolve = [this](const std::string &owner, const std::string &field) {
+        return fieldSchema(owner, field); ///< name_* on multi_entity becomes cached_display_name.
+    };
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping_, resolve);
     if (filters.is_null()) {
         body["filters"] = nlohmann::json::array(); ///< No criterion: an empty array lists every row.
         return body;
@@ -199,7 +244,7 @@ std::string ShotGridBackend::buildSummarizeUrl(const ShotGridSchema &schema) con
            "/_summarize";
 }
 
-nlohmann::json ShotGridBackend::buildSummarizeBody(const Ir &ir) const {
+nlohmann::json ShotGridBackend::buildSummarizeBody(const Ir &ir) {
     nlohmann::json body = buildRequestBody(ir);
     body["summary_fields"] = nlohmann::json::array(
         {nlohmann::json{{"field", "id"}, {"type", "count"}}});
