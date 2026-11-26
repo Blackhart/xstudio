@@ -88,7 +88,7 @@ entities:
       is_latest:         { type: int,    filter: true,  set: false }
       version_number:    { type: int,    filter: true,  set: false }
       task:              { type: entity, filter: true,  set: false }
-      step:              { type: string, filter: true,  set: false }
+      step:              { type: entity, filter: true,  set: false }
       status:            { type: string, filter: true,  set: false }
       artistic_status:   { type: string, filter: true,  set: false }
       sites:             { type: string, filter: true,  set: false }
