@@ -457,10 +457,12 @@ std::vector<FilterableField> filterableFields(const std::string &entity) {
 }
 
 std::vector<FilterableField> filterableFieldsForShelves() {
-    static const char *kEntities[] = {"sequence", "shot", "asset", "version", "playlist"};
     std::vector<FilterableField> fields;
-    for (const char *entity : kEntities) {
-        for (FilterableField field : filterableFields(entity)) {
+    for (const pms::EntitySpec &entity : pms::sharedSession().schema().entities()) {
+        if (!entity.shelf) {
+            continue; ///< project and note stay out of the shelf editor.
+        }
+        for (FilterableField field : filterableFields(entity.name)) {
             fields.push_back(std::move(field));
         }
     }

@@ -8,8 +8,11 @@
 
 #include "model/dal/dal.hpp"
 #include "viewModel/media_details.hpp"
+#include "viewModel/version_notes.hpp"
 
+#include "xstudio/atoms.hpp"
 #include "xstudio/plugin_manager/plugin_factory.hpp"
+#include "xstudio/utility/json_store.hpp"
 
 using namespace xstudio;
 using namespace xstudio::mikros_media_details;
@@ -18,8 +21,9 @@ MikrosMediaDetails::MikrosMediaDetails(
     caf::actor_config &cfg, const utility::JsonStore &init_settings)
     : plugin::StandardPlugin(cfg, "MikrosMediaDetailsPlugin", init_settings) {
 
-    dal::initialize(); ///< Shared pms session before the screen loads.
+    dal::initialize(); ///< Shared pms session before the screens load.
     media_details_ = std::make_unique<MediaDetails>(*this);
+    version_notes_ = std::make_unique<VersionNotes>(*this);
     make_behavior(); ///< Sets the actor address the attributes already use.
     connect_to_ui();
     listen_to_playhead_events(true); ///< Preview and playlist share the same on-screen media.
@@ -53,13 +57,27 @@ void MikrosMediaDetails::on_screen_media_changed(
     if (media_details_) {
         media_details_->on_screen_media_changed(media, media_ref);
     }
+    if (version_notes_) {
+        version_notes_->on_screen_media_changed(media, media_ref);
+    }
 }
 
 caf::message_handler MikrosMediaDetails::message_handler_extensions() {
-    if (!media_details_) {
-        return {};
-    }
-    return media_details_->message_handler_extensions();
+    return {
+        [=](data_source::put_data_atom,
+            std::uint64_t generation,
+            const std::string &catalog,
+            const utility::JsonStore &payload) {
+            if (catalog.rfind("version_notes", 0) == 0) {
+                if (version_notes_) {
+                    version_notes_->applyWorkerPage(generation, catalog, payload);
+                }
+                return; ///< Notes failure must not change DetailState.
+            }
+            if (media_details_) {
+                media_details_->applyWorkerPage(generation, catalog, payload);
+            }
+        }};
 }
 
 XSTUDIO_PLUGIN_DECLARE_BEGIN()

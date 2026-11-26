@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@ namespace pms {
  * `filter` allows the field in Where. `canSet` mirrors the YAML key `set`
  * and is loaded for later slices; this slice does not write fields.
  * `show` lists the values a UI filter checks on start. Empty means no filter.
+ * `colors` and `labels` name a code, such as a note status. Empty means none.
  */
 struct FieldSpec {
     std::string key;  ///< YAML field name.
@@ -26,6 +28,8 @@ struct FieldSpec {
     std::vector<std::string> ops;  ///< Comparison names allowed for `type`.
     std::vector<std::string> providers; ///< Ways a worker may read this field, such as `http`.
     std::vector<std::string> show; ///< Values the UI checks on start. Empty = no filter.
+    std::map<std::string, std::string> colors; ///< Code → colour, such as `opn` → `#f9a825`.
+    std::map<std::string, std::string> labels; ///< Code → accessible name, such as `opn` → `Open`.
 };
 
 /**
@@ -36,6 +40,7 @@ struct FieldSpec {
 struct EntitySpec {
     std::string name; ///< YAML entity name, such as `"project"`.
     bool creatable = false; ///< True when a later slice may create the entity.
+    bool shelf = false; ///< True when the shelf editor may filter this entity.
     std::vector<FieldSpec> fields; ///< Fields in YAML order.
     std::vector<std::string> scope; ///< Direct parents from YAML. Ancestors inherit.
 

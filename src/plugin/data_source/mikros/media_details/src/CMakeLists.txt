@@ -13,8 +13,10 @@ set(SOURCES
 	utility/detail_load.cpp
 	utility/home.cpp
 	utility/media_meta.cpp
+	utility/notes_load.cpp
 	utility/thumbnails.cpp
 	viewModel/media_details.cpp
+	viewModel/version_notes.cpp
 	view/resources/mikros_media_details.qrc
 )
 
@@ -65,6 +67,7 @@ qt_add_qml_module(${PROJECT_NAME}
 		view/DetailLinkText.qml
 		view/DetailFieldRow.qml
 		view/StatusBadge.qml
+		view/NotesList.qml
 )
 
 default_plugin_options(${PROJECT_NAME})

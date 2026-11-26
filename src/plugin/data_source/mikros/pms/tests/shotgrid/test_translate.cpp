@@ -774,3 +774,16 @@ TEST_CASE("filters rewrite name_contains on a multi_entity parent field") {
                           "contains",
                           "Comp"}));
 }
+
+TEST_CASE("filters for note in version use note_links") {
+    const ShotGridMapping mapping = filledMapping();
+    Ir ir = Note().In(version::id == std::int64_t{12}).ir();
+    ir.op = Op::Find;
+    const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping);
+    REQUIRE(filters.is_array());
+    REQUIRE(filters.size() == 3);
+    CHECK(filters[0] == "note_links");
+    CHECK(filters[1] == "is");
+    CHECK(filters[2]["type"] == "Version");
+    CHECK(filters[2]["id"] == 12);
+}

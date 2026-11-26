@@ -160,6 +160,8 @@ Item {
                 flickDeceleration: 5000
                 model: ShotTreeBridge.treeModel
                 rowHeightProvider: function (row) { return XsStyleSheet.widgetStdHeight }
+                // implicitWidth follows the elided text. The column must be the view, not that hint.
+                columnWidthProvider: function (column) { return Math.max(1, width) }
                 // Search only. An empty query must not restart: opening the selected sequence changes rows.
                 onRowsChanged: {
                     if (tree.query)

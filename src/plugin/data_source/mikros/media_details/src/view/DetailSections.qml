@@ -15,6 +15,15 @@ Item {
     property string shotgridBaseUrl: ""
     property string detailState: "empty"
     property string detailError: ""
+    property bool showTabs: false
+    property int pageIndex: 0
+    property var notesJson: ({})
+    property string notesState: "empty"
+    property string notesError: ""
+    property var statusColors: ({})
+    property var statusLabels: ({})
+
+    signal pageSelected(int index)
 
     readonly property bool isReady: detailState === "ready"
     readonly property bool isLoading: detailState === "loading"
@@ -506,10 +515,27 @@ Item {
             }
         }
 
+        XsTabBar {
+            visible: root.showTabs
+            Layout.fillWidth: true
+            currentIndex: root.pageIndex
+            onCurrentIndexChanged: {
+                if (currentIndex !== root.pageIndex)
+                    root.pageSelected(currentIndex)
+            }
+
+            XsTabButton {
+                text: "Details"
+            }
+            XsTabButton {
+                text: "Notes"
+            }
+        }
+
         ScrollView {
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            visible: root.isReady
+            Layout.fillHeight: visible
+            visible: root.isReady && (!root.showTabs || root.pageIndex === 0)
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
@@ -953,6 +979,18 @@ Item {
                     Layout.preferredHeight: XsStyleSheet.panelPadding * 2
                 }
             }
+        }
+
+        NotesList {
+            visible: root.showTabs && root.pageIndex === 1
+            Layout.fillWidth: true
+            Layout.fillHeight: visible
+            notesJson: root.notesJson
+            notesState: root.notesState
+            notesError: root.notesError
+            statusColors: root.statusColors
+            statusLabels: root.statusLabels
+            shotgridBaseUrl: root.shotgridBaseUrl
         }
     }
 }

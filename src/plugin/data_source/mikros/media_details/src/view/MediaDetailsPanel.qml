@@ -42,6 +42,49 @@ Item {
     }
     property alias shotgridBaseUrl: shotgridUrlAttr.value
 
+    property int pageIndex: 0
+    readonly property bool showTabs: detailState === "loading" || detailState === "ready"
+
+    XsModuleData {
+        id: noteAttrs
+        modelDataName: "mikros_version_notes_attributes"
+    }
+
+    XsAttributeValue {
+        id: notesStateAttr
+        attributeTitle: "NotesState"
+        model: noteAttrs
+    }
+    property alias notesState: notesStateAttr.value
+
+    XsAttributeValue {
+        id: notesErrorAttr
+        attributeTitle: "NotesError"
+        model: noteAttrs
+    }
+    property alias notesError: notesErrorAttr.value
+
+    XsAttributeValue {
+        id: notesJsonAttr
+        attributeTitle: "NotesJson"
+        model: noteAttrs
+    }
+    property alias notesJson: notesJsonAttr.value
+
+    XsAttributeValue {
+        id: statusColorsAttr
+        attributeTitle: "StatusColors"
+        model: noteAttrs
+    }
+    property alias statusColors: statusColorsAttr.value
+
+    XsAttributeValue {
+        id: statusLabelsAttr
+        attributeTitle: "StatusLabels"
+        model: noteAttrs
+    }
+    property alias statusLabels: statusLabelsAttr.value
+
     Rectangle {
         anchors.fill: parent
         color: XsStyleSheet.panelBgColor
@@ -68,6 +111,14 @@ Item {
             detailState: panel.detailState || "empty"
             detailError: panel.detailError || ""
             shotgridBaseUrl: panel.shotgridBaseUrl || ""
+            showTabs: panel.showTabs
+            pageIndex: panel.pageIndex
+            onPageSelected: function(index) { panel.pageIndex = index }
+            notesJson: panel.notesJson && typeof panel.notesJson === "object" ? panel.notesJson : ({})
+            notesState: panel.notesState || "empty"
+            notesError: panel.notesError || ""
+            statusColors: panel.statusColors && typeof panel.statusColors === "object" ? panel.statusColors : ({})
+            statusLabels: panel.statusLabels && typeof panel.statusLabels === "object" ? panel.statusLabels : ({})
         }
     }
 }

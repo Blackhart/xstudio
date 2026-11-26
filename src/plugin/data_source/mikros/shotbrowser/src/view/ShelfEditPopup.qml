@@ -80,7 +80,14 @@ XsPopup {
     }
 
     function entities() {
-        return ["sequence", "shot", "asset", "version", "playlist"]
+        const names = []
+        const fields = root.fieldList()
+        for (let i = 0; i < fields.length; i++) {
+            const name = fields[i].entity
+            if (name && names.indexOf(name) < 0)
+                names.push(name)
+        }
+        return names
     }
 
     function fieldsFor(entity) {

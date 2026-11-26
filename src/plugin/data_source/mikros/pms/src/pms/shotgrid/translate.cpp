@@ -514,8 +514,10 @@ std::string joinNames(const nlohmann::json &value) {
 /**
  * @brief Copies one ShotGrid attribute onto the domain record.
  *
- * A true client flag becomes `1`. Site lists keep the ShotGrid names.
- * `shots` and `versions` become lists of links. An entity object keeps its
+ * A true client flag becomes `1`. Site lists, departments, and note recipients
+ * keep the ShotGrid names. `shots`, `versions`, and `attachments` become lists
+ * of links. An attachment may also carry `image` or `url` as its thumbnail.
+ * An entity object keeps its
  * `name`, plus `{domain}_id` and `{domain}_type` when ShotGrid sends them.
  *
  * @param out Record being filled.
@@ -541,14 +543,16 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
         }
         return;
     }
-    if ((field.domain == "sites" || field.domain == "departments") && value.is_array()) {
+    if ((field.domain == "sites" || field.domain == "departments" || field.domain == "to") &&
+        value.is_array()) {
         const std::string names = joinNames(value);
         if (!names.empty()) {
             out.fields[field.domain] = names; ///< Joined labels the card shows.
         }
         return;
     }
-    if ((field.domain == "shots" || field.domain == "versions") && value.is_array()) {
+    if ((field.domain == "shots" || field.domain == "versions" || field.domain == "attachments") &&
+        value.is_array()) {
         if (value.empty()) {
             return; ///< An empty list leaves the field absent, same as null.
         }
@@ -562,6 +566,11 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
             link.id = item["id"].get<std::int64_t>();
             if (item.contains("name") && item["name"].is_string()) {
                 link.name = item["name"].get<std::string>(); ///< ShotGrid link name / code.
+            }
+            if (item.contains("image") && item["image"].is_string()) {
+                link.image = item["image"].get<std::string>(); ///< Attachment thumbnail URL.
+            } else if (item.contains("url") && item["url"].is_string()) {
+                link.image = item["url"].get<std::string>();
             }
             links.push_back(std::move(link));
         }

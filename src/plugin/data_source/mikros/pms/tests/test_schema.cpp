@@ -10,7 +10,7 @@ using namespace pms;
 
 TEST_CASE("schema loads the project entity") {
     const Schema schema = Schema::load(PMS_SCHEMA_PATH);
-    REQUIRE(schema.entities().size() == 6);
+    REQUIRE(schema.entities().size() == 7);
 
     const EntitySpec *project = schema.entity("project");
     REQUIRE(project != nullptr);
@@ -261,4 +261,49 @@ TEST_CASE("generated proxies use the schema keys") {
     CHECK(std::string(Shot::entityName) == "shot");
     CHECK(std::string(Asset::entityName) == "asset");
     CHECK(std::string(Playlist::entityName) == "playlist");
+    CHECK(std::string(Note::entityName) == "note");
+    CHECK(Note().ir().entity == "note");
+    CHECK(std::string(note::name.key) == "name");
+    CHECK(std::string(note::content.key) == "content");
+    CHECK(std::string(note::author.key) == "author");
+    CHECK(std::string(note::createdAt.key) == "created_at");
+    CHECK(std::string(note::status.key) == "status");
+    CHECK(std::string(note::to.key) == "to");
+    CHECK(std::string(note::department.key) == "department");
+}
+
+TEST_CASE("schema shelf flags and note status colours") {
+    const Schema schema = Schema::load(PMS_SCHEMA_PATH);
+    CHECK_FALSE(schema.entity("project")->shelf);
+    CHECK(schema.entity("sequence")->shelf);
+    CHECK(schema.entity("shot")->shelf);
+    CHECK(schema.entity("asset")->shelf);
+    CHECK(schema.entity("playlist")->shelf);
+    CHECK(schema.entity("version")->shelf);
+
+    const EntitySpec *note = schema.entity("note");
+    REQUIRE(note != nullptr);
+    CHECK_FALSE(note->creatable);
+    CHECK_FALSE(note->shelf);
+    REQUIRE(note->scope.size() == 1);
+    CHECK(note->scope[0] == "version");
+    CHECK(schema.allowsInParent(*note, "version"));
+
+    const FieldSpec *status = note->field("status");
+    REQUIRE(status != nullptr);
+    CHECK(status->type == "string");
+    CHECK(status->filter);
+    CHECK_FALSE(status->canSet);
+    CHECK(status->colors.at("opn") == "#f9a825");
+    CHECK(status->colors.at("rev") == "#00838f");
+    CHECK(status->colors.at("rtk") == "#c62828");
+    CHECK(status->colors.size() == 10);
+    CHECK(status->labels.at("opn") == "Open");
+    CHECK(status->labels.at("artrev") == "Pending Art Director");
+    CHECK(status->labels.size() == 10);
+
+    const FieldSpec *attachments = note->field("attachments");
+    REQUIRE(attachments != nullptr);
+    CHECK(attachments->type == "links");
+    CHECK_FALSE(attachments->filter);
 }

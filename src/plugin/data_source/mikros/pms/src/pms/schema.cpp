@@ -17,6 +17,28 @@ namespace pms {
 namespace {
 
 /**
+ * @brief Copies a YAML map of strings into `out`.
+ * @param node Map such as `colors` or `labels`. Absent leaves `out` empty.
+ * @param out Destination. Existing entries are left in place.
+ * @param what Field key used in the error, such as `"note.status colors"`.
+ * @throw Error When `node` is present and is not a map.
+ */
+void loadStringMap(
+    const YAML::Node &node,
+    std::map<std::string, std::string> &out,
+    const std::string &what) {
+    if (!node) {
+        return;
+    }
+    if (!node.IsMap()) {
+        throw Error("schema: " + what + " must be a map");
+    }
+    for (YAML::const_iterator entry = node.begin(); entry != node.end(); ++entry) {
+        out.emplace(entry->first.as<std::string>(), entry->second.as<std::string>());
+    }
+}
+
+/**
  * @brief Reads the operators declared for a YAML value type.
  * @param types `types` map from the schema file.
  * @param typeName Type name stored on a field, such as `"date"`.
@@ -64,6 +86,7 @@ Schema Schema::load(const std::string &path) {
         entity.name = it->first.as<std::string>();
         const YAML::Node body = it->second;
         entity.creatable = body["creatable"].as<bool>(false);
+        entity.shelf = body["shelf"].as<bool>(false); ///< Absent means the entity is not a shelf.
         if (body["scope"]) {
             for (YAML::const_iterator parent = body["scope"].begin(); parent != body["scope"].end();
                  ++parent) {
@@ -97,6 +120,8 @@ Schema Schema::load(const std::string &path) {
                     spec.show.push_back(value->as<std::string>()); ///< UI filter default.
                 }
             }
+            loadStringMap(meta["colors"], spec.colors, spec.key + " colors");
+            loadStringMap(meta["labels"], spec.labels, spec.key + " labels");
             spec.ops = loadOps(root["types"], spec.type);
             entity.fields.push_back(std::move(spec));
         }

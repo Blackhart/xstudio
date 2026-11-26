@@ -1,4 +1,4 @@
-# Domain schema for this slice. Project, sequence, shot, asset, playlist, version.
+# Domain schema for this slice. Project, sequence, shot, asset, playlist, version, note.
 types:
   string:   { ops: [eq, ne, contains, not_contains, starts_with, ends_with, in, not_in] }
   int:      { ops: [eq, ne, gt, lt, between, in, not_in] }
@@ -21,6 +21,7 @@ entities:
 
   sequence:
     creatable: false
+    shelf: true
     fields:
       id:                     { type: int,    filter: true,  set: false }
       name:                   { type: string, filter: true,  set: true }
@@ -37,6 +38,7 @@ entities:
 
   shot:
     creatable: false
+    shelf: true
     fields:
       id:                  { type: int,    filter: true, set: false }
       name:                { type: string, filter: true, set: true }
@@ -51,6 +53,7 @@ entities:
 
   asset:
     creatable: false
+    shelf: true
     fields:
       id:          { type: int,    filter: true, set: false }
       name:        { type: string, filter: true, set: true }
@@ -61,6 +64,7 @@ entities:
 
   playlist:
     creatable: false
+    shelf: true
     fields:
       id:               { type: int,    filter: true,  set: false }
       name:             { type: string, filter: true,  set: true }
@@ -74,6 +78,7 @@ entities:
 
   version:
     creatable: false
+    shelf: true
     fields:
       id:    { type: int,    filter: true, set: false }
       name:  { type: string, filter: true, set: true }
@@ -103,3 +108,43 @@ entities:
       project:           { type: entity, filter: true,  set: false }
       entity:            { type: entity, filter: true,  set: false }
     scope: [shot, sequence, asset, playlist]
+
+  note:
+    creatable: false
+    shelf: false
+    fields:
+      id:         { type: int,      filter: true, set: false }
+      name:       { type: string,   filter: true, set: false }
+      content:    { type: string,   filter: true, set: false }
+      author:     { type: entity,   filter: true, set: false }
+      created_at: { type: datetime, filter: true, set: false }
+      status:
+        type: string
+        filter: true
+        set: false
+        colors:
+          clsd: "#546e7a"
+          cmpt: "#2e7d32"
+          artrev: "#5e35b1"
+          rev: "#00838f"
+          rtkd: "#558b2f"
+          rtk: "#c62828"
+          chk: "#1565c0"
+          ip: "#ef6c00"
+          opn: "#f9a825"
+          hld: "#6d4c41"
+        labels:
+          clsd: Closed
+          cmpt: Complete
+          artrev: Pending Art Director
+          rev: Pending Review
+          rtkd: Retake Done
+          rtk: Retake
+          chk: To Check
+          ip: In Progress
+          opn: Open
+          hld: On Hold
+      to:          { type: multi_entity, filter: true,  set: false }
+      department:  { type: entity,       filter: true,  set: false }
+      attachments: { type: links,        filter: false, set: false }
+    scope: [version]

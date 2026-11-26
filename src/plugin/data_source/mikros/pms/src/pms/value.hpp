@@ -114,15 +114,18 @@ struct Period {
  * @brief One linked row carried on a parent, such as a shot on a sequence.
  *
  * `id` is the linked entity id. `name` is the label ShotGrid puts on the link.
+ * `image` is an optional thumbnail URL. Equality ignores it: two links are the
+ * same row when id and name match.
  */
 struct Link {
     std::int64_t id = 0; ///< Linked entity id.
     std::string name;    ///< Linked entity label.
+    std::string image;   ///< Thumbnail URL. Empty when the link has none.
 
     /**
      * @brief Compares two links by id and name.
      * @param other Link to compare with.
-     * @return True when both fields are equal.
+     * @return True when id and name are equal. `image` is display-only.
      */
     bool operator==(const Link &other) const { return id == other.id && name == other.name; }
 };

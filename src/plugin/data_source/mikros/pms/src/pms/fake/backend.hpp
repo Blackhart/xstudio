@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file pms/fake/backend.hpp
- * @brief In-memory backend for project, sequence, shot, asset, playlist, and version catalogs.
+ * @brief In-memory backend for project, sequence, shot, asset, playlist, version, and note catalogs.
  */
 #pragma once
 
@@ -95,6 +95,7 @@ class FakeBackend : public Backend {
     Records versions_;  ///< Versions linked to a shot, sequence, or asset.
     /// Weak many-to-many: version id → playlist ids (a version may appear in several).
     std::map<std::int64_t, std::vector<std::int64_t>> version_playlists_;
+    Records notes_; ///< Notes linked to a version. Two when that version's open count is 2.
 };
 
 } // namespace pms

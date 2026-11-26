@@ -6,13 +6,17 @@
 #pragma once
 
 #include "model/poco/asset_detail.hpp"
+#include "model/poco/note_detail.hpp"
 #include "model/poco/project_detail.hpp"
 #include "model/poco/sequence_detail.hpp"
 #include "model/poco/shot_detail.hpp"
 #include "model/poco/version_detail.hpp"
 
 #include <cstdint>
+#include <map>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace xstudio::mikros_media_details::dal {
 
@@ -57,5 +61,27 @@ std::optional<poco::AssetDetail> findAssetDetailById(std::int64_t assetId);
  * @return The row when found, or nullopt when missing or on failure.
  */
 std::optional<poco::ProjectDetail> findProjectDetailById(std::int64_t projectId);
+
+/**
+ * @brief Loads the notes linked to one version, newest first.
+ *
+ * A failed find is logged and returns an empty list. The Notes tab then
+ * shows ready with no rows, and DetailState is left alone.
+ * @param versionId Domain version id.
+ * @return Notes sorted by `created_at` descending. Empty when none or on failure.
+ */
+std::vector<poco::NoteDetail> findNotesByVersionId(std::int64_t versionId);
+
+/**
+ * @brief Colour of each note status code, from the schema.
+ * @return Code → colour. Empty when the note entity has no colours.
+ */
+std::map<std::string, std::string> noteStatusColors();
+
+/**
+ * @brief Accessible name of each note status code, from the schema.
+ * @return Code → label. Empty when the note entity has no labels.
+ */
+std::map<std::string, std::string> noteStatusLabels();
 
 } // namespace xstudio::mikros_media_details::dal

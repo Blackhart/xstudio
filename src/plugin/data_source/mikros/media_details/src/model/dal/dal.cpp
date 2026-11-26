@@ -11,6 +11,8 @@
 #include "pms/pms.hpp"
 #include "pms/shared_session.hpp"
 
+#include <algorithm>
+#include <map>
 #include <string>
 #include <variant>
 #include <vector>
@@ -78,6 +80,59 @@ std::vector<poco::PlaylistLink> playlistLinksFromRecord(const pms::Record &recor
         playlists.push_back(poco::PlaylistLink{link.id, link.name});
     }
     return playlists;
+}
+
+/**
+ * @brief Copies attachment links, including the thumbnail the schema link omits.
+ * @param record Domain note row.
+ * @return Attachment id, name, and image in record order.
+ */
+std::vector<poco::NoteAttachment> attachmentsFromRecord(const pms::Record &record) {
+    std::vector<poco::NoteAttachment> attachments;
+    const auto found = record.fields.find("attachments");
+    if (found == record.fields.end()) {
+        return attachments;
+    }
+    const auto *links = std::get_if<std::vector<pms::Link>>(&found->second);
+    if (!links) {
+        return attachments;
+    }
+    attachments.reserve(links->size());
+    for (const pms::Link &link : *links) {
+        attachments.push_back(poco::NoteAttachment{link.id, link.name, link.image});
+    }
+    return attachments;
+}
+
+/**
+ * @brief Maps one pms record onto a NoteDetail POCO.
+ * @param record Domain row from find.
+ * @return Filled note row.
+ */
+poco::NoteDetail mapNote(const pms::Record &record) {
+    poco::NoteDetail row;
+    row.id = std::get<std::int64_t>(record.at("id"));
+    row.name = std::get<std::string>(record.at("name"));
+    row.content = optionalString(record, "content");
+    row.author = optionalString(record, "author");
+    row.created_at = optionalString(record, "created_at");
+    row.status = optionalString(record, "status");
+    row.to = optionalString(record, "to");
+    row.department = optionalString(record, "department");
+    row.attachments = attachmentsFromRecord(record);
+    return row;
+}
+
+/**
+ * @brief Status field of the note entity, when the schema declares it.
+ * @return The field, or null when note or status is missing.
+ */
+const pms::FieldSpec *noteStatusField() {
+    const pms::EntitySpec *note = pms::sharedSession().schema().entity("note");
+    if (!note) {
+        return nullptr;
+    }
+    return note->field("status");
 }
 
 /**
@@ -351,6 +406,59 @@ std::optional<poco::ProjectDetail> findProjectDetailById(std::int64_t projectId)
         trace::failure(error);
         return std::nullopt;
     }
+}
+
+std::vector<poco::NoteDetail> findNotesByVersionId(std::int64_t versionId) {
+    if (versionId <= 0) {
+        return {};
+    }
+    try {
+        const pms::Page page = pms::Note()
+                                   .In(pms::version::id == versionId)
+                                   .Fields(std::vector<std::string>{
+                                       "content",
+                                       "author",
+                                       "created_at",
+                                       "status",
+                                       "to",
+                                       "department",
+                                       "attachments"})
+                                   .find(pms::sharedSession());
+        std::vector<poco::NoteDetail> notes;
+        notes.reserve(page.rows.size());
+        for (const pms::Record &record : page.rows) {
+            notes.push_back(mapNote(record));
+        }
+        std::sort(
+            notes.begin(),
+            notes.end(),
+            [](const poco::NoteDetail &left, const poco::NoteDetail &right) {
+                if (left.created_at != right.created_at) {
+                    return left.created_at > right.created_at; ///< Newest first. ISO strings sort.
+                }
+                return left.id > right.id;
+            });
+        return notes;
+    } catch (const std::exception &error) {
+        trace::failure(error); ///< The tab stays ready with an empty list.
+        return {};
+    }
+}
+
+std::map<std::string, std::string> noteStatusColors() {
+    const pms::FieldSpec *status = noteStatusField();
+    if (!status) {
+        return {};
+    }
+    return status->colors;
+}
+
+std::map<std::string, std::string> noteStatusLabels() {
+    const pms::FieldSpec *status = noteStatusField();
+    if (!status) {
+        return {};
+    }
+    return status->labels;
 }
 
 } // namespace xstudio::mikros_media_details::dal

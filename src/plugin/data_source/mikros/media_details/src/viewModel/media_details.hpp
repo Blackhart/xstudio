@@ -61,10 +61,16 @@ class MediaDetails : public QObject {
     void on_screen_media_changed(caf::actor media, const utility::MediaReference &media_ref);
 
     /**
-     * @brief Handles worker detail and thumb pages.
-     * @return The version-detail handler.
+     * @brief Applies a worker or thumb payload when the generation still matches.
+     *
+     * Called from the panel event handler. Publishes ready/error details, then
+     * starts the thumbnail resolve for a successful version payload.
+     * @param generation Request id from the worker.
+     * @param catalog `version_detail`, `version_detail_error`, or `version_thumb`.
+     * @param payload Detail JSON, error message, or `{image}` thumb URL.
      */
-    caf::message_handler message_handler_extensions();
+    void applyWorkerPage(
+        std::uint64_t generation, const std::string &catalog, const utility::JsonStore &payload);
 
   private:
     /**
@@ -95,18 +101,6 @@ class MediaDetails : public QObject {
         const nlohmann::json &detail,
         const std::string &state,
         const std::string &error = {});
-
-    /**
-     * @brief Applies a worker or thumb payload when the generation still matches.
-     *
-     * Called from the panel event handler. Publishes ready/error details, then
-     * starts the thumbnail resolve for a successful version payload.
-     * @param generation Request id from the worker.
-     * @param catalog `version_detail`, `version_detail_error`, or `version_thumb`.
-     * @param payload Detail JSON, error message, or `{image}` thumb URL.
-     */
-    void updateMediaDetails(
-        std::uint64_t generation, const std::string &catalog, const utility::JsonStore &payload);
 
     /**
      * @brief Starts cache/download for the version thumb, then mails the panel.

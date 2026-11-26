@@ -1454,6 +1454,142 @@ Record publicPlaylist(const Record &row) {
     return out;
 }
 
+/**
+ * @brief One attachment on a fake note. `image` is the version thumbnail path.
+ * @param id Attachment id.
+ * @param name File name shown under the thumbnail.
+ * @param image Thumbnail path. Empty when the version has no image.
+ * @return Link stored on the note's `attachments` field.
+ */
+Link noteAttachment(std::int64_t id, const std::string &name, const std::string &image) {
+    Link link;
+    link.id = id;
+    link.name = name;
+    link.image = image; ///< Same file the version card already shows.
+    return link;
+}
+
+/**
+ * @brief Builds one open note linked to a version.
+ * @param id Note id.
+ * @param versionId Parent version id stored privately for In(version).
+ * @param versionName Version name used in attachment file names.
+ * @param image Version thumbnail path copied onto each attachment.
+ * @param subject Note title (`name` on the record).
+ * @param content Note body.
+ * @param author Author label.
+ * @param to Joined recipient names.
+ * @param department Department label.
+ * @param createdAt ISO timestamp. Later values sort first.
+ * @param attachmentCount How many thumbnails the note carries.
+ * @return Private catalog row. `version` is not copied to the public row.
+ */
+Record makeOpenNote(
+    std::int64_t id,
+    std::int64_t versionId,
+    const std::string &versionName,
+    const std::string &image,
+    const char *subject,
+    const char *content,
+    const char *author,
+    const char *to,
+    const char *department,
+    const std::string &createdAt,
+    int attachmentCount) {
+    Record row;
+    row.fields["id"] = id;
+    row.fields["name"] = std::string(subject);
+    row.fields["content"] = std::string(content);
+    row.fields["author"] = std::string(author);
+    row.fields["created_at"] = createdAt;
+    row.fields["status"] = std::string("opn"); ///< Matches open_notes_count on the version.
+    row.fields["to"] = std::string(to);
+    row.fields["department"] = std::string(department);
+    row.fields["version"] = versionId;
+    std::vector<Link> attachments;
+    for (int index = 0; index < attachmentCount; ++index) {
+        const std::string suffix = index == 0 ? "_note.png" : "_ref.png";
+        attachments.push_back(
+            noteAttachment(id * 10 + index, versionName + suffix, image));
+    }
+    if (!attachments.empty()) {
+        row.fields["attachments"] = std::move(attachments);
+    }
+    return row;
+}
+
+/**
+ * @brief Notes for versions whose open-notes badge is 2.
+ *
+ * Other versions get none, so the badge and the Notes list tell the same story.
+ * Each matching version gets two open notes.
+ *
+ * @param versions Private version catalog, including `open_notes_count`.
+ * @return Notes in version order, two per open version.
+ */
+Records makeNotes(const Records &versions) {
+    Records notes;
+    std::int64_t nextId = 1;
+    const Date today = todayUtc();
+    for (const Record &version : versions) {
+        const auto count = version.fields.find("open_notes_count");
+        if (count == version.fields.end() ||
+            !std::holds_alternative<std::int64_t>(count->second) ||
+            std::get<std::int64_t>(count->second) != 2) {
+            continue;
+        }
+        const std::int64_t versionId = std::get<std::int64_t>(version.fields.at("id"));
+        const std::string versionName = std::get<std::string>(version.fields.at("name"));
+        std::string image;
+        const auto thumb = version.fields.find("image");
+        if (thumb != version.fields.end() && std::holds_alternative<std::string>(thumb->second)) {
+            image = std::get<std::string>(thumb->second);
+        }
+        notes.push_back(makeOpenNote(
+            nextId++,
+            versionId,
+            versionName,
+            image,
+            "Look at the eyes",
+            "The catchlights are too hot on the close-up.",
+            "Jordan Lee",
+            "Alex Martin,Sam Okonkwo",
+            "Comp",
+            formatIsoDateTime(today, 16),
+            2));
+        notes.push_back(makeOpenNote(
+            nextId++,
+            versionId,
+            versionName,
+            image,
+            "Hold the background",
+            "Keep the sky plate from drifting between frames.",
+            "Sam Okonkwo",
+            "Riley Chen",
+            "Lighting",
+            formatIsoDateTime(today, 9),
+            1));
+    }
+    return notes;
+}
+
+/**
+ * @brief Returns a note without its private version id.
+ * @param row Catalog note, including the body and attachments.
+ * @return Id, name, and the fields the Notes list shows.
+ */
+Record publicNote(const Record &row) {
+    Record out = publicNamed(row);
+    copyPresent(out, row, "content");
+    copyPresent(out, row, "author");
+    copyPresent(out, row, "created_at");
+    copyPresent(out, row, "status");
+    copyPresent(out, row, "to");
+    copyPresent(out, row, "department");
+    copyPresent(out, row, "attachments");
+    return out;
+}
+
 Records selectWhere(const Records &catalog, const std::shared_ptr<const ExprNode> &where) {
     if (!where) {
         return catalog;
@@ -1477,7 +1613,8 @@ FakeBackend::FakeBackend(bool simulate_latency)
       assets_(makeAssets()),
       playlists_(makePlaylists()),
       versions_(makeVersions(sequences_, shots_, assets_)),
-      version_playlists_(linkVersionsToPlaylists(versions_, playlists_)) {}
+      version_playlists_(linkVersionsToPlaylists(versions_, playlists_)),
+      notes_(makeNotes(versions_)) {}
 
 void FakeBackend::maybeSleep() const {
     if (!simulate_latency_) {
@@ -1718,6 +1855,16 @@ Records FakeBackend::matchAll(const Ir &ir) const {
                 }
             }
             rows.push_back(std::move(row));
+        }
+    } else if (ir.entity == "note") {
+        for (const Record &note : notes_) {
+            if (ir.in && !matchesIn(note, versions_, *ir.in, "version", "version")) {
+                continue; ///< Same parent check a sequence uses for its project.
+            }
+            if (ir.where && !matchesWhere(note, *ir.where)) {
+                continue;
+            }
+            rows.push_back(publicNote(note));
         }
     } else {
         throw Error("fake backend: entity \"" + ir.entity + "\" is not available");

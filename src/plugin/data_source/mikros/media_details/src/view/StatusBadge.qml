@@ -10,8 +10,12 @@ Rectangle {
 
     property string code: ""
     property string label: code === "" ? "N/A" : code
+    property string tone: "" ///< Schema fill. Empty keeps the built-in status map.
+    property string accessibleLabel: label
 
     readonly property color fill: {
+        if (tone !== "")
+            return tone
         const key = code.toLowerCase()
         if (key === "fin" || key === "final" || key === "apr" || key === "approved")
             return "#2e7d32"
@@ -26,6 +30,8 @@ Rectangle {
         return "#546e7a"
     }
 
+    Accessible.name: accessibleLabel
+    Accessible.role: Accessible.StaticText
     visible: true
     implicitHeight: XsStyleSheet.widgetStdHeight - 4
     implicitWidth: Math.max(labelText.implicitWidth + 16, 40)

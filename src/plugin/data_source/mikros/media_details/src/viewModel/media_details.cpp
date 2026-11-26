@@ -191,7 +191,7 @@ void MediaDetails::applyThumbUrl(const std::string &fileUrl) {
     detail_json_->set_value(std::move(json));
 }
 
-void MediaDetails::updateMediaDetails(
+void MediaDetails::applyWorkerPage(
     std::uint64_t generation, const std::string &catalog, const utility::JsonStore &payload) {
     if (generation != generation_.load()) {
         return;
@@ -228,16 +228,6 @@ void MediaDetails::updateMediaDetails(
     sendDetailsToQml(publicDetailJson(payload), "ready");
     applyThumbnail(
         generation, thumbProjectId, thumbVersionId, std::move(thumbImage), std::move(thumbProvider));
-}
-
-caf::message_handler MediaDetails::message_handler_extensions() {
-    return {
-        [=](data_source::put_data_atom,
-            std::uint64_t generation,
-            const std::string &catalog,
-            const utility::JsonStore &payload) {
-            updateMediaDetails(generation, catalog, payload);
-        }};
 }
 
 } // namespace xstudio::mikros_media_details

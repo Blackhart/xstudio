@@ -103,3 +103,18 @@ entities:
       sequence: { shotgrid: entity, target: sequence }
       asset:    { shotgrid: entity, target: asset }
       playlist: { shotgrid: playlists, target: playlist }
+
+  note:
+    shotgrid: Note
+    fields:
+      id:         { shotgrid: id }
+      name:       { shotgrid: subject }
+      content:    { shotgrid: content }
+      author:     { shotgrid: created_by }
+      created_at: { shotgrid: created_at }
+      status:     { shotgrid: sg_status_list }
+      to:          { shotgrid: addressings_to }
+      department:  { shotgrid: sg_department }
+      attachments: { shotgrid: attachments }
+    links:
+      version: { shotgrid: note_links, target: version }
