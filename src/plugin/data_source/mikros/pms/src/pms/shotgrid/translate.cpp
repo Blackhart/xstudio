@@ -373,8 +373,14 @@ bool looksLikeDateField(const std::string &domain) {
  * @return `name` when `value` is an entity object. Empty otherwise.
  */
 std::string entityName(const nlohmann::json &value) {
-    if (value.is_object() && value.contains("name") && value["name"].is_string()) {
+    if (!value.is_object()) {
+        return {};
+    }
+    if (value.contains("name") && value["name"].is_string()) {
         return value["name"].get<std::string>();
+    }
+    if (value.contains("code") && value["code"].is_string()) {
+        return value["code"].get<std::string>(); ///< Shot / Asset links often use code.
     }
     return {};
 }
@@ -403,7 +409,8 @@ std::string joinNames(const nlohmann::json &value) {
  * @brief Copies one ShotGrid attribute onto the domain record.
  *
  * A true client flag becomes `1`. Site lists keep the ShotGrid names.
- * `shots` and `versions` become lists of links. An entity object keeps its `name`.
+ * `shots` and `versions` become lists of links. An entity object keeps its
+ * `name`, plus `{domain}_id` and `{domain}_type` when ShotGrid sends them.
  *
  * @param out Record being filled.
  * @param field Domain field and its ShotGrid key.
@@ -475,6 +482,18 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
     const std::string name = entityName(value);
     if (!name.empty()) {
         out.fields[field.domain] = name; ///< Linked entity: keep the label the card shows.
+    }
+    if (!value.is_object()) {
+        return;
+    }
+    if (value.contains("id") && value["id"].is_number_integer()) {
+        out.fields[field.domain + "_id"] = value["id"].get<std::int64_t>();
+    }
+    if (value.contains("type") && value["type"].is_string()) {
+        const std::string type = value["type"].get<std::string>();
+        if (!type.empty()) {
+            out.fields[field.domain + "_type"] = type; ///< Shot / Sequence / Asset / Project.
+        }
     }
 }
 

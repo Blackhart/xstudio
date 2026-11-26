@@ -3,6 +3,7 @@ if("${STUDIO_PLUGINS}" STREQUAL "mikros")
 	# Shared lib first so shotbrowser (and later plugins) can link pms::pms.
 	add_subdirectory(mikros/pms)
 	add_src_and_test(mikros/shotbrowser)
+	add_src_and_test(mikros/media_details)
 else()
 	build_studio_plugins("${STUDIO_PLUGINS}")
 endif()

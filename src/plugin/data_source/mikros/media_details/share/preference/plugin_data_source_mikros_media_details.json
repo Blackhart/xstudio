@@ -1,0 +1,18 @@
+{
+    "plugin": {
+        "data_source": {
+            "mikros_media_details": {
+                "shotgrid_url": {
+                    "context": [
+                        "PLUGIN"
+                    ],
+                    "datatype": "string",
+                    "default_value": "",
+                    "description": "ShotGrid site URL used for detail links in Media Details. Empty uses SHOTGRID_URL.",
+                    "path": "/plugin/data_source/mikros_media_details/shotgrid_url",
+                    "value": ""
+                }
+            }
+        }
+    }
+}

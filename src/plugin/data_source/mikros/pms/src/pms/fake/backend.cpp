@@ -1252,11 +1252,88 @@ void copyPresent(Record &out, const Record &row, const std::string &key) {
 }
 
 /**
- * @brief Returns a version without its private parent links.
- * @param row Catalog version, including the card fields and thumb path.
- * @return Id, name, and every VersionCard field already filled.
+ * @brief Attaches a linked entity name, `{key}_id`, and `{key}_type` on a public row.
+ * @param out Public row being built.
+ * @param row Private catalog row that holds the parent int under `linkKey`.
+ * @param parents Catalog used to resolve the parent name.
+ * @param linkKey Private int field on `row` (e.g. `project`, `sequence`).
+ * @param fieldKey Domain entity field name written on `out`.
+ * @param typeName ShotGrid-style type label (e.g. `Project`, `Sequence`).
  */
-Record publicVersion(const Record &row) {
+void attachParentEntity(
+    Record &out,
+    const Record &row,
+    const Records &parents,
+    const std::string &linkKey,
+    const std::string &fieldKey,
+    const char *typeName) {
+    const auto linked = row.fields.find(linkKey);
+    if (linked == row.fields.end() || !std::holds_alternative<std::int64_t>(linked->second)) {
+        return;
+    }
+    const std::int64_t parentId = std::get<std::int64_t>(linked->second);
+    out.fields[fieldKey + "_id"] = parentId;
+    out.fields[fieldKey + "_type"] = std::string(typeName);
+    if (const Record *parent = parentById(parents, parentId)) {
+        out.fields[fieldKey] = std::get<std::string>(parent->fields.at("name"));
+    }
+}
+
+/**
+ * @brief Returns a sequence with public `project` / `project_id` for Media Details.
+ * @param row Private sequence row.
+ * @param projects Project catalog for name lookup.
+ * @return Id, name, and project label fields.
+ */
+Record publicSequence(const Record &row, const Records &projects) {
+    Record out = publicNamed(row);
+    attachParentEntity(out, row, projects, "project", "project", "Project");
+    return out;
+}
+
+/**
+ * @brief Returns a shot with public `sequence` / `sequence_id` for Media Details.
+ * @param row Private shot row.
+ * @param sequences Sequence catalog for name lookup.
+ * @return Id, name, and sequence label fields.
+ */
+Record publicShot(const Record &row, const Records &sequences) {
+    Record out = publicNamed(row);
+    attachParentEntity(out, row, sequences, "sequence", "sequence", "Sequence");
+    return out;
+}
+
+/**
+ * @brief Returns an asset with public `project` / `project_id` for Media Details.
+ * @param row Private asset row.
+ * @param projects Project catalog for name lookup.
+ * @return Id, name, and project label fields.
+ */
+Record publicAsset(const Record &row, const Records &projects) {
+    Record out = publicNamed(row);
+    attachParentEntity(out, row, projects, "project", "project", "Project");
+    return out;
+}
+
+/**
+ * @brief Returns a version without its private parent link ints.
+ *
+ * Fills public `project` / `project_id` and polymorphic `entity` /
+ * `entity_id` / `entity_type` for Media Details from the private links.
+ *
+ * @param row Catalog version, including the card fields and thumb path.
+ * @param projects Project catalog for name lookup.
+ * @param sequences Sequence catalog for entity lookup.
+ * @param shots Shot catalog for entity lookup.
+ * @param assets Asset catalog for entity lookup.
+ * @return Id, name, card fields, and parent labels.
+ */
+Record publicVersion(
+    const Record &row,
+    const Records &projects,
+    const Records &sequences,
+    const Records &shots,
+    const Records &assets) {
     Record out = publicNamed(row);
     copyPresent(out, row, "image");
     copyPresent(out, row, "image_provider");
@@ -1276,6 +1353,39 @@ Record publicVersion(const Record &row) {
     copyPresent(out, row, "movie_provider");
     copyPresent(out, row, "uploaded_movie");
     copyPresent(out, row, "uploaded_movie_provider");
+
+    const auto projectField = row.fields.find("project");
+    if (projectField != row.fields.end() &&
+        std::holds_alternative<std::int64_t>(projectField->second)) {
+        const std::int64_t projectId = std::get<std::int64_t>(projectField->second);
+        out.fields["project_id"] = projectId;
+        if (const Record *project = parentById(projects, projectId)) {
+            out.fields["project"] = std::get<std::string>(project->fields.at("name"));
+        }
+    }
+
+    const auto attachEntity =
+        [&out](const char *type, const Records &catalog, const std::string &linkKey, const Record &src) {
+            const auto linked = src.fields.find(linkKey);
+            if (linked == src.fields.end() ||
+                !std::holds_alternative<std::int64_t>(linked->second)) {
+                return false;
+            }
+            const std::int64_t entityId = std::get<std::int64_t>(linked->second);
+            const Record *entity = parentById(catalog, entityId);
+            if (!entity) {
+                return false;
+            }
+            out.fields["entity_type"] = std::string(type);
+            out.fields["entity_id"] = entityId;
+            out.fields["entity"] = std::get<std::string>(entity->fields.at("name"));
+            return true;
+        };
+
+    if (!attachEntity("Shot", shots, "shot", row) &&
+        !attachEntity("Asset", assets, "asset", row)) {
+        attachEntity("Sequence", sequences, "sequence", row);
+    }
     return out;
 }
 
@@ -1401,7 +1511,7 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(sequence, *ir.where)) {
                 continue;
             }
-            Record row = publicNamed(sequence);
+            Record row = publicSequence(sequence, projects_);
             const auto sequenceId = std::get<std::int64_t>(sequence.fields.at("id"));
             std::vector<Link> shots;
             for (const Record &shot : shots_) {
@@ -1438,7 +1548,7 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(shot, *ir.where)) {
                 continue;
             }
-            rows.push_back(publicNamed(shot));
+            rows.push_back(publicShot(shot, sequences_));
         }
     } else if (ir.entity == "asset") {
         for (const Record &asset : assets_) {
@@ -1448,7 +1558,7 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(asset, *ir.where)) {
                 continue;
             }
-            rows.push_back(publicNamed(asset));
+            rows.push_back(publicAsset(asset, projects_));
         }
     } else if (ir.entity == "playlist") {
         for (const Record &playlist : playlists_) {
@@ -1537,7 +1647,8 @@ Records FakeBackend::matchAll(const Ir &ir) const {
             if (ir.where && !matchesWhere(version, *ir.where)) {
                 continue;
             }
-            rows.push_back(publicVersion(version));
+            rows.push_back(
+                publicVersion(version, projects_, sequences_, shots_, assets_));
         }
     } else {
         throw Error("fake backend: entity \"" + ir.entity + "\" is not available");

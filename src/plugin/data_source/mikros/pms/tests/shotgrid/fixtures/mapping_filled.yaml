@@ -13,25 +13,28 @@ entities:
   sequence:
     shotgrid: Sequence
     fields:
-      id:    { shotgrid: id }
-      name:  { shotgrid: code }
-      shots: { shotgrid: shots }
+      id:      { shotgrid: id }
+      name:    { shotgrid: code }
+      shots:   { shotgrid: shots }
+      project: { shotgrid: project }
     links:
       project: { shotgrid: project, target: project }
 
   shot:
     shotgrid: Shot
     fields:
-      id:   { shotgrid: id }
-      name: { shotgrid: code }
+      id:       { shotgrid: id }
+      name:     { shotgrid: code }
+      sequence: { shotgrid: sg_sequence }
     links:
       sequence: { shotgrid: sg_sequence, target: sequence }
 
   asset:
     shotgrid: Asset
     fields:
-      id:   { shotgrid: id }
-      name: { shotgrid: code }
+      id:      { shotgrid: id }
+      name:    { shotgrid: code }
+      project: { shotgrid: project }
     links:
       project: { shotgrid: project, target: project }
 
@@ -68,6 +71,8 @@ entities:
       frames:           { shotgrid: sg_path_to_frames, provider: fileSeq }
       movie:            { shotgrid: sg_path_to_movie, provider: file }
       uploaded_movie:   { shotgrid: sg_uploaded_movie_mp4, provider: signedurl }
+      project:          { shotgrid: project }
+      entity:           { shotgrid: entity }
     links:
       project:  { shotgrid: project, target: project }
       shot:     { shotgrid: entity, target: shot }

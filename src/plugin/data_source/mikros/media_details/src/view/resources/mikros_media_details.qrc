@@ -1,0 +1,6 @@
+<RCC>
+	<qresource prefix="/mikros_media_details_icons">
+		<file alias="mikros_media_details.svg">mikros_media_details.svg</file>
+		<file alias="no_preview.jpg">no_preview.jpg</file>
+	</qresource>
+</RCC>

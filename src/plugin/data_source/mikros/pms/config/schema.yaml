@@ -21,23 +21,26 @@ entities:
   sequence:
     creatable: false
     fields:
-      id:    { type: int,    filter: true,  set: false }
-      name:  { type: string, filter: true,  set: true }
-      shots: { type: links,  filter: false, set: false }
+      id:      { type: int,    filter: true,  set: false }
+      name:    { type: string, filter: true,  set: true }
+      shots:   { type: links,  filter: false, set: false }
+      project: { type: entity, filter: true,  set: false }
     scope: [project]
 
   shot:
     creatable: false
     fields:
-      id:   { type: int,    filter: true, set: false }
-      name: { type: string, filter: true, set: true }
+      id:       { type: int,    filter: true, set: false }
+      name:     { type: string, filter: true, set: true }
+      sequence: { type: entity, filter: true, set: false }
     scope: [sequence]
 
   asset:
     creatable: false
     fields:
-      id:   { type: int,    filter: true, set: false }
-      name: { type: string, filter: true, set: true }
+      id:      { type: int,    filter: true, set: false }
+      name:    { type: string, filter: true, set: true }
+      project: { type: entity, filter: true, set: false }
     scope: [project]
 
   playlist:
@@ -72,4 +75,6 @@ entities:
       frames:           { type: string, filter: false, set: false, providers: [fileSeq] }
       movie:            { type: string, filter: false, set: false, providers: [file] }
       uploaded_movie:   { type: string, filter: false, set: false, providers: [signedurl] }
+      project:          { type: entity, filter: true,  set: false }
+      entity:           { type: entity, filter: true,  set: false }
     scope: [shot, sequence, asset, playlist]

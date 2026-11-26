@@ -644,3 +644,25 @@ TEST_CASE("shotgrid field names honour a media projection") {
     CHECK(std::find(names.begin(), names.end(), "sg_path_to_movie") != names.end());
     CHECK(std::find(names.begin(), names.end(), "sg_uploaded_movie_mp4") != names.end());
 }
+
+TEST_CASE("version project and entity keep id name and type") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const nlohmann::json row = {
+        {"type", "Version"},
+        {"id", 99},
+        {"attributes", {{"code", "v003"}}},
+        {"relationships",
+         {{"project",
+           {{"data", {{"type", "Project"}, {"id", 1}, {"name", "Show"}}}}},
+          {"entity",
+           {{"data", {{"type", "Shot"}, {"id", 10}, {"name", "SH010"}}}}}}};
+    const Record record = shotgridRecordFromJson(row, *version);
+    CHECK(std::get<std::string>(record.at("project")) == "Show");
+    CHECK(std::get<std::int64_t>(record.at("project_id")) == 1);
+    CHECK(std::get<std::string>(record.at("project_type")) == "Project");
+    CHECK(std::get<std::string>(record.at("entity")) == "SH010");
+    CHECK(std::get<std::int64_t>(record.at("entity_id")) == 10);
+    CHECK(std::get<std::string>(record.at("entity_type")) == "Shot");
+}
