@@ -109,11 +109,6 @@ class CatalogLoadActor : public caf::event_based_actor {
 void executeCatalogLoad(const CatalogLoadRequest &request);
 
 /**
- * @brief Registers `CatalogLoadRequest` with CAF. Call once before the first load.
- */
-void registerCatalogLoadType();
-
-/**
  * @brief Optional parents carried with a catalog page.
  *
  * Versions set whichever parents are selected. Playlist versions also name the playlist.
@@ -175,10 +170,11 @@ void sendCatalog(
     xstudio::utility::JsonStore payload);
 
 /**
- * @brief Spawns one detached load and sends it the request.
+ * @brief Spawns one detached load and sends it the request token.
  *
- * The handle is dropped after the send. The actor is not linked to the panel,
- * so a failed load does not stop the panel.
+ * The request stays in this process. The message is a `uint64_t`, a CAF type
+ * registered before the actor system starts. The handle is dropped after the
+ * send. The actor is not linked to the panel, so a failed load does not stop it.
  *
  * @param system Actor system that owns the panel.
  * @param request Catalog, request id, project, and parents.

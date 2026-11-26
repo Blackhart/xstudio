@@ -97,8 +97,7 @@ void VersionNotes::loadNotesFromIdAsync(std::int64_t versionId, std::uint64_t ge
     request.panel = caf::actor_cast<caf::weak_actor_ptr>(panelActor(panel_));
     request.request_id = generation;
     request.version_id = versionId;
-    auto worker = panel_.system().spawn<NotesLoadActor, caf::detached>();
-    anon_mail(std::move(request)).send(worker);
+    launchNotesLoad(panel_.system(), std::move(request)); ///< Token mail, not a new CAF type.
 }
 
 void VersionNotes::on_screen_media_changed(

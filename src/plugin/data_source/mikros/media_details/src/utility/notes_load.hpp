@@ -5,14 +5,11 @@
  */
 #pragma once
 
-#include "xstudio/atoms.hpp"
 #include "xstudio/utility/json_store.hpp"
 
 #include <caf/actor_system.hpp>
-#include <caf/allowed_unsafe_message_type.hpp>
 #include <caf/event_based_actor.hpp>
 #include <caf/fwd.hpp>
-#include <caf/type_id.hpp>
 
 #include <cstdint>
 
@@ -30,14 +27,6 @@ struct NotesLoadRequest {
 };
 
 } // namespace xstudio::mikros_media_details
-
-CAF_ALLOW_UNSAFE_MESSAGE_TYPE(xstudio::mikros_media_details::NotesLoadRequest)
-
-// Local only: the request holds a weak actor pointer, so it is not serialized.
-// 17101 stays clear of the detail-load block at 17100.
-CAF_BEGIN_TYPE_ID_BLOCK(mikros_version_notes_load, FIRST_CUSTOM_ID + 17101)
-CAF_ADD_TYPE_ID(mikros_version_notes_load, (xstudio::mikros_media_details::NotesLoadRequest))
-CAF_END_TYPE_ID_BLOCK(mikros_version_notes_load)
 
 namespace xstudio::mikros_media_details {
 
@@ -72,8 +61,14 @@ class NotesLoadActor : public caf::event_based_actor {
 void executeNotesLoad(const NotesLoadRequest &request);
 
 /**
- * @brief Registers `NotesLoadRequest` with CAF. Call once before the first load.
+ * @brief Spawns one detached load and sends it the request token.
+ *
+ * The request stays in this process. The message is a `uint64_t`, a CAF type
+ * registered before the actor system starts. The actor is not linked to the panel.
+ *
+ * @param system Actor system that owns the panel.
+ * @param request Version id and request id.
  */
-void registerNotesLoadType();
+void launchNotesLoad(caf::actor_system &system, NotesLoadRequest request);
 
 } // namespace xstudio::mikros_media_details

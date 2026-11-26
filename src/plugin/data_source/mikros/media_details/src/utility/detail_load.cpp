@@ -18,8 +18,12 @@
 
 #include <caf/event_based_actor.hpp>
 
+#include <cstdint>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -352,7 +356,45 @@ nlohmann::json assembleDetailJson(
     return payload;
 }
 
+std::mutex parkedMutex; ///< Serializes park and take. The actor runs on another thread.
+std::uint64_t nextToken = 0; ///< Zero is never issued. A missing take stays distinguishable.
+std::unordered_map<std::uint64_t, std::shared_ptr<MediaDetailLoadRequest>> parked;
+
+/**
+ * @brief Stores one detail request and returns the token mailed to its actor.
+ * @param request Version id, request id, and media JSON.
+ * @return Token the actor passes to `take`.
+ */
+std::uint64_t park(MediaDetailLoadRequest request) {
+    std::lock_guard<std::mutex> lock(parkedMutex); ///< The actor may take while another load parks.
+    const std::uint64_t token = ++nextToken; ///< uint64_t is registered before the actor system starts.
+    parked.emplace(token, std::make_shared<MediaDetailLoadRequest>(std::move(request)));
+    return token;
+}
+
+/**
+ * @brief Removes one parked detail request.
+ * @param token Value mailed to the actor.
+ * @return The request, or empty when the token was never parked.
+ */
+std::shared_ptr<MediaDetailLoadRequest> take(std::uint64_t token) {
+    std::lock_guard<std::mutex> lock(parkedMutex); ///< park may run on the panel thread.
+    const auto found = parked.find(token);
+    if (found == parked.end()) {
+        return {}; ///< The actor quits when the token is unknown.
+    }
+    auto request = std::move(found->second);
+    parked.erase(found);
+    return request;
+}
+
 } // namespace
+
+void launchMediaDetailLoad(caf::actor_system &system, MediaDetailLoadRequest request) {
+    const std::uint64_t token = park(std::move(request)); ///< The struct never enters a CAF message.
+    auto worker = system.spawn<MediaDetailLoadActor, caf::detached>();
+    anon_mail(token).send(worker);
+}
 
 void executeMediaDetailLoad(const MediaDetailLoadRequest &request) {
     nlohmann::json payload = nlohmann::json::object();
@@ -379,10 +421,6 @@ void executeMediaDetailLoad(const MediaDetailLoadRequest &request) {
         utility::JsonStore(std::move(payload)));
 }
 
-void registerMediaDetailLoadType() {
-    caf::init_global_meta_objects<caf::id_block::mikros_media_details_load>();
-}
-
 MediaDetailLoadActor::MediaDetailLoadActor(caf::actor_config &cfg)
     : caf::event_based_actor(cfg) {}
 
@@ -390,9 +428,14 @@ const char *MediaDetailLoadActor::name() const { return "MediaDetailLoadActor"; 
 
 caf::behavior MediaDetailLoadActor::make_behavior() {
     return {
-        [this](MediaDetailLoadRequest request) {
+        [this](std::uint64_t token) {
+            const std::shared_ptr<MediaDetailLoadRequest> request = take(token);
+            if (!request) {
+                quit(); ///< A missing token has nothing to load.
+                return;
+            }
             try {
-                executeMediaDetailLoad(request); ///< Blocking find stays on this detached thread.
+                executeMediaDetailLoad(*request); ///< Blocking find stays on this detached thread.
             } catch (const std::exception &caught) {
                 log::failure(caught); ///< A failed load must not take the panel down.
             }

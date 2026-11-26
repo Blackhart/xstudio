@@ -7,11 +7,14 @@
 #include "utility/catalog.hpp"
 
 #include <caf/actor_system.hpp>
-#include <caf/allowed_unsafe_message_type.hpp>
 #include <caf/event_based_actor.hpp>
 
 #include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -19,14 +22,6 @@ namespace trace = xstudio::mikros_shotbrowser::log;
 
 using namespace xstudio;
 using namespace xstudio::mikros_shotbrowser;
-
-CAF_ALLOW_UNSAFE_MESSAGE_TYPE(xstudio::mikros_shotbrowser::CatalogLoadRequest)
-
-// Local only: the request holds a weak actor pointer, so it is not serialized.
-// 17000 stays clear of the xSTUDIO blocks and the demo plugin at 16000.
-CAF_BEGIN_TYPE_ID_BLOCK(mikros_shotbrowser_catalog, FIRST_CUSTOM_ID + 17000)
-CAF_ADD_TYPE_ID(mikros_shotbrowser_catalog, (xstudio::mikros_shotbrowser::CatalogLoadRequest))
-CAF_END_TYPE_ID_BLOCK(mikros_shotbrowser_catalog)
 
 namespace xstudio::mikros_shotbrowser {
 
@@ -90,9 +85,46 @@ void sendCatalog(
     }
 }
 
+namespace {
+
+std::mutex parkedMutex; ///< Serializes park and take. The actor runs on another thread.
+std::uint64_t nextToken = 0; ///< Zero is never issued. A missing take stays distinguishable.
+std::unordered_map<std::uint64_t, std::shared_ptr<CatalogLoadRequest>> parked;
+
+/**
+ * @brief Stores one catalog request and returns the token mailed to its actor.
+ * @param request Catalog, request id, project, and parents.
+ * @return Token the actor passes to `take`.
+ */
+std::uint64_t park(CatalogLoadRequest request) {
+    std::lock_guard<std::mutex> lock(parkedMutex); ///< The actor may take while another load parks.
+    const std::uint64_t token = ++nextToken; ///< uint64_t is registered before the actor system starts.
+    parked.emplace(token, std::make_shared<CatalogLoadRequest>(std::move(request)));
+    return token;
+}
+
+/**
+ * @brief Removes one parked catalog request.
+ * @param token Value mailed to the actor.
+ * @return The request, or empty when the token was never parked.
+ */
+std::shared_ptr<CatalogLoadRequest> take(std::uint64_t token) {
+    std::lock_guard<std::mutex> lock(parkedMutex); ///< park may run on the panel thread.
+    const auto found = parked.find(token);
+    if (found == parked.end()) {
+        return {}; ///< The actor quits when the token is unknown.
+    }
+    auto request = std::move(found->second);
+    parked.erase(found);
+    return request;
+}
+
+} // namespace
+
 void launchCatalogLoad(caf::actor_system &system, CatalogLoadRequest request) {
+    const std::uint64_t token = park(std::move(request)); ///< The struct never enters a CAF message.
     auto worker = system.spawn<CatalogLoadActor, caf::detached>();
-    anon_mail(std::move(request)).send(worker);
+    anon_mail(token).send(worker);
 }
 
 /**
@@ -366,22 +398,20 @@ void executeCatalogLoad(const CatalogLoadRequest &request) {
     }
 }
 
-/**
- * @brief Registers the load request so a detached actor can receive it.
- */
-void registerCatalogLoadType() {
-    caf::init_global_meta_objects<caf::id_block::mikros_shotbrowser_catalog>();
-}
-
 CatalogLoadActor::CatalogLoadActor(caf::actor_config &cfg) : caf::event_based_actor(cfg) {}
 
 const char *CatalogLoadActor::name() const { return "CatalogLoadActor"; }
 
 caf::behavior CatalogLoadActor::make_behavior() {
     return {
-        [this](CatalogLoadRequest request) {
+        [this](std::uint64_t token) {
+            const std::shared_ptr<CatalogLoadRequest> request = take(token);
+            if (!request) {
+                quit(); ///< A missing token has nothing to load.
+                return;
+            }
             try {
-                executeCatalogLoad(request); ///< Blocking find stays on this detached thread.
+                executeCatalogLoad(*request); ///< Blocking find stays on this detached thread.
             } catch (const std::exception &caught) {
                 log::failure(caught); ///< A failed load must not take the panel down.
             }

@@ -10,10 +10,18 @@
 #include "model/log.hpp"
 #include "model/poco/note_detail.hpp"
 
+#include "xstudio/atoms.hpp"
 #include "xstudio/utility/helpers.hpp"
 
 #include <caf/actor.hpp>
 #include <caf/actor_cast.hpp>
+#include <caf/actor_system.hpp>
+#include <caf/event_based_actor.hpp>
+
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 
 namespace xstudio::mikros_media_details {
 namespace {
@@ -59,7 +67,45 @@ nlohmann::json noteJson(const poco::NoteDetail &note) {
         {"attachments", std::move(attachments)}};
 }
 
+std::mutex parkedMutex; ///< Serializes park and take. The actor runs on another thread.
+std::uint64_t nextToken = 0; ///< Zero is never issued. A missing take stays distinguishable.
+std::unordered_map<std::uint64_t, std::shared_ptr<NotesLoadRequest>> parked;
+
+/**
+ * @brief Stores one notes request and returns the token mailed to its actor.
+ * @param request Version id and request id.
+ * @return Token the actor passes to `take`.
+ */
+std::uint64_t park(NotesLoadRequest request) {
+    std::lock_guard<std::mutex> lock(parkedMutex); ///< The actor may take while another load parks.
+    const std::uint64_t token = ++nextToken; ///< uint64_t is registered before the actor system starts.
+    parked.emplace(token, std::make_shared<NotesLoadRequest>(std::move(request)));
+    return token;
+}
+
+/**
+ * @brief Removes one parked notes request.
+ * @param token Value mailed to the actor.
+ * @return The request, or empty when the token was never parked.
+ */
+std::shared_ptr<NotesLoadRequest> take(std::uint64_t token) {
+    std::lock_guard<std::mutex> lock(parkedMutex); ///< park may run on the panel thread.
+    const auto found = parked.find(token);
+    if (found == parked.end()) {
+        return {}; ///< The actor quits when the token is unknown.
+    }
+    auto request = std::move(found->second);
+    parked.erase(found);
+    return request;
+}
+
 } // namespace
+
+void launchNotesLoad(caf::actor_system &system, NotesLoadRequest request) {
+    const std::uint64_t token = park(std::move(request)); ///< The struct never enters a CAF message.
+    auto worker = system.spawn<NotesLoadActor, caf::detached>();
+    anon_mail(token).send(worker);
+}
 
 void executeNotesLoad(const NotesLoadRequest &request) {
     nlohmann::json payload = nlohmann::json::object();
@@ -77,24 +123,26 @@ void executeNotesLoad(const NotesLoadRequest &request) {
     sendNotes(request.panel, request.request_id, catalog, utility::JsonStore(std::move(payload)));
 }
 
-void registerNotesLoadType() {
-    caf::init_global_meta_objects<caf::id_block::mikros_version_notes_load>();
-}
-
 NotesLoadActor::NotesLoadActor(caf::actor_config &cfg) : caf::event_based_actor(cfg) {}
 
 const char *NotesLoadActor::name() const { return "NotesLoadActor"; }
 
 caf::behavior NotesLoadActor::make_behavior() {
     return {
-        [this](NotesLoadRequest request) {
+        [this](std::uint64_t token) {
+            const std::shared_ptr<NotesLoadRequest> request = take(token);
+            if (!request) {
+                quit(); ///< A missing token has nothing to load.
+                return;
+            }
             try {
-                executeNotesLoad(request); ///< Blocking find stays on this detached thread.
+                executeNotesLoad(*request); ///< Blocking find stays on this detached thread.
             } catch (const std::exception &caught) {
                 log::failure(caught); ///< A failed load must not take the panel down.
             }
             quit();
-        }};
+        },
+    };
 }
 
 } // namespace xstudio::mikros_media_details

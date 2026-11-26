@@ -5,14 +5,11 @@
  */
 #pragma once
 
-#include "xstudio/atoms.hpp"
 #include "xstudio/utility/json_store.hpp"
 
 #include <caf/actor_system.hpp>
-#include <caf/allowed_unsafe_message_type.hpp>
 #include <caf/event_based_actor.hpp>
 #include <caf/fwd.hpp>
-#include <caf/type_id.hpp>
 
 #include <cstdint>
 #include <string>
@@ -32,14 +29,6 @@ struct MediaDetailLoadRequest {
 };
 
 } // namespace xstudio::mikros_media_details
-
-CAF_ALLOW_UNSAFE_MESSAGE_TYPE(xstudio::mikros_media_details::MediaDetailLoadRequest)
-
-// Local only: the request holds a weak actor pointer, so it is not serialized.
-// 17100 stays clear of the Shot Browser catalog block at 17000.
-CAF_BEGIN_TYPE_ID_BLOCK(mikros_media_details_load, FIRST_CUSTOM_ID + 17100)
-CAF_ADD_TYPE_ID(mikros_media_details_load, (xstudio::mikros_media_details::MediaDetailLoadRequest))
-CAF_END_TYPE_ID_BLOCK(mikros_media_details_load)
 
 namespace xstudio::mikros_media_details {
 
@@ -74,8 +63,14 @@ class MediaDetailLoadActor : public caf::event_based_actor {
 void executeMediaDetailLoad(const MediaDetailLoadRequest &request);
 
 /**
- * @brief Registers `MediaDetailLoadRequest` with CAF. Call once before the first load.
+ * @brief Spawns one detached load and sends it the request token.
+ *
+ * The request stays in this process. The message is a `uint64_t`, a CAF type
+ * registered before the actor system starts. The actor is not linked to the panel.
+ *
+ * @param system Actor system that owns the panel.
+ * @param request Version id, request id, and media JSON.
  */
-void registerMediaDetailLoadType();
+void launchMediaDetailLoad(caf::actor_system &system, MediaDetailLoadRequest request);
 
 } // namespace xstudio::mikros_media_details

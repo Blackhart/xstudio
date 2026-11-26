@@ -108,8 +108,7 @@ void MediaDetails::loadVersionDetailsFromIdAsync(
     request.request_id = generation;
     request.version_id = versionId;
     request.media_details = utility::JsonStore(mediaDetails);
-    auto worker = panel_.system().spawn<MediaDetailLoadActor, caf::detached>();
-    anon_mail(std::move(request)).send(worker);
+    launchMediaDetailLoad(panel_.system(), std::move(request)); ///< Token mail, not a new CAF type.
 }
 
 void MediaDetails::on_screen_media_changed(

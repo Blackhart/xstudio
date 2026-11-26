@@ -5,7 +5,6 @@
  */
 
 #include "mikros_shotbrowser.hpp"
-#include "utility/catalog.hpp"
 #include "utility/media.hpp"
 #include "utility/thumbnails.hpp"
 #include "viewModel/shot_browser.hpp"
@@ -125,7 +124,6 @@ MikrosShotBrowser::MikrosShotBrowser(
     : plugin::StandardPlugin(cfg, "MikrosShotBrowserPlugin", init_settings) {
 
     dal::initialize(); ///< The shot browser context exists before any screen reads it.
-    registerCatalogLoadType(); ///< Before the first detached load sends a request.
     shot_browser_ = std::make_unique<ShotBrowser>(*this);
     logSettings();       ///< Each environment variable, and whether it is set or default.
     logWriteLocations(); ///< Preferences file and thumbnail directory, resolved now.
