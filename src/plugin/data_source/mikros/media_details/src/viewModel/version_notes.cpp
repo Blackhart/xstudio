@@ -51,7 +51,6 @@ nlohmann::json styleJson(const std::map<std::string, std::string> &values) {
 } // namespace
 
 VersionNotes::VersionNotes(plugin::StandardPlugin &panel) : QObject(nullptr), panel_(panel) {
-    registerNotesLoadType(); ///< Before the first detached load sends a request.
     initQmlAttributes(panel);
     publishStatusStyles();
 }

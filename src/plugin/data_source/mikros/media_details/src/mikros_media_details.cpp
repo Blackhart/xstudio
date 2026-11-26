@@ -7,6 +7,8 @@
 #include "mikros_media_details.hpp"
 
 #include "model/dal/dal.hpp"
+#include "utility/detail_load.hpp"
+#include "utility/notes_load.hpp"
 #include "viewModel/media_details.hpp"
 #include "viewModel/version_notes.hpp"
 
@@ -22,6 +24,8 @@ MikrosMediaDetails::MikrosMediaDetails(
     : plugin::StandardPlugin(cfg, "MikrosMediaDetailsPlugin", init_settings) {
 
     dal::initialize(); ///< Shared pms session before the screens load.
+    registerMediaDetailLoadType(); ///< Before the first detail load sends a request.
+    registerNotesLoadType(); ///< Before the first notes load sends a request.
     media_details_ = std::make_unique<MediaDetails>(*this);
     version_notes_ = std::make_unique<VersionNotes>(*this);
     make_behavior(); ///< Sets the actor address the attributes already use.

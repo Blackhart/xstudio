@@ -7,7 +7,7 @@ entities:
       id:     { shotgrid: id }
       name:   { shotgrid: name }
       code:   { shotgrid: code }
-      status: { shotgrid: sg_status_list }
+      status: { shotgrid: sg_status }
       type:   { shotgrid: sg_type }
     links: {}
 

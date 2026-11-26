@@ -49,7 +49,6 @@ nlohmann::json publicDetailJson(nlohmann::json payload) {
 } // namespace
 
 MediaDetails::MediaDetails(plugin::StandardPlugin &panel) : QObject(nullptr), panel_(panel) {
-    registerMediaDetailLoadType(); ///< Before the first detached load sends a request.
     initQmlAttributes(panel);
     setDefaultValues();
 }
