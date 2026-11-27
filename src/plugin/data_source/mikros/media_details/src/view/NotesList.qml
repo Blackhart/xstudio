@@ -199,8 +199,8 @@ Item {
                             Layout.alignment: Qt.AlignTop
                             visible: !root.noteStatusEditable && root.textOrEmpty(modelData.status) !== ""
                             code: root.textOrEmpty(modelData.status)
+                            label: root.labelFor(modelData.status)
                             tone: root.colorFor(modelData.status)
-                            accessibleLabel: root.labelFor(modelData.status)
                         }
 
                         StatusMenu {
