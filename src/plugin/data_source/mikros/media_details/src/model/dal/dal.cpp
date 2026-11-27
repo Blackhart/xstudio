@@ -533,6 +533,22 @@ std::vector<poco::NoteDetail> findNotesByVersionId(std::int64_t versionId) {
     }
 }
 
+StatusStyle statusStyle(const std::string &entityName, const std::string &fieldKey) {
+    StatusStyle style;
+    const pms::EntitySpec *entity = pms::sharedSession().schema().entity(entityName);
+    if (!entity) {
+        return style; ///< Unknown entity: the screen keeps an empty map.
+    }
+    const pms::FieldSpec *field = entity->field(fieldKey);
+    if (!field) {
+        return style; ///< Unknown field: same empty style.
+    }
+    style.colors = field->colors;
+    style.labels = field->labels;
+    style.defaultColor = field->defaultColor; ///< Colour for a code the map does not name.
+    return style;
+}
+
 std::map<std::string, std::string> noteStatusColors() {
     const pms::FieldSpec *status = noteStatusField();
     if (!status) {
@@ -547,6 +563,10 @@ std::map<std::string, std::string> noteStatusLabels() {
         return {};
     }
     return status->labels;
+}
+
+std::string noteStatusDefaultColor() {
+    return statusStyle("note", "status").defaultColor;
 }
 
 } // namespace xstudio::mikros_media_details::dal

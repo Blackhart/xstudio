@@ -71,11 +71,15 @@ void VersionNotes::initQmlAttributes(plugin::StandardPlugin &panel) {
     status_labels_ =
         panel.add_json_attribute("StatusLabels", "StatusLabels", nlohmann::json::object());
     status_labels_->expose_in_ui_attrs_group(kAttrsGroup);
+    status_default_color_ =
+        panel.add_string_attribute("StatusDefaultColor", "StatusDefaultColor", "");
+    status_default_color_->expose_in_ui_attrs_group(kAttrsGroup);
 }
 
 void VersionNotes::publishStatusStyles() {
     status_colors_->set_value(styleJson(dal::noteStatusColors()));
     status_labels_->set_value(styleJson(dal::noteStatusLabels()));
+    status_default_color_->set_value(dal::noteStatusDefaultColor()); ///< Unknown note codes.
 }
 
 void VersionNotes::sendNotesToQml(

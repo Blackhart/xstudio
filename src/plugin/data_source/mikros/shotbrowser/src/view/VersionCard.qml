@@ -13,6 +13,7 @@ Rectangle {
 
     property bool chosen: false
     property int indent: 0
+    property var statusStyles: ({})
 
     signal previewCurrent()
     signal openCurrent()
@@ -40,6 +41,30 @@ Rectangle {
 
     function shown(value) {
         return value === "" ? "N/A" : value
+    }
+
+    function fieldStyle(fieldKey) {
+        if (!statusStyles || !statusStyles.version)
+            return null
+        return statusStyles.version[fieldKey] || null
+    }
+
+    function statusLabel(fieldKey, code) {
+        const style = fieldStyle(fieldKey)
+        if (style && style.labels && style.labels[code])
+            return String(style.labels[code])
+        return code
+    }
+
+    function statusColor(fieldKey, code) {
+        const style = fieldStyle(fieldKey)
+        if (!style)
+            return XsStyleSheet.secondaryTextColor
+        if (style.colors && style.colors[code])
+            return String(style.colors[code])
+        if (style.defaultColor)
+            return String(style.defaultColor)
+        return XsStyleSheet.secondaryTextColor
     }
 
     function siteOn(code) {
@@ -283,10 +308,12 @@ Rectangle {
                     XsText {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        text: card.shown(card.stepStatus)
+                        text: card.stepStatus === ""
+                              ? "N/A"
+                              : card.statusLabel("status", card.stepStatus)
                         color: card.stepStatus === ""
                                ? XsStyleSheet.hintColor
-                               : XsStyleSheet.secondaryTextColor
+                               : card.statusColor("status", card.stepStatus)
                         elide: Text.ElideRight
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -296,10 +323,12 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: XsStyleSheet.widgetStdHeight
                     Layout.maximumHeight: XsStyleSheet.widgetStdHeight
-                    text: card.shown(card.artisticStatus)
+                    text: card.artisticStatus === ""
+                          ? "N/A"
+                          : card.statusLabel("artistic_status", card.artisticStatus)
                     color: card.artisticStatus === ""
                            ? XsStyleSheet.hintColor
-                           : XsStyleSheet.secondaryTextColor
+                           : card.statusColor("artistic_status", card.artisticStatus)
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
                 }

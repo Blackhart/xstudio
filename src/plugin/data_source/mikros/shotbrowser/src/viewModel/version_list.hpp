@@ -122,7 +122,7 @@ class VersionList : public QObject {
     void applyCardTranscoded(const utility::JsonStore &payload);
 
     /**
-     * @brief Publishes the version cards and list attributes.
+     * @brief Publishes the version cards, list attributes, and status styles.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);

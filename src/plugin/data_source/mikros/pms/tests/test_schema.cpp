@@ -276,6 +276,29 @@ TEST_CASE("schema shelf flags and note status colours") {
     CHECK(status->labels.at("opn") == "Open");
     CHECK(status->labels.at("artrev") == "Pending Art Director");
     CHECK(status->labels.size() == 10);
+    CHECK(status->defaultColor == "#546e7a");
+
+    const FieldSpec *sequenceStatus = schema.entity("sequence")->field("status");
+    REQUIRE(sequenceStatus != nullptr);
+    CHECK(sequenceStatus->colors.at("fin") == "#2e7d32");
+    CHECK(sequenceStatus->labels.at("rdy") == "Ready to Start");
+    CHECK(sequenceStatus->defaultColor == "#546e7a");
+
+    const FieldSpec *assetStatus = schema.entity("asset")->field("status");
+    REQUIRE(assetStatus != nullptr);
+    CHECK(assetStatus->labels.at("rdy") == "Ready");
+
+    const FieldSpec *versionStatus = schema.entity("version")->field("status");
+    REQUIRE(versionStatus != nullptr);
+    CHECK(versionStatus->colors.count("atfn") == 0);
+    CHECK(versionStatus->labels.at("cmpt") == "Complete");
+    CHECK(versionStatus->defaultColor == "#546e7a");
+
+    const FieldSpec *artistic = schema.entity("version")->field("artistic_status");
+    REQUIRE(artistic != nullptr);
+    CHECK(artistic->colors.at("atfn") == "#2e7d32");
+    CHECK(artistic->labels.at("atfn") == "Autofinal");
+    CHECK(artistic->defaultColor == "#546e7a");
 
     const FieldSpec *attachments = note->field("attachments");
     REQUIRE(attachments != nullptr);

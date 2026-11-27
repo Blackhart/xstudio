@@ -53,6 +53,25 @@ std::vector<std::string> defaultShownProjectStatuses();
 std::vector<std::string> defaultShownProjectTypes();
 
 /**
+ * @brief Colour map, label map, and fallback colour of one schema field.
+ */
+struct StatusStyle {
+    std::map<std::string, std::string> colors; ///< Code → colour. Empty when the field has none.
+    std::map<std::string, std::string> labels; ///< Code → label. Empty when the field has none.
+    std::string defaultColor; ///< Colour for a code missing from `colors`. Empty when unset.
+};
+
+/**
+ * @brief Reads the colours and labels of one schema field.
+ *
+ * The version list asks for `version.status` and `version.artistic_status`.
+ * @param entityName Domain entity, such as `"version"`.
+ * @param fieldKey Field name, such as `"status"`.
+ * @return The maps from the schema. Empty when the entity or field is missing.
+ */
+StatusStyle statusStyle(const std::string &entityName, const std::string &fieldKey);
+
+/**
  * @brief Id of the project the panel is showing.
  * @return The project id, or `-1` when none is selected.
  */

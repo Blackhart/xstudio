@@ -430,6 +430,22 @@ std::vector<std::string> defaultShownProjectTypes() {
     return projectFieldShowList("type");
 }
 
+StatusStyle statusStyle(const std::string &entityName, const std::string &fieldKey) {
+    StatusStyle style;
+    const pms::EntitySpec *entity = pms::sharedSession().schema().entity(entityName);
+    if (!entity) {
+        return style; ///< Unknown entity: the card keeps an empty map.
+    }
+    const pms::FieldSpec *field = entity->field(fieldKey);
+    if (!field) {
+        return style; ///< Unknown field: same empty style.
+    }
+    style.colors = field->colors;
+    style.labels = field->labels;
+    style.defaultColor = field->defaultColor; ///< Colour for a code the map does not name.
+    return style;
+}
+
 std::int64_t selectedProject() {
     return shotbrowserContext().selectedProject();
 }

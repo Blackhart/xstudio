@@ -87,13 +87,13 @@ class VersionNotes : public QObject {
     void showNotMikros();
 
     /**
-     * @brief Creates NotesState, NotesError, NotesJson, StatusColors, and StatusLabels.
+     * @brief Creates NotesState, NotesError, NotesJson, and the note status style attributes.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Publishes the status colour and label maps from the schema once.
+     * @brief Publishes the note status colour, label, and default colour once.
      */
     void publishStatusStyles();
 
@@ -103,6 +103,7 @@ class VersionNotes : public QObject {
     module::JsonAttribute *notes_json_ = nullptr;    ///< `{notes: [...]}`.
     module::JsonAttribute *status_colors_ = nullptr; ///< Code → colour from the schema.
     module::JsonAttribute *status_labels_ = nullptr; ///< Code → accessible name from the schema.
+    module::StringAttribute *status_default_color_ = nullptr; ///< Colour for an unknown note code.
     std::atomic<std::uint64_t> generation_{0}; ///< Bumped on each on_screen_media_changed.
 };
 

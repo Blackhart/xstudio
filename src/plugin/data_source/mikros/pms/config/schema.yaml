@@ -19,7 +19,24 @@ entities:
       id:                     { filter: true,  set: false }
       name:                   { filter: true,  set: true }
       description:            { filter: true,  set: false }
-      status:                 { filter: true,  set: false }
+      status:
+        filter: true
+        set: false
+        default_color: "#546e7a"
+        colors:
+          fin: "#2e7d32"
+          ip: "#ef6c00"
+          hld: "#6d4c41"
+          rdy: "#1565c0"
+          wtg: "#78909c"
+          omt: "#455a64"
+        labels:
+          fin: Final
+          ip: In Progress
+          hld: On Hold
+          rdy: Ready to Start
+          wtg: Waiting to Start
+          omt: Omit
       cut_duration_in_sec:    { filter: true,  set: false }
       estimated_frames_count: { filter: true,  set: false }
       estimated_shots_count:  { filter: true,  set: false }
@@ -36,7 +53,30 @@ entities:
       id:                  { filter: true, set: false }
       name:                { filter: true, set: true }
       description:         { filter: true, set: false }
-      status:              { filter: true, set: false }
+      status:
+        filter: true
+        set: false
+        default_color: "#546e7a"
+        colors:
+          cbb: "#f9a825"
+          fin: "#2e7d32"
+          rtk: "#c62828"
+          ip: "#ef6c00"
+          rdy: "#1565c0"
+          wtg: "#78909c"
+          na: "#78909c"
+          hld: "#6d4c41"
+          omt: "#455a64"
+        labels:
+          cbb: CBB
+          fin: Final
+          rtk: Retake
+          ip: In Progress
+          rdy: Ready to Start
+          wtg: Waiting to Start
+          na: "N/A"
+          hld: On Hold
+          omt: Omit
       cut_duration_in_sec: { filter: true, set: false }
       cut_in:              { filter: true, set: false }
       cut_out:             { filter: true, set: false }
@@ -51,7 +91,28 @@ entities:
       id:          { filter: true, set: false }
       name:        { filter: true, set: true }
       description: { filter: true, set: false }
-      status:      { filter: true, set: false }
+      status:
+        filter: true
+        set: false
+        default_color: "#546e7a"
+        colors:
+          cbb: "#f9a825"
+          cmpt: "#2e7d32"
+          rev: "#00838f"
+          ip: "#ef6c00"
+          hld: "#6d4c41"
+          rdy: "#1565c0"
+          wtg: "#78909c"
+          omt: "#455a64"
+        labels:
+          cbb: CBB
+          cmpt: Complete
+          rev: Pending Review
+          ip: In Progress
+          hld: On Hold
+          rdy: Ready
+          wtg: Waiting to Start
+          omt: Omit
       project:     { filter: true, set: false }
     scope: [project]
 
@@ -88,8 +149,96 @@ entities:
       version_number:    { filter: true,  set: false }
       task:              { filter: true,  set: false }
       step:              { filter: true,  set: false }
-      status:            { filter: true,  set: false }
-      artistic_status:   { filter: true,  set: false }
+      status:
+        filter: true
+        set: false
+        default_color: "#546e7a"
+        colors:
+          wtg: "#78909c"
+          rdy: "#1565c0"
+          todo: "#8d6e63"
+          ip: "#ef6c00"
+          chk: "#1565c0"
+          rtk: "#c62828"
+          rtkd: "#558b2f"
+          hocvfx: "#6a1b9a"
+          artrev: "#5e35b1"
+          dirrev: "#4527a0"
+          rev: "#00838f"
+          cmpt: "#2e7d32"
+          dlypnd: "#ef6c00"
+          dlycpt: "#2e7d32"
+          cbb: "#f9a825"
+          frm: "#0277bd"
+          hld: "#6d4c41"
+          na: "#78909c"
+          omt: "#455a64"
+        labels:
+          wtg: Waiting to Start
+          rdy: Ready
+          todo: Todo
+          ip: In Progress
+          chk: To Check
+          rtk: Retake
+          rtkd: Retake Done
+          hocvfx: Pending HOCA/VFX
+          artrev: Pending Art Director
+          dirrev: Pending Director
+          rev: Pending Review
+          cmpt: Complete
+          dlypnd: Delivery Pending
+          dlycpt: Delivery Complete
+          cbb: CBB
+          frm: On Farm
+          hld: On Hold
+          na: "N/A"
+          omt: Omit
+      artistic_status:
+        filter: true
+        set: false
+        default_color: "#546e7a"
+        colors:
+          wtg: "#78909c"
+          rdy: "#1565c0"
+          todo: "#8d6e63"
+          ip: "#ef6c00"
+          chk: "#1565c0"
+          rtk: "#c62828"
+          rtkd: "#558b2f"
+          hocvfx: "#6a1b9a"
+          artrev: "#5e35b1"
+          dirrev: "#4527a0"
+          rev: "#00838f"
+          cmpt: "#2e7d32"
+          atfn: "#2e7d32"
+          dlypnd: "#ef6c00"
+          dlycpt: "#2e7d32"
+          cbb: "#f9a825"
+          frm: "#0277bd"
+          hld: "#6d4c41"
+          na: "#78909c"
+          omt: "#455a64"
+        labels:
+          wtg: Waiting to Start
+          rdy: Ready
+          todo: Todo
+          ip: In Progress
+          chk: To Check
+          rtk: Retake
+          rtkd: Retake Done
+          hocvfx: Pending HOCA/VFX
+          artrev: Pending Art Director
+          dirrev: Pending Director
+          rev: Pending Review
+          cmpt: Complete
+          atfn: Autofinal
+          dlypnd: Delivery Pending
+          dlycpt: Delivery Complete
+          cbb: CBB
+          frm: On Farm
+          hld: On Hold
+          na: "N/A"
+          omt: Omit
       sites:             { filter: true,  set: false }
       notes:             { filter: true,  set: false }
       open_notes:        { filter: true,  set: false }
@@ -116,6 +265,7 @@ entities:
       status:
         filter: true
         set: false
+        default_color: "#546e7a"
         colors:
           clsd: "#546e7a"
           cmpt: "#2e7d32"

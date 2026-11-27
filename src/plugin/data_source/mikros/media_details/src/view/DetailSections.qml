@@ -23,6 +23,8 @@ Item {
     property string notesError: ""
     property var statusColors: ({})
     property var statusLabels: ({})
+    property string statusDefaultColor: ""
+    property var statusStyles: ({})
 
     signal pageSelected(int index)
 
@@ -65,6 +67,33 @@ Item {
 
     function hasText(value) {
         return textOrEmpty(value) !== ""
+    }
+
+    function styleOf(entityName, fieldKey) {
+        if (!statusStyles || !statusStyles[entityName])
+            return null
+        const entity = statusStyles[entityName]
+        if (!entity || !entity[fieldKey])
+            return null
+        return entity[fieldKey]
+    }
+
+    function statusColor(entityName, fieldKey, code) {
+        const style = styleOf(entityName, fieldKey)
+        if (!style)
+            return ""
+        const key = textOrEmpty(code)
+        if (style.colors && style.colors[key])
+            return String(style.colors[key])
+        return style.defaultColor ? String(style.defaultColor) : ""
+    }
+
+    function statusLabel(entityName, fieldKey, code) {
+        const key = textOrEmpty(code)
+        const style = styleOf(entityName, fieldKey)
+        if (style && style.labels && style.labels[key])
+            return String(style.labels[key])
+        return key
     }
 
     function hasNumber(value) {
@@ -210,9 +239,9 @@ Item {
     function statusLine() {
         const parts = []
         if (hasText(status.technical))
-            parts.push("tech " + String(status.technical))
+            parts.push("tech " + statusLabel("version", "status", status.technical))
         if (hasText(status.artistic))
-            parts.push("art " + String(status.artistic))
+            parts.push("art " + statusLabel("version", "artistic_status", status.artistic))
         return parts.join(" · ")
     }
 
@@ -243,6 +272,32 @@ Item {
 
     function durationSec(value) {
         return hasNumber(value) ? String(value) + " s" : ""
+    }
+
+    component StatusField: RowLayout {
+        id: statusField
+
+        property string entityName: ""
+        property string fieldKey: "status"
+        property string code: ""
+
+        Layout.fillWidth: true
+        spacing: 8
+        visible: root.hasText(code)
+
+        Text {
+            Layout.preferredWidth: 88
+            text: "Status"
+            color: XsStyleSheet.secondaryTextColor
+            font.pixelSize: XsStyleSheet.fontSize
+            font.family: XsStyleSheet.fontFamily
+        }
+
+        StatusBadge {
+            code: statusField.code
+            label: root.statusLabel(statusField.entityName, statusField.fieldKey, statusField.code)
+            tone: root.statusColor(statusField.entityName, statusField.fieldKey, statusField.code)
+        }
     }
 
     ColumnLayout {
@@ -429,10 +484,14 @@ Item {
                             StatusBadge {
                                 visible: hasText(status.technical)
                                 code: hasText(status.technical) ? String(status.technical) : ""
+                                label: root.statusLabel("version", "status", status.technical)
+                                tone: root.statusColor("version", "status", status.technical)
                             }
                             StatusBadge {
                                 visible: hasText(status.artistic)
                                 code: hasText(status.artistic) ? String(status.artistic) : ""
+                                label: root.statusLabel("version", "artistic_status", status.artistic)
+                                tone: root.statusColor("version", "artistic_status", status.artistic)
                             }
                             Rectangle {
                                 visible: hasText(version.step)
@@ -689,11 +748,9 @@ Item {
                             font.bold: true
                             onEntityClicked: function(type, id) { root.openEntity(type, id) }
                         }
-                        DetailFieldRow {
-                            label: "Status"
-                            value: textOrEmpty(shot.status)
-                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
-                            onCopyRequested: function(text) { root.copyText(text) }
+                        StatusField {
+                            entityName: "shot"
+                            code: root.textOrEmpty(shot.status)
                         }
                         DetailFieldRow {
                             label: "Description"
@@ -739,11 +796,9 @@ Item {
                             font.bold: true
                             onEntityClicked: function(type, id) { root.openEntity(type, id) }
                         }
-                        DetailFieldRow {
-                            label: "Status"
-                            value: textOrEmpty(asset.status)
-                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
-                            onCopyRequested: function(text) { root.copyText(text) }
+                        StatusField {
+                            entityName: "asset"
+                            code: root.textOrEmpty(asset.status)
                         }
                         DetailFieldRow {
                             label: "Description"
@@ -777,11 +832,9 @@ Item {
                             font.bold: true
                             onEntityClicked: function(type, id) { root.openEntity(type, id) }
                         }
-                        DetailFieldRow {
-                            label: "Status"
-                            value: textOrEmpty(sequence.status)
-                            onEntityClicked: function(type, id) { root.openEntity(type, id) }
-                            onCopyRequested: function(text) { root.copyText(text) }
+                        StatusField {
+                            entityName: "sequence"
+                            code: root.textOrEmpty(sequence.status)
                         }
                         DetailFieldRow {
                             label: "Description"
@@ -995,6 +1048,7 @@ Item {
             notesError: root.notesError
             statusColors: root.statusColors
             statusLabels: root.statusLabels
+            statusDefaultColor: root.statusDefaultColor
             shotgridBaseUrl: root.shotgridBaseUrl
             onShotgridLink: root.onShotgridLink
         }

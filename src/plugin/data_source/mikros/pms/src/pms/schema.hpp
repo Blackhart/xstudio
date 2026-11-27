@@ -20,6 +20,7 @@ class ShotGridMapping;
  * and is loaded for later slices; this slice does not write fields.
  * `show` lists the values a UI filter checks on start. Empty means no filter.
  * `colors` and `labels` name a code, such as a note status. Empty means none.
+ * `defaultColor` is the colour for a code that is not in `colors`. Empty means none.
  * `type` and `ops` stay empty until `applyMapping` copies them from the
  * ShotGrid mapping. The schema file does not name a type.
  */
@@ -34,6 +35,7 @@ struct FieldSpec {
     std::vector<std::string> show; ///< Values the UI checks on start. Empty = no filter.
     std::map<std::string, std::string> colors; ///< Code → colour, such as `opn` → `#f9a825`.
     std::map<std::string, std::string> labels; ///< Code → accessible name, such as `opn` → `Open`.
+    std::string defaultColor; ///< Colour when the code is missing from `colors`. Empty means none.
 };
 
 /**

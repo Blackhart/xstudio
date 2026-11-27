@@ -133,6 +133,14 @@ Item {
     }
 
     XsAttributeValue {
+        id: statusStylesAttr
+        attributeTitle: "StatusStyles"
+        model: attributes
+    }
+    readonly property var statusStyles: statusStylesAttr.value && typeof statusStylesAttr.value === "object"
+            ? statusStylesAttr.value : ({})
+
+    XsAttributeValue {
         id: selectedProject
         attributeTitle: "SelectedProject"
         model: attributes
@@ -304,6 +312,7 @@ Item {
                 id: versionCard
                 visible: row.versionLine
                 modelData: row.modelData
+                statusStyles: playlists.statusStyles
                 indent: XsStyleSheet.widgetStdHeight / 1.2
                 chosen: versionCard.versionId !== 0
                         && versionCard.versionId === playlists.previewedVersionId

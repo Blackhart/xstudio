@@ -103,6 +103,9 @@ Schema Schema::load(const std::string &path) {
             }
             loadStringMap(meta["colors"], spec.colors, spec.key + " colors");
             loadStringMap(meta["labels"], spec.labels, spec.key + " labels");
+            if (meta["default_color"]) {
+                spec.defaultColor = meta["default_color"].as<std::string>(); ///< Unknown codes.
+            }
             entity.fields.push_back(std::move(spec));
         }
         schema.entities_.push_back(std::move(entity));

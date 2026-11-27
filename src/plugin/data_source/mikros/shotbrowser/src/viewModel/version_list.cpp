@@ -174,6 +174,43 @@ class VersionTranscodedHandler : public caf::detail::behavior_impl {
 // Construction
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/**
+ * @brief Turns one field style into the object QML looks up.
+ * @param style Colours, labels, and the fallback colour.
+ * @return `{colors, labels, defaultColor}`.
+ */
+nlohmann::json styleJson(const dal::StatusStyle &style) {
+    nlohmann::json colors = nlohmann::json::object();
+    for (const auto &entry : style.colors) {
+        colors[entry.first] = entry.second; ///< One ShotGrid code.
+    }
+    nlohmann::json labels = nlohmann::json::object();
+    for (const auto &entry : style.labels) {
+        labels[entry.first] = entry.second;
+    }
+    return nlohmann::json{
+        {"colors", std::move(colors)},
+        {"labels", std::move(labels)},
+        {"defaultColor", style.defaultColor}};
+}
+
+/**
+ * @brief Status styles the version cards show.
+ * @return `version.status` and `version.artistic_status` only.
+ */
+nlohmann::json versionStatusStyles() {
+    nlohmann::json version = nlohmann::json::object();
+    version["status"] = styleJson(dal::statusStyle("version", "status"));
+    version["artistic_status"] = styleJson(dal::statusStyle("version", "artistic_status"));
+    nlohmann::json styles = nlohmann::json::object();
+    styles["version"] = std::move(version);
+    return styles;
+}
+
+} // namespace
+
 VersionList::VersionList(plugin::StandardPlugin &panel) : QObject(nullptr), panel_(panel) {
     initQmlAttributes(panel);
 }
@@ -195,6 +232,9 @@ void VersionList::initQmlAttributes(plugin::StandardPlugin &panel) {
     open_version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
     preview_version_ = panel.add_string_attribute("PreviewVersion", "PreviewVersion", "");
     preview_version_->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
+    module::JsonAttribute *status_styles = panel.add_json_attribute(
+        "StatusStyles", "StatusStyles", versionStatusStyles()); ///< Fixed for the process.
+    status_styles->expose_in_ui_attrs_group("mikros_shotbrowser_attributes");
 }
 
 std::optional<std::string> VersionList::activeSearchQuery() const {

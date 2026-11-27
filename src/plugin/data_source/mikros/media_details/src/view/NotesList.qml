@@ -14,6 +14,7 @@ Item {
     property string notesError: ""
     property var statusColors: ({})
     property var statusLabels: ({})
+    property string statusDefaultColor: ""
     property string shotgridBaseUrl: ""
     property var onShotgridLink: null
     property string previewSource: ""
@@ -50,6 +51,8 @@ Item {
         const key = textOrEmpty(code)
         if (statusColors && statusColors[key])
             return String(statusColors[key])
+        if (statusDefaultColor)
+            return String(statusDefaultColor)
         return "#546e7a"
     }
 

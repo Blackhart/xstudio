@@ -71,6 +71,14 @@ Item {
         model: attributes
     }
 
+    XsAttributeValue {
+        id: statusStylesAttr
+        attributeTitle: "StatusStyles"
+        model: attributes
+    }
+    readonly property var statusStyles: statusStylesAttr.value && typeof statusStylesAttr.value === "object"
+            ? statusStylesAttr.value : ({})
+
     CatalogValue { id: footer; title: "VersionListFooter"; source: attributes }
 
     XsAttributeValue {
@@ -157,6 +165,7 @@ Item {
 
         VersionCard {
             id: card
+            statusStyles: versions.statusStyles
             chosen: card.versionId !== 0 && card.versionId === versions.previewedVersionId
             onPreviewCurrent: {
                 versions.previewedVersionId = card.versionId

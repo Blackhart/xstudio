@@ -6,6 +6,7 @@
 
 #include "viewModel/media_details.hpp"
 
+#include "model/dal/dal.hpp"
 #include "model/log.hpp"
 #include "utility/detail_load.hpp"
 #include "utility/thumbnails.hpp"
@@ -64,10 +65,47 @@ nlohmann::json publicDetailJson(nlohmann::json payload) {
     return payload;
 }
 
+/**
+ * @brief Turns one field style into the object QML looks up.
+ * @param style Colours, labels, and the fallback colour.
+ * @return `{colors, labels, defaultColor}`.
+ */
+nlohmann::json styleJson(const dal::StatusStyle &style) {
+    nlohmann::json colors = nlohmann::json::object();
+    for (const auto &entry : style.colors) {
+        colors[entry.first] = entry.second; ///< One ShotGrid code.
+    }
+    nlohmann::json labels = nlohmann::json::object();
+    for (const auto &entry : style.labels) {
+        labels[entry.first] = entry.second;
+    }
+    return nlohmann::json{
+        {"colors", std::move(colors)},
+        {"labels", std::move(labels)},
+        {"defaultColor", style.defaultColor}};
+}
+
+/**
+ * @brief Status styles the detail panel shows.
+ * @return sequence, shot, asset, and both version status fields.
+ */
+nlohmann::json detailStatusStyles() {
+    nlohmann::json styles = nlohmann::json::object();
+    styles["sequence"] = {{"status", styleJson(dal::statusStyle("sequence", "status"))}};
+    styles["shot"] = {{"status", styleJson(dal::statusStyle("shot", "status"))}};
+    styles["asset"] = {{"status", styleJson(dal::statusStyle("asset", "status"))}};
+    nlohmann::json version = nlohmann::json::object();
+    version["status"] = styleJson(dal::statusStyle("version", "status"));
+    version["artistic_status"] = styleJson(dal::statusStyle("version", "artistic_status"));
+    styles["version"] = std::move(version); ///< Technical and artistic stay separate.
+    return styles;
+}
+
 } // namespace
 
 MediaDetails::MediaDetails(plugin::StandardPlugin &panel) : QObject(nullptr), panel_(panel) {
     initQmlAttributes(panel);
+    publishStatusStyles();
     setDefaultValues();
 }
 
@@ -80,12 +118,19 @@ void MediaDetails::initQmlAttributes(plugin::StandardPlugin &panel) {
     detail_error_->expose_in_ui_attrs_group(kAttrsGroup);
     detail_json_ = panel.add_json_attribute("DetailJson", "DetailJson", nlohmann::json::object());
     detail_json_->expose_in_ui_attrs_group(kAttrsGroup);
+    status_styles_ =
+        panel.add_json_attribute("StatusStyles", "StatusStyles", nlohmann::json::object());
+    status_styles_->expose_in_ui_attrs_group(kAttrsGroup);
     shotgrid_base_url_ = panel.add_string_attribute("ShotgridBaseUrl", "ShotgridBaseUrl", "");
     shotgrid_base_url_->expose_in_ui_attrs_group(kAttrsGroup);
     shotgrid_base_url_->set_preference_path(
         "/plugin/data_source/mikros_media_details/shotgrid_url");
     open_shotgrid_url_ = panel.add_string_attribute("OpenShotgridUrl", "OpenShotgridUrl", "");
     open_shotgrid_url_->expose_in_ui_attrs_group(kAttrsGroup);
+}
+
+void MediaDetails::publishStatusStyles() {
+    status_styles_->set_value(detailStatusStyles()); ///< Cards are fixed for the process.
 }
 
 void MediaDetails::setDefaultValues() {

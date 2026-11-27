@@ -131,10 +131,15 @@ class MediaDetails : public QObject {
     void openShotgridUrl(const std::string &url);
 
     /**
-     * @brief Creates the detail attributes, including OpenShotgridUrl.
+     * @brief Creates the detail attributes, including OpenShotgridUrl and StatusStyles.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
+
+    /**
+     * @brief Publishes sequence, shot, asset, and version status styles once.
+     */
+    void publishStatusStyles();
 
     /**
      * @brief Applies env-backed defaults after the attributes exist.
@@ -154,6 +159,7 @@ class MediaDetails : public QObject {
     module::StringAttribute *detail_state_ = nullptr; ///< empty / not_mikros / loading / ready / error.
     module::StringAttribute *detail_error_ = nullptr; ///< Error text when state is error.
     module::JsonAttribute *detail_json_ = nullptr;    ///< Full UI payload.
+    module::JsonAttribute *status_styles_ = nullptr; ///< Entity → field → colours, labels, default.
     module::StringAttribute *shotgrid_base_url_ = nullptr; ///< Pref for ShotGrid links.
     module::StringAttribute *open_shotgrid_url_ = nullptr; ///< URL QML writes on a link click.
     std::atomic<std::uint64_t> generation_{0}; ///< Bumped on each on_screen_media_changed.

@@ -73,6 +73,23 @@ std::optional<poco::ProjectDetail> findProjectDetailById(std::int64_t projectId)
 std::vector<poco::NoteDetail> findNotesByVersionId(std::int64_t versionId);
 
 /**
+ * @brief Colour map, label map, and fallback colour of one schema field.
+ */
+struct StatusStyle {
+    std::map<std::string, std::string> colors; ///< Code → colour. Empty when the field has none.
+    std::map<std::string, std::string> labels; ///< Code → label. Empty when the field has none.
+    std::string defaultColor; ///< Colour for a code missing from `colors`. Empty when unset.
+};
+
+/**
+ * @brief Reads the colours and labels of one schema field.
+ * @param entityName Domain entity, such as `"version"`.
+ * @param fieldKey Field name, such as `"status"`.
+ * @return The maps from the schema. Empty when the entity or field is missing.
+ */
+StatusStyle statusStyle(const std::string &entityName, const std::string &fieldKey);
+
+/**
  * @brief Colour of each note status code, from the schema.
  * @return Code → colour. Empty when the note entity has no colours.
  */
@@ -83,5 +100,11 @@ std::map<std::string, std::string> noteStatusColors();
  * @return Code → label. Empty when the note entity has no labels.
  */
 std::map<std::string, std::string> noteStatusLabels();
+
+/**
+ * @brief Fallback colour of a note status code that is not in the colour map.
+ * @return The schema `default_color`, or empty when the note status field is missing.
+ */
+std::string noteStatusDefaultColor();
 
 } // namespace xstudio::mikros_media_details::dal

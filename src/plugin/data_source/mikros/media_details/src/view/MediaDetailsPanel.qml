@@ -97,6 +97,20 @@ Item {
     }
     property alias statusLabels: statusLabelsAttr.value
 
+    XsAttributeValue {
+        id: statusDefaultColorAttr
+        attributeTitle: "StatusDefaultColor"
+        model: noteAttrs
+    }
+    property alias statusDefaultColor: statusDefaultColorAttr.value
+
+    XsAttributeValue {
+        id: statusStylesAttr
+        attributeTitle: "StatusStyles"
+        model: attrs
+    }
+    property alias statusStyles: statusStylesAttr.value
+
     Rectangle {
         anchors.fill: parent
         color: XsStyleSheet.panelBgColor
@@ -132,6 +146,8 @@ Item {
             notesError: panel.notesError || ""
             statusColors: panel.statusColors && typeof panel.statusColors === "object" ? panel.statusColors : ({})
             statusLabels: panel.statusLabels && typeof panel.statusLabels === "object" ? panel.statusLabels : ({})
+            statusDefaultColor: panel.statusDefaultColor || ""
+            statusStyles: panel.statusStyles && typeof panel.statusStyles === "object" ? panel.statusStyles : ({})
         }
     }
 }
