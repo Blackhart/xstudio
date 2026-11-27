@@ -107,6 +107,24 @@ caf::actor panelActor(plugin::StandardPlugin &panel) {
 }
 
 /**
+ * @brief Copies one object from a patch onto the same key in DetailJson.
+ * @param detail JSON already published.
+ * @param key Section name, such as `version` or `files`.
+ * @param patch Worker payload that may contain that section.
+ */
+void overlaySection(nlohmann::json &detail, const char *key, const nlohmann::json &patch) {
+    if (!patch.contains(key) || !patch[key].is_object()) {
+        return; ///< This catalog does not touch that section.
+    }
+    if (!detail.contains(key) || !detail[key].is_object()) {
+        detail[key] = nlohmann::json::object();
+    }
+    for (auto field = patch[key].begin(); field != patch[key].end(); ++field) {
+        detail[key][field.key()] = field.value(); ///< Leave siblings such as files.image.
+    }
+}
+
+/**
  * @brief Strips the private `_thumb` helper object before publishing.
  * @param payload Worker JSON that may contain `_thumb`.
  * @return Copy without `_thumb`.
@@ -308,6 +326,37 @@ void MediaDetails::applyThumbnail(
         });
 }
 
+void MediaDetails::applyParentSections(const nlohmann::json &payload) {
+    if (!detail_json_) {
+        return;
+    }
+    nlohmann::json json = detail_json_->value();
+    if (!json.is_object()) {
+        json = nlohmann::json::object();
+    }
+    const char *sectionKeys[] = {"project", "sequence", "shot", "asset"};
+    for (const char *key : sectionKeys) {
+        if (payload.contains(key)) {
+            json[key] = payload[key]; ///< Full section replaces the link-only object.
+        }
+    }
+    detail_json_->set_value(std::move(json)); ///< DetailState stays ready.
+}
+
+void MediaDetails::applyExtraSections(const nlohmann::json &payload) {
+    if (!detail_json_) {
+        return;
+    }
+    nlohmann::json json = detail_json_->value();
+    if (!json.is_object()) {
+        json = nlohmann::json::object();
+    }
+    overlaySection(json, "version", payload);
+    overlaySection(json, "files", payload);
+    overlaySection(json, "sequence", payload); ///< shotCount joins the sequence already shown.
+    detail_json_->set_value(std::move(json)); ///< DetailState stays ready.
+}
+
 void MediaDetails::applyThumbUrl(const std::string &fileUrl) {
     if (fileUrl.empty() || !detail_json_) {
         return;
@@ -330,6 +379,14 @@ void MediaDetails::applyWorkerPage(
     }
     if (catalog == "version_thumb") {
         applyThumbUrl(payload.value("image", std::string{}));
+        return;
+    }
+    if (catalog == "version_detail_parents") {
+        applyParentSections(payload); ///< Names already showing gain the full parent rows.
+        return;
+    }
+    if (catalog == "version_detail_extra") {
+        applyExtraSections(payload); ///< Summary fields arrive after ready.
         return;
     }
     if (catalog == "version_detail_error") {

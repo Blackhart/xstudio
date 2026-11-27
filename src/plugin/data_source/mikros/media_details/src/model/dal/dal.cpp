@@ -224,9 +224,23 @@ const pms::FieldSpec *noteStatusField() {
 }
 
 /**
+ * @brief Maps the slow version fields onto a VersionDetailExtra.
+ * @param record Domain row from the follow-up find.
+ * @return Summary fields, sites, and playlists.
+ */
+poco::VersionDetailExtra mapVersionExtra(const pms::Record &record) {
+    poco::VersionDetailExtra row;
+    row.version_number = optionalInt(record, "version_number");
+    row.open_notes_count = optionalInt(record, "open_notes_count");
+    row.sites = joinLinkNames(record, "sites");
+    row.playlists = playlistLinksFromRecord(record);
+    return row;
+}
+
+/**
  * @brief Maps one pms record onto a VersionDetail POCO.
  * @param record Domain row from find.
- * @return Filled detail row.
+ * @return Filled detail row. Slow fields stay empty on the first read.
  */
 poco::VersionDetail mapVersion(const pms::Record &record) {
     poco::VersionDetail row;
@@ -365,20 +379,16 @@ std::optional<poco::VersionDetail> findVersionDetailById(std::int64_t versionId)
                                        "client_reviewed",
                                        "client_approved",
                                        "is_latest",
-                                       "version_number",
                                        "task",
                                        "step",
                                        "status",
                                        "artistic_status",
-                                       "sites",
-                                       "open_notes_count",
                                        "synced_to_client",
                                        "work_source_scene",
                                        "frames",
                                        "movie",
                                        "uploaded_movie",
                                        "image",
-                                       "playlists",
                                        "project",
                                        "entity"})
                                    .Limit(1)
@@ -387,6 +397,31 @@ std::optional<poco::VersionDetail> findVersionDetailById(std::int64_t versionId)
             return std::nullopt;
         }
         return mapVersion(page.rows.front());
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return std::nullopt;
+    }
+}
+
+std::optional<poco::VersionDetailExtra> findVersionDetailExtraById(std::int64_t versionId) {
+    if (versionId <= 0) {
+        return std::nullopt;
+    }
+    try {
+        using namespace pms::version;
+        const pms::Page page = pms::Version()
+                                   .Where(id == versionId)
+                                   .Fields(std::vector<std::string>{
+                                       "version_number",
+                                       "open_notes_count",
+                                       "sites",
+                                       "playlists"})
+                                   .Limit(1)
+                                   .find(pms::sharedSession());
+        if (page.rows.empty()) {
+            return std::nullopt;
+        }
+        return mapVersionExtra(page.rows.front());
     } catch (const std::exception &error) {
         trace::failure(error);
         return std::nullopt;
@@ -439,7 +474,6 @@ std::optional<poco::SequenceDetail> findSequenceDetailById(std::int64_t sequence
                                        cutDurationInSec,
                                        estimatedFramesCount,
                                        estimatedShotsCount,
-                                       shotCount,
                                        sequenceOrder,
                                        project)
                                    .Limit(1)
@@ -448,6 +482,27 @@ std::optional<poco::SequenceDetail> findSequenceDetailById(std::int64_t sequence
             return std::nullopt;
         }
         return mapSequence(page.rows.front());
+    } catch (const std::exception &error) {
+        trace::failure(error);
+        return std::nullopt;
+    }
+}
+
+std::optional<std::int64_t> findSequenceShotCountById(std::int64_t sequenceId) {
+    if (sequenceId <= 0) {
+        return std::nullopt;
+    }
+    try {
+        using namespace pms::sequence;
+        const pms::Page page = pms::Sequence()
+                                   .Where(id == sequenceId)
+                                   .Fields(id, name, shotCount)
+                                   .Limit(1)
+                                   .find(pms::sharedSession());
+        if (page.rows.empty()) {
+            return std::nullopt;
+        }
+        return optionalInt(page.rows.front(), "shot_count"); ///< Summary stays off the section read.
     } catch (const std::exception &error) {
         trace::failure(error);
         return std::nullopt;

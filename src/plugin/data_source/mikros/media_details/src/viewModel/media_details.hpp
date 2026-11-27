@@ -24,7 +24,7 @@ namespace xstudio::mikros_media_details {
  * @brief View model of the Media Details panel.
  *
  * Clears QML, bumps generation, reads the Mikros stamp, launches a detached
- * CAF worker for version + parents, and applies the result from the worker mail.
+ * CAF worker, and applies the light detail then the parent and slow-field patches.
  */
 class MediaDetails : public QObject {
     Q_OBJECT
@@ -66,9 +66,12 @@ class MediaDetails : public QObject {
      *
      * Called from the panel event handler. Publishes ready/error details, then
      * starts the thumbnail resolve for a successful version payload.
+     * `version_detail_parents` and `version_detail_extra` merge into the JSON
+     * already showing and leave DetailState ready.
      * @param generation Request id from the worker.
-     * @param catalog `version_detail`, `version_detail_error`, or `version_thumb`.
-     * @param payload Detail JSON, error message, or `{image}` thumb URL.
+     * @param catalog `version_detail`, `version_detail_error`, `version_detail_parents`,
+     *        `version_detail_extra`, or `version_thumb`.
+     * @param payload Detail JSON, a section patch, an error message, or `{image}`.
      */
     void applyWorkerPage(
         std::uint64_t generation, const std::string &catalog, const utility::JsonStore &payload);
@@ -123,6 +126,20 @@ class MediaDetails : public QObject {
      * @param fileUrl Local cache URL from `scheduleOneThumb`.
      */
     void applyThumbUrl(const std::string &fileUrl);
+
+    /**
+     * @brief Replaces the parent sections without changing DetailState.
+     * @param payload `{project, sequence, shot, asset}` from the parent walk.
+     */
+    void applyParentSections(const nlohmann::json &payload);
+
+    /**
+     * @brief Overlays slow fields onto the published DetailJson.
+     *
+     * Sibling keys stay, including `files.image` written by the thumbnail.
+     * @param payload `{version, files, sequence}` from the slow-field read.
+     */
+    void applyExtraSections(const nlohmann::json &payload);
 
     /**
      * @brief Opens one ShotGrid page in the desktop browser.

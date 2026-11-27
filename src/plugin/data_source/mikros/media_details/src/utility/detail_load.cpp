@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file utility/detail_load.cpp
- * @brief Detached media-detail actor: version find, parent walk, panel mail.
+ * @brief Detached media-detail actor: light version find, then parents and slow fields.
  */
 
 #include "utility/detail_load.hpp"
@@ -44,6 +44,7 @@ struct ParentDetails {
     nlohmann::json shot = nlohmann::json::object();     ///< Shot section when present.
     nlohmann::json asset = nlohmann::json::object();    ///< Asset section when present.
     std::int64_t project_id = 0; ///< Resolved project id for thumb cache.
+    std::int64_t sequence_id = 0; ///< Sequence whose shot count is loaded later.
 };
 
 /**
@@ -176,12 +177,39 @@ void sendDetail(
 }
 
 /**
- * @brief Loads one version row by id.
+ * @brief Loads one version row by id, without the slow ShotGrid fields.
  * @param versionId ShotGrid version id.
  * @return The row when found.
  */
 std::optional<poco::VersionDetail> loadVersionDetailsFromId(std::int64_t versionId) {
     return dal::findVersionDetailById(versionId);
+}
+
+/**
+ * @brief Fills parent sections from the links already on the version.
+ * @param version Loaded version row.
+ * @return `{id,name}` sections. The full parent walk replaces them later.
+ */
+ParentDetails linkParentsFromVersion(const poco::VersionDetail &version) {
+    ParentDetails parents;
+    parents.project_id = version.project_id;
+
+    const std::string &entityType = version.entity_type;
+    if (entityType == "Shot") {
+        parents.shot = namedObject(version.entity_id, version.entity_name);
+    } else if (entityType == "Asset") {
+        parents.asset = namedObject(version.entity_id, version.entity_name);
+    } else if (entityType == "Sequence") {
+        parents.sequence = namedObject(version.entity_id, version.entity_name);
+    } else if (entityType == "Project" && version.entity_id > 0) {
+        parents.project_id = version.entity_id; ///< The version entity is the project.
+    }
+
+    const std::string &projectName = (entityType == "Project" && version.project_name.empty())
+                                          ? version.entity_name
+                                          : version.project_name;
+    parents.project = namedObject(parents.project_id, projectName);
+    return parents;
 }
 
 /**
@@ -233,6 +261,7 @@ void loadShotParentDetailsFromId(
     }
     if (const auto shotRow = dal::findShotDetailById(shotId)) {
         parents.shot = shotJson(*shotRow);
+        parents.sequence_id = shotRow->sequence_id; ///< Shot count waits for the extra read.
         const std::int64_t projectId = loadSequenceDetailsFromId(
             shotRow->sequence_id, shotRow->sequence_name, parents.sequence);
         if (projectId > 0) {
@@ -279,6 +308,7 @@ ParentDetails loadParentDetailsFromVersion(const poco::VersionDetail &version) {
     } else if (entityType == "Asset") {
         loadAssetParentDetailsFromId(version.entity_id, version.entity_name, parents);
     } else if (entityType == "Sequence") {
+        parents.sequence_id = version.entity_id; ///< Shot count waits for the extra read.
         const std::int64_t projectId = loadSequenceDetailsFromId(
             version.entity_id, version.entity_name, parents.sequence);
         if (projectId > 0) {
@@ -356,6 +386,94 @@ nlohmann::json assembleDetailJson(
     return payload;
 }
 
+/**
+ * @brief Builds the parent sections mailed after the panel is showing.
+ * @param parents Full parent walk.
+ * @return `{project, sequence, shot, asset}`.
+ */
+nlohmann::json parentSectionsJson(const ParentDetails &parents) {
+    return nlohmann::json{
+        {"project", parents.project},
+        {"sequence", parents.sequence},
+        {"shot", parents.shot},
+        {"asset", parents.asset}};
+}
+
+/**
+ * @brief Builds the slow fields mailed after the parent sections.
+ * @param extra Summary fields, sites, and playlists.
+ * @param shotCount Sequence shot count when a sequence was resolved.
+ * @return Partial sections. Absent shot count omits `sequence`.
+ */
+nlohmann::json extraSectionsJson(
+    const poco::VersionDetailExtra &extra, const std::optional<std::int64_t> &shotCount) {
+    nlohmann::json payload = nlohmann::json{
+        {"version",
+         {{"versionNumber", extra.version_number},
+          {"playlists", playlistsJson(extra.playlists)}}},
+        {"files", {{"sites", extra.sites}, {"openNotesCount", extra.open_notes_count}}}};
+    if (shotCount) {
+        payload["sequence"] = {{"shotCount", *shotCount}}; ///< Overlay keeps the other sequence fields.
+    }
+    return payload;
+}
+
+/**
+ * @brief Loads full parents and mails them. A failure leaves the link names on screen.
+ * @param request Panel and request id of the load already showing.
+ * @param version Loaded version row.
+ * @return Sequence id for the shot-count read, or 0 when none was resolved.
+ */
+std::int64_t publishParentDetails(
+    const MediaDetailLoadRequest &request, const poco::VersionDetail &version) {
+    try {
+        const ParentDetails parents = loadParentDetailsFromVersion(version);
+        sendDetail(
+            request.panel,
+            request.request_id,
+            "version_detail_parents",
+            utility::JsonStore(parentSectionsJson(parents)));
+        return parents.sequence_id;
+    } catch (const std::exception &error) {
+        log::failure(error); ///< The panel stays ready with the link names.
+        return 0;
+    }
+}
+
+/**
+ * @brief Loads slow version fields and the sequence shot count, then mails them.
+ * @param request Panel and request id of the load already showing.
+ * @param versionId Version already on screen.
+ * @param sequenceId Sequence from the parent walk. 0 skips the shot count.
+ */
+void publishExtraDetails(
+    const MediaDetailLoadRequest &request, std::int64_t versionId, std::int64_t sequenceId) {
+    try {
+        nlohmann::json payload = nlohmann::json::object();
+        if (const auto extra = dal::findVersionDetailExtraById(versionId)) {
+            std::optional<std::int64_t> shotCount;
+            if (sequenceId > 0) {
+                shotCount = dal::findSequenceShotCountById(sequenceId); ///< Summary, after the section.
+            }
+            payload = extraSectionsJson(*extra, shotCount);
+        } else if (sequenceId > 0) {
+            if (const auto shotCount = dal::findSequenceShotCountById(sequenceId)) {
+                payload = {{"sequence", {{"shotCount", *shotCount}}}};
+            }
+        }
+        if (payload.empty()) {
+            return; ///< Nothing new to merge. The panel keeps the light payload.
+        }
+        sendDetail(
+            request.panel,
+            request.request_id,
+            "version_detail_extra",
+            utility::JsonStore(std::move(payload)));
+    } catch (const std::exception &error) {
+        log::failure(error); ///< The panel stays ready without the slow fields.
+    }
+}
+
 std::mutex parkedMutex; ///< Serializes park and take. The actor runs on another thread.
 std::uint64_t nextToken = 0; ///< Zero is never issued. A missing take stays distinguishable.
 std::unordered_map<std::uint64_t, std::shared_ptr<MediaDetailLoadRequest>> parked;
@@ -399,26 +517,32 @@ void launchMediaDetailLoad(caf::actor_system &system, MediaDetailLoadRequest req
 void executeMediaDetailLoad(const MediaDetailLoadRequest &request) {
     nlohmann::json payload = nlohmann::json::object();
     std::string catalog = "version_detail";
+    std::optional<poco::VersionDetail> version;
     try {
-        const std::optional<poco::VersionDetail> version =
-            loadVersionDetailsFromId(request.version_id);
+        version = loadVersionDetailsFromId(request.version_id); ///< Scalars and links only.
         if (!version) {
             catalog = "version_detail_error";
             payload = {{"message", "Version not found"}, {"id", request.version_id}};
         } else {
-            const ParentDetails parents = loadParentDetailsFromVersion(*version);
+            const ParentDetails links = linkParentsFromVersion(*version); ///< Names before the walk.
             const nlohmann::json &mediaDetails = request.media_details;
-            payload = assembleDetailJson(*version, parents, mediaDetails);
+            payload = assembleDetailJson(*version, links, mediaDetails);
         }
     } catch (const std::exception &error) {
         catalog = "version_detail_error";
         payload = {{"message", error.what()}, {"id", request.version_id}};
+        version.reset(); ///< A failed first read has nothing to enrich.
     }
     sendDetail(
         request.panel,
         request.request_id,
         catalog,
         utility::JsonStore(std::move(payload)));
+    if (!version) {
+        return; ///< Parents and slow fields wait until the panel is showing this version.
+    }
+    const std::int64_t sequenceId = publishParentDetails(request, *version);
+    publishExtraDetails(request, version->id, sequenceId);
 }
 
 MediaDetailLoadActor::MediaDetailLoadActor(caf::actor_config &cfg)
@@ -435,7 +559,7 @@ caf::behavior MediaDetailLoadActor::make_behavior() {
                 return;
             }
             try {
-                executeMediaDetailLoad(*request); ///< Blocking find stays on this detached thread.
+                executeMediaDetailLoad(*request); ///< Blocking finds stay on this detached thread.
             } catch (const std::exception &caught) {
                 log::failure(caught); ///< A failed load must not take the panel down.
             }

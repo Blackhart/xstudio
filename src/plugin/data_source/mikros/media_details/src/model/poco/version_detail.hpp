@@ -63,4 +63,17 @@ struct VersionDetail {
     std::string entity_name;           ///< Linked entity name.
 };
 
+/**
+ * @brief Summary fields and heavy links loaded after the panel is showing.
+ *
+ * Kept off the first version read so ShotGrid can answer before it computes
+ * query fields, the sites bubble, and the playlist list.
+ */
+struct VersionDetailExtra {
+    std::int64_t version_number = 0;   ///< Tank version number.
+    std::int64_t open_notes_count = 0; ///< Open notes count.
+    std::string sites;                 ///< ShotGrid site names, joined by commas.
+    std::vector<PlaylistLink> playlists; ///< Playlists that contain this version.
+};
+
 } // namespace xstudio::mikros_media_details::poco

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file utility/detail_load.hpp
- * @brief Detached CAF actor that loads version + parent tree for Media Details.
+ * @brief Detached CAF actor that loads a version, then parents and slow fields.
  */
 #pragma once
 
@@ -57,7 +57,11 @@ class MediaDetailLoadActor : public caf::event_based_actor {
 };
 
 /**
- * @brief Runs the DAL finds, walks parents, and mails the panel.
+ * @brief Mails the light version, then parents, then the slow fields.
+ *
+ * The first mail is `version_detail` or `version_detail_error`. Parents and
+ * slow fields follow only after a version was found. Their failures stay in
+ * the log and do not replace the payload already showing.
  * @param request Version id, request id, and media JSON.
  */
 void executeMediaDetailLoad(const MediaDetailLoadRequest &request);

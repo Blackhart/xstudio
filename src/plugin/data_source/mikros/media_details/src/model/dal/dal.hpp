@@ -28,11 +28,21 @@ namespace xstudio::mikros_media_details::dal {
 void initialize();
 
 /**
- * @brief Loads one version for the detail panel.
+ * @brief Loads one version for the first paint of the detail panel.
+ *
+ * Omits `version_number`, `open_notes_count`, `sites`, and `playlists`.
+ * Those arrive from `findVersionDetailExtraById` after the panel is showing.
  * @param versionId ShotGrid version id stamped on the media.
  * @return The row when found, or nullopt when missing or on failure.
  */
 std::optional<poco::VersionDetail> findVersionDetailById(std::int64_t versionId);
+
+/**
+ * @brief Loads the slow version fields after the panel is already showing.
+ * @param versionId ShotGrid version id already shown.
+ * @return Summary fields, sites, and playlists, or nullopt when missing or on failure.
+ */
+std::optional<poco::VersionDetailExtra> findVersionDetailExtraById(std::int64_t versionId);
 
 /**
  * @brief Loads one shot, including its sequence parent labels.
@@ -43,10 +53,19 @@ std::optional<poco::ShotDetail> findShotDetailById(std::int64_t shotId);
 
 /**
  * @brief Loads one sequence, including its project parent labels.
+ *
+ * Omits `shot_count`. That summary arrives from `findSequenceShotCountById`.
  * @param sequenceId Domain sequence id.
  * @return The row when found, or nullopt when missing or on failure.
  */
 std::optional<poco::SequenceDetail> findSequenceDetailById(std::int64_t sequenceId);
+
+/**
+ * @brief Loads the summary shot count of one sequence.
+ * @param sequenceId Domain sequence id.
+ * @return The count when the row exists, or nullopt when missing or on failure.
+ */
+std::optional<std::int64_t> findSequenceShotCountById(std::int64_t sequenceId);
 
 /**
  * @brief Loads one asset, including its project parent labels.
