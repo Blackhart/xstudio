@@ -19,28 +19,22 @@ TEST_CASE("schema loads the project entity") {
 
     const FieldSpec *id = project->field("id");
     REQUIRE(id != nullptr);
-    CHECK(id->type == "int");
     CHECK(id->filter);
     CHECK_FALSE(id->canSet);
-    CHECK(id->ops.size() == 7);
+    CHECK(id->type.empty()); ///< The schema file does not name a type.
 
     const FieldSpec *name = project->field("name");
     REQUIRE(name != nullptr);
-    CHECK(name->type == "string");
     CHECK(name->filter);
     CHECK(name->canSet);
-    CHECK(name->ops.size() == 8);
-    CHECK(std::find(name->ops.begin(), name->ops.end(), "contains") != name->ops.end());
 
     const FieldSpec *code = project->field("code");
     REQUIRE(code != nullptr);
-    CHECK(code->type == "string");
     CHECK(code->filter);
     CHECK(code->canSet);
 
     const FieldSpec *status = project->field("status");
     REQUIRE(status != nullptr);
-    CHECK(status->type == "string");
     CHECK(status->filter);
     CHECK_FALSE(status->canSet);
     REQUIRE(status->show.size() == 1);
@@ -48,7 +42,6 @@ TEST_CASE("schema loads the project entity") {
 
     const FieldSpec *type = project->field("type");
     REQUIRE(type != nullptr);
-    CHECK(type->type == "string");
     CHECK(type->filter);
     CHECK_FALSE(type->canSet);
     REQUIRE(type->show.size() == 2);
@@ -68,9 +61,7 @@ TEST_CASE("schema loads the sequence entity") {
     CHECK(sequence->field("name") != nullptr);
     const FieldSpec *shots = sequence->field("shots");
     REQUIRE(shots != nullptr);
-    CHECK(shots->type == "links");
-    CHECK_FALSE(shots->filter);
-    CHECK(shots->ops.empty());
+    CHECK(shots->filter);
 }
 
 TEST_CASE("schema loads the shot entity") {
@@ -109,31 +100,18 @@ TEST_CASE("schema loads the playlist entity") {
     CHECK(playlist->field("name") != nullptr);
     const FieldSpec *versions = playlist->field("versions");
     REQUIRE(versions != nullptr);
-    CHECK(versions->type == "links");
-    CHECK_FALSE(versions->filter);
-    CHECK(versions->ops.empty());
+    CHECK(versions->filter);
     const FieldSpec *openNotes = playlist->field("open_notes_count");
     REQUIRE(openNotes != nullptr);
-    CHECK(openNotes->type == "int");
     CHECK(openNotes->filter);
     const FieldSpec *departments = playlist->field("departments");
     REQUIRE(departments != nullptr);
-    CHECK(departments->type == "multi_entity");
     CHECK(departments->filter);
-    CHECK(departments->ops.size() == 3);
-    CHECK(std::find(departments->ops.begin(), departments->ops.end(), "name_contains") !=
-          departments->ops.end());
-    CHECK(std::find(departments->ops.begin(), departments->ops.end(), "name_starts_with") !=
-          departments->ops.end());
-    CHECK(std::find(departments->ops.begin(), departments->ops.end(), "name_is") !=
-          departments->ops.end());
     CHECK(playlist->field("created_at") != nullptr);
     CHECK(playlist->field("category") != nullptr);
     const FieldSpec *author = playlist->field("author");
     REQUIRE(author != nullptr);
-    CHECK(author->type == "entity");
     CHECK(author->filter);
-    CHECK(std::find(author->ops.begin(), author->ops.end(), "name_contains") != author->ops.end());
     CHECK(schema.allowsInParent(*playlist, "project"));
 }
 
@@ -149,7 +127,6 @@ TEST_CASE("schema loads the version entity") {
     CHECK(version->scope[3] == "playlist");
     const FieldSpec *project = version->field("project");
     REQUIRE(project != nullptr);
-    CHECK(project->type == "entity");
     CHECK(schema.allowsInParent(*version, "shot"));
     CHECK(schema.allowsInParent(*version, "sequence"));
     CHECK(schema.allowsInParent(*version, "asset"));
@@ -159,16 +136,14 @@ TEST_CASE("schema loads the version entity") {
 
     const FieldSpec *id = version->field("id");
     REQUIRE(id != nullptr);
-    CHECK(id->type == "int");
     CHECK_FALSE(id->canSet);
 
     const FieldSpec *name = version->field("name");
     REQUIRE(name != nullptr);
-    CHECK(name->type == "string");
+    CHECK(name->filter);
 
     const FieldSpec *image = version->field("image");
     REQUIRE(image != nullptr);
-    CHECK(image->type == "string");
     CHECK_FALSE(image->filter);
     REQUIRE(image->providers.size() == 2);
     CHECK(image->providers[0] == "http");
@@ -176,41 +151,42 @@ TEST_CASE("schema loads the version entity") {
 
     const FieldSpec *author = version->field("author");
     REQUIRE(author != nullptr);
-    CHECK(author->type == "entity");
     CHECK(author->filter);
 
     const FieldSpec *status = version->field("status");
     REQUIRE(status != nullptr);
-    CHECK(status->type == "string");
     CHECK(status->filter);
 
     const FieldSpec *created = version->field("created_at");
     REQUIRE(created != nullptr);
-    CHECK(created->type == "datetime");
-    CHECK(std::find(created->ops.begin(), created->ops.end(), "in_last") != created->ops.end());
+    CHECK(created->filter);
 
-    const FieldSpec *openNotes = version->field("open_notes_count");
+    const FieldSpec *notes = version->field("notes");
+    REQUIRE(notes != nullptr);
+    CHECK(notes->filter);
+
+    const FieldSpec *openNotes = version->field("open_notes");
     REQUIRE(openNotes != nullptr);
-    CHECK(openNotes->type == "int");
     CHECK(openNotes->filter);
+
+    const FieldSpec *openNotesCount = version->field("open_notes_count");
+    REQUIRE(openNotesCount != nullptr);
+    CHECK_FALSE(openNotesCount->filter);
 
     const FieldSpec *sites = version->field("sites");
     REQUIRE(sites != nullptr);
-    CHECK(sites->type == "multi_entity");
     CHECK(sites->filter);
-    CHECK(sites->ops.size() == 3);
-    CHECK(std::find(sites->ops.begin(), sites->ops.end(), "name_contains") != sites->ops.end());
-    CHECK(std::find(sites->ops.begin(), sites->ops.end(), "name_starts_with") != sites->ops.end());
-    CHECK(std::find(sites->ops.begin(), sites->ops.end(), "name_is") != sites->ops.end());
+
+    const FieldSpec *playlists = version->field("playlists");
+    REQUIRE(playlists != nullptr);
+    CHECK(playlists->filter);
 
     const FieldSpec *synced = version->field("synced_to_client");
     REQUIRE(synced != nullptr);
-    CHECK(synced->type == "int");
     CHECK(synced->filter);
 
     const FieldSpec *frames = version->field("frames");
     REQUIRE(frames != nullptr);
-    CHECK(frames->type == "string");
     REQUIRE(frames->providers.size() == 1);
     CHECK(frames->providers[0] == "fileSeq");
 
@@ -291,7 +267,6 @@ TEST_CASE("schema shelf flags and note status colours") {
 
     const FieldSpec *status = note->field("status");
     REQUIRE(status != nullptr);
-    CHECK(status->type == "string");
     CHECK(status->filter);
     CHECK_FALSE(status->canSet);
     CHECK(status->colors.at("opn") == "#f9a825");
@@ -304,6 +279,5 @@ TEST_CASE("schema shelf flags and note status colours") {
 
     const FieldSpec *attachments = note->field("attachments");
     REQUIRE(attachments != nullptr);
-    CHECK(attachments->type == "links");
-    CHECK_FALSE(attachments->filter);
+    CHECK(attachments->filter);
 }

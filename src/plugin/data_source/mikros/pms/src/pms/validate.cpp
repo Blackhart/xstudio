@@ -42,20 +42,34 @@ const char *comparisonName(ExprOp op) {
         return "lt";
     case ExprOp::Between:
         return "between";
+    case ExprOp::NotBetween:
+        return "not_between";
     case ExprOp::InLast:
         return "in_last";
+    case ExprOp::NotInLast:
+        return "not_in_last";
+    case ExprOp::InNext:
+        return "in_next";
+    case ExprOp::NotInNext:
+        return "not_in_next";
     case ExprOp::InCalendarDay:
         return "in_calendar_day";
     case ExprOp::InCalendarWeek:
         return "in_calendar_week";
     case ExprOp::InCalendarMonth:
         return "in_calendar_month";
+    case ExprOp::InCalendarYear:
+        return "in_calendar_year";
     case ExprOp::NameContains:
         return "name_contains";
-    case ExprOp::NameStartsWith:
-        return "name_starts_with";
+    case ExprOp::NameNotContains:
+        return "name_not_contains";
     case ExprOp::NameIs:
         return "name_is";
+    case ExprOp::TypeIs:
+        return "type_is";
+    case ExprOp::TypeIsNot:
+        return "type_is_not";
     case ExprOp::And:
     case ExprOp::Or:
     case ExprOp::Not:
@@ -182,56 +196,122 @@ bool isDateBetween(const Value &value) {
 }
 
 /**
- * @brief Reports whether a leaf value matches the operator and the field type.
- * @param type YAML type name: `string`, `int`, `date`, `datetime`, `entity`, or `multi_entity`.
+ * @brief Reports whether a between leaf has ordered float bounds.
+ * @param value Leaf value. A two-number list from shelf JSON is accepted.
+ * @return True when low <= high.
+ */
+bool isFloatBetween(const Value &value) {
+    if (const auto *bounds = std::get_if<FloatBounds>(&value)) {
+        return bounds->low <= bounds->high;
+    }
+    const auto *items = std::get_if<std::vector<double>>(&value);
+    if (items && items->size() == 2) {
+        return (*items)[0] <= (*items)[1];
+    }
+    const auto *ints = std::get_if<std::vector<std::int64_t>>(&value);
+    return ints && ints->size() == 2 && (*ints)[0] <= (*ints)[1];
+}
+
+/**
+ * @brief Reports whether `type` stores text.
+ * @param type ShotGrid data type.
+ * @return True for text, list, and status_list.
+ */
+bool isTextType(const std::string &type) {
+    return type == "text" || type == "list" || type == "status_list";
+}
+
+/**
+ * @brief Reports whether a link leaf names an id and a type.
+ * @param link Filter link.
+ * @return True when both are present.
+ */
+bool linkIdentityOk(const Link &link) { return link.id != 0 && !link.type.empty(); }
+
+/**
+ * @brief Reports whether a leaf value matches the operator and the ShotGrid type.
+ * @param type ShotGrid data type copied from the mapping.
  * @param op Comparison operator already allowed on that type.
  * @param value Leaf value.
  * @return True when the shape is legal for that pair.
  */
 bool leafValueOk(const std::string &type, ExprOp op, const Value &value) {
+    const bool linkType = type == "entity" || type == "multi_entity";
     if (op == ExprOp::In || op == ExprOp::NotIn) {
-        if (type == "string") {
+        if (isTextType(type) || type == "date_time") {
             const auto *items = std::get_if<std::vector<std::string>>(&value);
             return items && !items->empty();
         }
-        if (type == "int") {
+        if (type == "number") {
             const auto *items = std::get_if<std::vector<std::int64_t>>(&value);
             return items && !items->empty();
         }
+        if (type == "float") {
+            const auto *items = std::get_if<std::vector<double>>(&value);
+            if (items && !items->empty()) {
+                return true;
+            }
+            const auto *ints = std::get_if<std::vector<std::int64_t>>(&value);
+            return ints && !ints->empty();
+        }
+        if (linkType) {
+            const auto *items = std::get_if<std::vector<Link>>(&value);
+            if (!items || items->empty()) {
+                return false;
+            }
+            for (const Link &link : *items) {
+                if (!linkIdentityOk(link)) {
+                    return false;
+                }
+            }
+            return true;
+        }
         return false;
     }
-    if (op == ExprOp::Between) {
-        if (type == "int") {
+    if (op == ExprOp::Between || op == ExprOp::NotBetween) {
+        if (type == "number") {
             return isIntBetween(value);
         }
-        if (type == "date" || type == "datetime") {
+        if (type == "float") {
+            return isFloatBetween(value);
+        }
+        if (type == "date_time") {
             return isDateBetween(value);
         }
         return false;
     }
-    if (op == ExprOp::InLast) {
-        return type == "datetime" && isPeriod(value);
+    if (op == ExprOp::InLast || op == ExprOp::NotInLast || op == ExprOp::InNext ||
+        op == ExprOp::NotInNext) {
+        return type == "date_time" && isPeriod(value);
     }
     if (op == ExprOp::InCalendarDay || op == ExprOp::InCalendarWeek ||
-        op == ExprOp::InCalendarMonth) {
-        return type == "datetime" && std::holds_alternative<std::int64_t>(value);
+        op == ExprOp::InCalendarMonth || op == ExprOp::InCalendarYear) {
+        return type == "date_time" && std::holds_alternative<std::int64_t>(value);
     }
-    if (op == ExprOp::NameContains || op == ExprOp::NameStartsWith || op == ExprOp::NameIs) {
+    if (op == ExprOp::NameContains || op == ExprOp::NameNotContains || op == ExprOp::NameIs ||
+        op == ExprOp::TypeIs || op == ExprOp::TypeIsNot) {
         const auto *text = std::get_if<std::string>(&value);
-        const bool namedLink = type == "entity" || type == "multi_entity";
-        return namedLink && text && !text->empty(); ///< Both link types filter by display name.
+        return linkType && text && !text->empty();
     }
-    if (type == "date" || type == "datetime") {
+    if (type == "date_time") {
         return isCalendarDay(value);
     }
-    if (type == "string") {
+    if (isTextType(type)) {
         return std::holds_alternative<std::string>(value);
     }
-    if (type == "int") {
+    if (type == "number" || type == "summary") {
         return std::holds_alternative<std::int64_t>(value);
     }
-    if (type == "entity" || type == "multi_entity") {
-        return false; ///< Only name_* reach here after the checks above.
+    if (type == "float") {
+        return std::holds_alternative<double>(value) ||
+               std::holds_alternative<std::int64_t>(value);
+    }
+    if (type == "checkbox") {
+        return std::holds_alternative<bool>(value);
+    }
+    if (linkType) {
+        const auto *link = std::get_if<Link>(&value);
+        return link && linkIdentityOk(*link);
     }
     return false;
 }

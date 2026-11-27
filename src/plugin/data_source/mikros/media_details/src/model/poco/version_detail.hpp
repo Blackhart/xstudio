@@ -17,6 +17,7 @@ namespace xstudio::mikros_media_details::poco {
 struct PlaylistLink {
     std::int64_t id = 0; ///< Domain playlist id.
     std::string name;    ///< Domain playlist name.
+    std::string type;    ///< ShotGrid entity type, such as `Playlist`.
 };
 
 /**

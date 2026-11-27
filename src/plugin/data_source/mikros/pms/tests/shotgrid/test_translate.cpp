@@ -232,15 +232,36 @@ TEST_CASE("filters for not_contains between and name_* match the REST shapes") {
     }
     {
         const nlohmann::json filters =
-            filtersOf(Version().Where(nameStartsWith(pms::version::author, "Ad")).ir());
+            filtersOf(Version().Where(nameNotContains(pms::version::author, "Ad")).ir());
         REQUIRE(filters.is_array());
-        CHECK(filters == nlohmann::json::array({"created_by", "name_starts_with", "Ad"}));
+        CHECK(filters == nlohmann::json::array({"created_by", "name_not_contains", "Ad"}));
     }
     {
         const nlohmann::json filters =
             filtersOf(Version().Where(nameIs(pms::version::author, "Ada")).ir());
         REQUIRE(filters.is_array());
         CHECK(filters == nlohmann::json::array({"created_by", "name_is", "Ada"}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(notBetween(pms::version::frameCount, 1, 4)).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters ==
+              nlohmann::json::array({"frame_count", "not_between", nlohmann::json::array({1, 4})}));
+    }
+    {
+        const nlohmann::json filters =
+            filtersOf(Version().Where(typeIs(pms::version::entity, "Shot")).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array({"entity", "type_is", "Shot"}));
+    }
+    {
+        const Link shot{10, "sh010", "Shot", {}};
+        const nlohmann::json filters =
+            filtersOf(Version().Where(pms::version::entity == shot).ir());
+        REQUIRE(filters.is_array());
+        CHECK(filters == nlohmann::json::array(
+                             {"entity", "is", nlohmann::json{{"type", "Shot"}, {"id", 10}}}));
     }
 }
 
@@ -436,16 +457,25 @@ TEST_CASE("version card fields copy entities, open notes count, the client flag,
           {"sg_published_file.PublishedFile.sg_sites",
            nlohmann::json::array({"Paris", "Montreal"})}}}};
     const Record record = shotgridRecordFromJson(row, *version);
-    CHECK(std::get<std::string>(record.at("author")) == "Ada");
+    const Link &author = std::get<Link>(record.at("author"));
+    CHECK(author.id == 7);
+    CHECK(author.name == "Ada");
+    CHECK(author.type == "HumanUser");
     CHECK(std::get<std::string>(record.at("created_at")) == "2024-03-01T12:00:00Z");
     CHECK(std::get<std::string>(record.at("frame_range")) == "1001-1100");
     CHECK(std::get<std::string>(record.at("description")) == "Comp review");
-    CHECK(std::get<std::string>(record.at("step")) == "Comp");
+    const Link &step = std::get<Link>(record.at("step"));
+    CHECK(step.id == 3);
+    CHECK(step.name == "Comp");
+    CHECK(step.type == "Step");
     CHECK(std::get<std::string>(record.at("status")) == "ip");
     CHECK(std::get<std::string>(record.at("artistic_status")) == "apr");
     CHECK(std::get<std::int64_t>(record.at("open_notes_count")) == 2);
-    CHECK(std::get<std::int64_t>(record.at("synced_to_client")) == 1);
-    CHECK(std::get<std::string>(record.at("sites")) == "Paris,Montreal");
+    CHECK(std::get<bool>(record.at("synced_to_client")));
+    const auto &sites = std::get<std::vector<Link>>(record.at("sites"));
+    REQUIRE(sites.size() == 2);
+    CHECK(sites[0].name == "Paris");
+    CHECK(sites[1].name == "Montreal");
 }
 
 TEST_CASE("uploaded movie keeps a signed url from a string or an object") {
@@ -489,8 +519,10 @@ TEST_CASE("sequence shots become a list of links") {
     REQUIRE(shots.size() == 2);
     CHECK(shots[0].id == 501);
     CHECK(shots[0].name == "sq010_sh010");
+    CHECK(shots[0].type == "Shot");
     CHECK(shots[1].id == 502);
     CHECK(shots[1].name == "sq010_sh020");
+    CHECK(shots[1].type == "Shot");
 }
 
 TEST_CASE("sequence shots are read from relationships data") {
@@ -514,8 +546,10 @@ TEST_CASE("sequence shots are read from relationships data") {
     REQUIRE(shots.size() == 2);
     CHECK(shots[0].id == 501);
     CHECK(shots[0].name == "sq010_sh010");
+    CHECK(shots[0].type == "Shot");
     CHECK(shots[1].id == 502);
     CHECK(shots[1].name == "sq010_sh020");
+    CHECK(shots[1].type == "Shot");
 }
 
 TEST_CASE("playlist versions become a list of links") {
@@ -536,7 +570,9 @@ TEST_CASE("playlist versions become a list of links") {
     const auto &versions = std::get<std::vector<Link>>(record.at("versions"));
     REQUIRE(versions.size() == 2);
     CHECK(versions[0].id == 701);
+    CHECK(versions[0].type == "Version");
     CHECK(versions[1].id == 702);
+    CHECK(versions[1].type == "Version");
 }
 
 TEST_CASE("playlist header fields map from ShotGrid") {
@@ -561,11 +597,19 @@ TEST_CASE("playlist header fields map from ShotGrid") {
                   {{"id", 2}, {"name", "Lighting"}, {"type", "Department"}}})}}}}}};
     const Record record = shotgridRecordFromJson(row, *playlist);
     CHECK(std::get<std::string>(record.at("name")) == "pl01");
-    CHECK(std::get<std::string>(record.at("author")) == "Ada");
+    const Link &author = std::get<Link>(record.at("author"));
+    CHECK(author.id == 7);
+    CHECK(author.name == "Ada");
+    CHECK(author.type == "HumanUser");
     CHECK(std::get<std::string>(record.at("created_at")) == "2024-03-01T12:30:00Z");
     CHECK(std::get<std::string>(record.at("category")) == "Dailies");
     CHECK(std::get<std::int64_t>(record.at("open_notes_count")) == 2);
-    CHECK(std::get<std::string>(record.at("departments")) == "Animation,Lighting");
+    const auto &departments = std::get<std::vector<Link>>(record.at("departments"));
+    REQUIRE(departments.size() == 2);
+    CHECK(departments[0].name == "Animation");
+    CHECK(departments[0].type == "Department");
+    CHECK(departments[1].name == "Lighting");
+    CHECK(departments[1].type == "Department");
 }
 
 TEST_CASE("version author is read from relationships data") {
@@ -580,7 +624,10 @@ TEST_CASE("version author is read from relationships data") {
          {{"created_by",
            {{"data", {{"type", "HumanUser"}, {"id", 7}, {"name", "Ada"}}}}}}}};
     const Record record = shotgridRecordFromJson(row, *version);
-    CHECK(std::get<std::string>(record.at("author")) == "Ada");
+    const Link &author = std::get<Link>(record.at("author"));
+    CHECK(author.id == 7);
+    CHECK(author.name == "Ada");
+    CHECK(author.type == "HumanUser");
 }
 
 TEST_CASE("an empty shot list leaves the field absent") {
@@ -658,12 +705,50 @@ TEST_CASE("version project and entity keep id name and type") {
         {"relationships",
          {{"project", {{"data", projectData}}}, {"entity", {{"data", entityData}}}}}};
     const Record record = shotgridRecordFromJson(row, *version);
-    CHECK(std::get<std::string>(record.at("project")) == "Show");
-    CHECK(std::get<std::int64_t>(record.at("project_id")) == 1);
-    CHECK(std::get<std::string>(record.at("project_type")) == "Project");
-    CHECK(std::get<std::string>(record.at("entity")) == "SH010");
-    CHECK(std::get<std::int64_t>(record.at("entity_id")) == 10);
-    CHECK(std::get<std::string>(record.at("entity_type")) == "Shot");
+    const Link &project = std::get<Link>(record.at("project"));
+    CHECK(project.id == 1);
+    CHECK(project.name == "Show");
+    CHECK(project.type == "Project");
+    CHECK(record.fields.count("project_id") == 0);
+    const Link &entity = std::get<Link>(record.at("entity"));
+    CHECK(entity.id == 10);
+    CHECK(entity.name == "SH010");
+    CHECK(entity.type == "Shot");
+    CHECK(record.fields.count("entity_id") == 0);
+    CHECK(record.fields.count("entity_type") == 0);
+}
+
+TEST_CASE("version playlists and notes keep id name and type") {
+    const ShotGridMapping mapping = filledMapping();
+    const ShotGridSchema *version = mapping.findSchema("version");
+    REQUIRE(version != nullptr);
+    const nlohmann::json row = {
+        {"type", "Version"},
+        {"id", 4},
+        {"attributes", {{"code", "v001"}}},
+        {"relationships",
+         {{"playlists",
+           {{"data",
+             nlohmann::json::array(
+                 {{{"id", 3}, {"name", "dailies"}, {"type", "Playlist"}},
+                  {{"id", 8}, {"name", "client"}, {"type", "Playlist"}}})}}},
+          {"notes",
+           {{"data",
+             nlohmann::json::array(
+                 {{{"id", 40}, {"name", "retake"}, {"type", "Note"}}})}}}}}};
+    const Record record = shotgridRecordFromJson(row, *version);
+    const auto &playlists = std::get<std::vector<Link>>(record.at("playlists"));
+    REQUIRE(playlists.size() == 2);
+    CHECK(playlists[0].id == 3);
+    CHECK(playlists[0].name == "dailies");
+    CHECK(playlists[0].type == "Playlist");
+    CHECK(playlists[1].id == 8);
+    CHECK(playlists[1].name == "client");
+    const auto &notes = std::get<std::vector<Link>>(record.at("notes"));
+    REQUIRE(notes.size() == 1);
+    CHECK(notes[0].id == 40);
+    CHECK(notes[0].name == "retake");
+    CHECK(notes[0].type == "Note");
 }
 
 namespace {
@@ -704,19 +789,19 @@ TEST_CASE("filters rewrite name_contains on a deep multi_entity field") {
                           "Paris"}));
 }
 
-TEST_CASE("filters rewrite name_is on a direct multi_entity field") {
+TEST_CASE("filters rewrite name_not_contains on a direct multi_entity field") {
     const ShotGridMapping mapping = filledMapping();
     std::vector<std::pair<std::string, std::string>> lookedUp;
     const FieldSchemaResolve resolve = schemaOf(
         lookedUp, "Playlist", "sg_departments", ShotGridFieldInfo{"multi_entity", {"Department"}});
-    Ir ir = Playlist().Where(nameIs(pms::playlist::departments, "Comp")).ir();
+    Ir ir = Playlist().Where(nameNotContains(pms::playlist::departments, "Comp")).ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping, resolve);
     REQUIRE(lookedUp.size() == 1);
     CHECK(lookedUp[0].first == "Playlist");
     CHECK(lookedUp[0].second == "sg_departments");
     CHECK(filters == nlohmann::json::array(
-                         {"sg_departments.Department.cached_display_name", "is", "Comp"}));
+                         {"sg_departments.Department.cached_display_name", "not_contains", "Comp"}));
 }
 
 TEST_CASE("filters keep name_contains on an entity field") {
@@ -741,7 +826,7 @@ TEST_CASE("filters or every valid type of a multi_entity field") {
         "PublishedFile",
         "sg_sites",
         ShotGridFieldInfo{"multi_entity", {"Site", "CustomEntity02"}});
-    Ir ir = Version().Where(nameStartsWith(pms::version::sites, "Par")).ir();
+    Ir ir = Version().Where(nameNotContains(pms::version::sites, "Par")).ir();
     ir.op = Op::Find;
     const nlohmann::json filters = shotgridFiltersFromIr(ir, mapping, resolve);
     REQUIRE(filters.is_object());
@@ -749,12 +834,12 @@ TEST_CASE("filters or every valid type of a multi_entity field") {
     REQUIRE(filters["conditions"].size() == 2);
     CHECK(filters["conditions"][0] ==
           nlohmann::json::array({"sg_published_file.PublishedFile.sg_sites.Site.cached_display_name",
-                                 "starts_with",
+                                 "not_contains",
                                  "Par"}));
     CHECK(filters["conditions"][1] ==
           nlohmann::json::array(
               {"sg_published_file.PublishedFile.sg_sites.CustomEntity02.cached_display_name",
-               "starts_with",
+               "not_contains",
                "Par"}));
 }
 

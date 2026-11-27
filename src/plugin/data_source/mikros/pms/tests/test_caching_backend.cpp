@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include "mapped_schema.hpp"
 #include "pms/pms.hpp"
 
 #include "recording_backend.hpp"
@@ -35,7 +36,7 @@ cursor: "7"
 
 TEST_CASE("find rejects a zero limit and a cursor without limit") {
     RecordingBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
     CHECK_THROWS_WITH_AS(Project().After("1").find(session), "cursor requires a limit", Error);
     CHECK_THROWS_WITH_AS(
         Project().Limit(0).find(session), "limit must be greater than zero", Error);
@@ -44,7 +45,7 @@ TEST_CASE("find rejects a zero limit and a cursor without limit") {
 TEST_CASE("find sends limit and returns the backend page") {
     RecordingBackend backend;
     backend.next = {projectRow(1, "paw01"), projectRow(2, "paw02")};
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Page page = Project().Limit(2).find(session);
 
@@ -64,7 +65,7 @@ TEST_CASE("caching backend serves a second find from cache") {
     RecordingBackend backend;
     backend.next = {projectRow(1, "paw01")};
     CachingBackend cache(backend);
-    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+    Session session(mappedSchema(), cache);
 
     const Page first = Project().Limit(10).find(session);
     backend.next = {projectRow(99, "changed")};
@@ -81,7 +82,7 @@ TEST_CASE("caching backend clear forces a miss") {
     RecordingBackend backend;
     backend.next = {projectRow(1, "paw01")};
     CachingBackend cache(backend);
-    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+    Session session(mappedSchema(), cache);
 
     CHECK(Project().Limit(10).find(session).rows.size() == 1);
     cache.clear();
@@ -99,7 +100,7 @@ TEST_CASE("caching backend expires entries after the ttl") {
     CacheOptions options;
     options.ttl = std::chrono::seconds(5);
     CachingBackend cache(backend, options, [&tick]() { return tick; });
-    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+    Session session(mappedSchema(), cache);
 
     CHECK(Project().Limit(10).find(session).rows.size() == 1);
     tick += std::chrono::seconds(6);
@@ -114,7 +115,7 @@ TEST_CASE("caching backend does not cache unlimited find") {
     RecordingBackend backend;
     backend.next = {projectRow(1, "paw01")};
     CachingBackend cache(backend);
-    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+    Session session(mappedSchema(), cache);
 
     CHECK(Project().find(session).rows.size() == 1);
     backend.next = {projectRow(2, "paw02")};
@@ -129,7 +130,7 @@ TEST_CASE("caching backend serves a second count from cache") {
     RecordingBackend backend;
     backend.next_count = 42;
     CachingBackend cache(backend);
-    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+    Session session(mappedSchema(), cache);
 
     CHECK(Sequence().In(project::id == std::int64_t{1}).count(session) == 42);
     backend.next_count = 99;
@@ -143,7 +144,7 @@ TEST_CASE("caching backend keeps find and count entries apart") {
     backend.next = {projectRow(1, "paw01")};
     backend.next_count = 7;
     CachingBackend cache(backend);
-    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+    Session session(mappedSchema(), cache);
 
     CHECK(Project().Limit(10).find(session).rows.size() == 1);
     CHECK(Project().count(session) == 7);
@@ -160,7 +161,7 @@ TEST_CASE("caching backend expires a count after the ttl") {
     CacheOptions options;
     options.ttl = std::chrono::seconds(5);
     CachingBackend cache(backend, options, [&tick]() { return tick; });
-    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+    Session session(mappedSchema(), cache);
 
     CHECK(Asset().In(project::id == std::int64_t{1}).count(session) == 1);
     tick += std::chrono::seconds(6);
@@ -174,7 +175,7 @@ TEST_CASE("caching backend evicts the least recently used entry") {
     CacheOptions options;
     options.max_bytes = 80 * 1024; ///< One heavy page fits. Two do not.
     CachingBackend cache(backend, options);
-    Session session(Schema::load(PMS_SCHEMA_PATH), cache);
+    Session session(mappedSchema(), cache);
 
     const std::string heavy(64 * 1024, 'a');
     backend.next = {projectRow(1, heavy)};

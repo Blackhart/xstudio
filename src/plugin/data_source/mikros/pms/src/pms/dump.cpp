@@ -82,8 +82,27 @@ std::string dumpValue(const Value &value) {
             << '-' << std::setw(2) << bounds->high.day;
         return out.str();
     }
-    if (std::holds_alternative<std::vector<Link>>(value)) {
-        throw Error("dump: links are not a filter value");
+    if (const auto *flag = std::get_if<bool>(&value)) {
+        return *flag ? "true" : "false";
+    }
+    if (const auto *number = std::get_if<double>(&value)) {
+        return std::to_string(*number);
+    }
+    if (const auto *bounds = std::get_if<FloatBounds>(&value)) {
+        return std::to_string(bounds->low) + " .. " + std::to_string(bounds->high);
+    }
+    if (const auto *link = std::get_if<Link>(&value)) {
+        return link->type + ":" + std::to_string(link->id);
+    }
+    if (const auto *links = std::get_if<std::vector<Link>>(&value)) {
+        std::ostringstream joined;
+        for (std::size_t i = 0; i < links->size(); ++i) {
+            if (i != 0) {
+                joined << ", ";
+            }
+            joined << (*links)[i].type << ":" << (*links)[i].id;
+        }
+        return joined.str();
     }
     const Date &date = std::get<Date>(value);
     std::ostringstream out;
@@ -121,20 +140,34 @@ const char *exprOpName(ExprOp op) {
         return "lt";
     case ExprOp::Between:
         return "between";
+    case ExprOp::NotBetween:
+        return "not_between";
     case ExprOp::InLast:
         return "in_last";
+    case ExprOp::NotInLast:
+        return "not_in_last";
+    case ExprOp::InNext:
+        return "in_next";
+    case ExprOp::NotInNext:
+        return "not_in_next";
     case ExprOp::InCalendarDay:
         return "in_calendar_day";
     case ExprOp::InCalendarWeek:
         return "in_calendar_week";
     case ExprOp::InCalendarMonth:
         return "in_calendar_month";
+    case ExprOp::InCalendarYear:
+        return "in_calendar_year";
     case ExprOp::NameContains:
         return "name_contains";
-    case ExprOp::NameStartsWith:
-        return "name_starts_with";
+    case ExprOp::NameNotContains:
+        return "name_not_contains";
     case ExprOp::NameIs:
         return "name_is";
+    case ExprOp::TypeIs:
+        return "type_is";
+    case ExprOp::TypeIsNot:
+        return "type_is_not";
     case ExprOp::And:
         return "and";
     case ExprOp::Or:

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -41,20 +42,34 @@ const char *comparisonOp(ExprOp op) {
         return "less_than";
     case ExprOp::Between:
         return "between";
+    case ExprOp::NotBetween:
+        return "not_between";
     case ExprOp::InLast:
         return "in_last";
+    case ExprOp::NotInLast:
+        return "not_in_last";
+    case ExprOp::InNext:
+        return "in_next";
+    case ExprOp::NotInNext:
+        return "not_in_next";
     case ExprOp::InCalendarDay:
         return "in_calendar_day";
     case ExprOp::InCalendarWeek:
         return "in_calendar_week";
     case ExprOp::InCalendarMonth:
         return "in_calendar_month";
+    case ExprOp::InCalendarYear:
+        return "in_calendar_year";
     case ExprOp::NameContains:
         return "name_contains";
-    case ExprOp::NameStartsWith:
-        return "name_starts_with";
+    case ExprOp::NameNotContains:
+        return "name_not_contains";
     case ExprOp::NameIs:
         return "name_is";
+    case ExprOp::TypeIs:
+        return "type_is";
+    case ExprOp::TypeIsNot:
+        return "type_is_not";
     default:
         return nullptr;
     }
@@ -79,6 +94,28 @@ nlohmann::json valueJson(const Value &value) {
     if (const auto *bounds = std::get_if<IntBounds>(&value)) {
         return nlohmann::json::array({bounds->low, bounds->high}); ///< REST `between` pair.
     }
+    if (const auto *flag = std::get_if<bool>(&value)) {
+        return *flag; ///< A checkbox filter is a JSON boolean.
+    }
+    if (const auto *number = std::get_if<double>(&value)) {
+        return *number;
+    }
+    if (const auto *doubles = std::get_if<std::vector<double>>(&value)) {
+        return nlohmann::json(*doubles);
+    }
+    if (const auto *bounds = std::get_if<FloatBounds>(&value)) {
+        return nlohmann::json::array({bounds->low, bounds->high});
+    }
+    if (const auto *link = std::get_if<Link>(&value)) {
+        return nlohmann::json{{"type", link->type}, {"id", link->id}};
+    }
+    if (const auto *links = std::get_if<std::vector<Link>>(&value)) {
+        nlohmann::json array = nlohmann::json::array();
+        for (const Link &item : *links) {
+            array.push_back({{"type", item.type}, {"id", item.id}});
+        }
+        return array;
+    }
     if (const auto *bounds = std::get_if<DateBounds>(&value)) {
         auto formatDay = [](const Date &date) {
             std::ostringstream out;
@@ -87,9 +124,6 @@ nlohmann::json valueJson(const Value &value) {
             return out.str();
         };
         return nlohmann::json::array({formatDay(bounds->low), formatDay(bounds->high)});
-    }
-    if (std::holds_alternative<std::vector<Link>>(value)) {
-        throw Error("shotgrid: links are not a filter value");
     }
     const Date &date = std::get<Date>(value);
     std::ostringstream out;
@@ -221,16 +255,15 @@ std::string pathField(const std::vector<LinkHop> &hops, const std::string &leaf 
 /**
  * @brief Maps a domain name operator to the text operator used on `cached_display_name`.
  * @param op Domain operator.
- * @return `contains`, `starts_with`, or `is`. Null when `op` is not a name operator.
+ * @return `contains` or `not_contains`. Null when `op` stays a name operator.
+ *     `name_is` is sent as itself, and only an entity field accepts it.
  */
 const char *displayNameOp(ExprOp op) {
     switch (op) {
     case ExprOp::NameContains:
         return "contains";
-    case ExprOp::NameStartsWith:
-        return "starts_with";
-    case ExprOp::NameIs:
-        return "is";
+    case ExprOp::NameNotContains:
+        return "not_contains";
     default:
         return nullptr;
     }
@@ -492,43 +525,57 @@ std::string entityName(const nlohmann::json &value) {
 }
 
 /**
- * @brief Joins the names of a ShotGrid list.
- * @param value Array of strings or entity objects.
- * @return Names separated by commas. Empty entries are skipped.
+ * @brief Reads one ShotGrid entity, or a bare name, as a link.
+ * @param item Entity object, or a string name from a list.
+ * @return The link. Empty when the item has neither an id nor a name.
  */
-std::string joinNames(const nlohmann::json &value) {
-    std::string joined;
-    for (const nlohmann::json &item : value) {
-        const std::string name = item.is_string() ? item.get<std::string>() : entityName(item);
-        if (name.empty()) {
-            continue;
+std::optional<Link> linkFromJson(const nlohmann::json &item) {
+    Link link;
+    if (item.is_string()) {
+        link.name = item.get<std::string>(); ///< A list entry that is only a label.
+    } else if (item.is_object()) {
+        if (item.contains("id") && item["id"].is_number_integer()) {
+            link.id = item["id"].get<std::int64_t>();
         }
-        if (!joined.empty()) {
-            joined += ',';
+        link.name = entityName(item);
+        if (item.contains("type") && item["type"].is_string()) {
+            link.type = item["type"].get<std::string>(); ///< Shot, Playlist, HumanUser, …
         }
-        joined += name;
+        if (item.contains("image") && item["image"].is_string()) {
+            link.image = item["image"].get<std::string>(); ///< Attachment thumbnail URL.
+        } else if (item.contains("url") && item["url"].is_string()) {
+            link.image = item["url"].get<std::string>();
+        }
+    } else {
+        return std::nullopt;
     }
-    return joined;
+    if (link.id == 0 && link.name.empty()) {
+        return std::nullopt; ///< Nothing the screen can show or open.
+    }
+    return link;
 }
 
 /**
  * @brief Copies one ShotGrid attribute onto the domain record.
  *
- * A true client flag becomes `1`. Site lists, departments, and note recipients
- * keep the ShotGrid names. `shots`, `versions`, and `attachments` become lists
- * of links. An attachment may also carry `image` or `url` as its thumbnail.
- * An entity object keeps its
- * `name`, plus `{domain}_id` and `{domain}_type` when ShotGrid sends them.
+ * A checkbox becomes a bool. A float becomes a double. An entity object
+ * becomes one `Link`. Every array becomes a list of `Link`, including a bare
+ * name in that array. An empty array leaves the field absent. The DAL joins
+ * names when a screen wants one label.
  *
  * @param out Record being filled.
  * @param field Domain field and its ShotGrid key.
  * @param value Attribute value. Null is not passed in.
  */
 void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::json &value) {
-    if (field.domain == "synced_to_client") {
-        if (value.is_boolean() && value.get<bool>()) {
-            out.fields["synced_to_client"] = std::int64_t{1}; ///< The C button lights up.
+    if (field.type == "checkbox") {
+        if (value.is_boolean()) {
+            out.fields[field.domain] = value.get<bool>();
         }
+        return;
+    }
+    if (field.type == "float" && value.is_number()) {
+        out.fields[field.domain] = value.get<double>();
         return;
     }
     if (field.domain == "uploaded_movie") {
@@ -543,41 +590,20 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
         }
         return;
     }
-    if ((field.domain == "sites" || field.domain == "departments" || field.domain == "to") &&
-        value.is_array()) {
-        const std::string names = joinNames(value);
-        if (!names.empty()) {
-            out.fields[field.domain] = names; ///< Joined labels the card shows.
-        }
-        return;
-    }
-    if ((field.domain == "shots" || field.domain == "versions" || field.domain == "attachments") &&
-        value.is_array()) {
-        if (value.empty()) {
-            return; ///< An empty list leaves the field absent, same as null.
-        }
+    if (value.is_array()) {
         std::vector<Link> links;
         links.reserve(value.size());
         for (const nlohmann::json &item : value) {
-            if (!item.is_object() || !item.contains("id") || !item["id"].is_number_integer()) {
+            const std::optional<Link> link = linkFromJson(item);
+            if (!link) {
                 continue;
             }
-            Link link;
-            link.id = item["id"].get<std::int64_t>();
-            if (item.contains("name") && item["name"].is_string()) {
-                link.name = item["name"].get<std::string>(); ///< ShotGrid link name / code.
-            }
-            if (item.contains("image") && item["image"].is_string()) {
-                link.image = item["image"].get<std::string>(); ///< Attachment thumbnail URL.
-            } else if (item.contains("url") && item["url"].is_string()) {
-                link.image = item["url"].get<std::string>();
-            }
-            links.push_back(std::move(link));
+            links.push_back(*link);
         }
         if (!links.empty()) {
-            out.fields[field.domain] = std::move(links);
+            out.fields[field.domain] = std::move(links); ///< Id, name, and type stay together.
         }
-        return;
+        return; ///< An empty list leaves the field absent, same as null.
     }
     if (value.is_number_integer()) {
         out.fields[field.domain] = value.get<std::int64_t>();
@@ -594,21 +620,9 @@ void assignField(Record &out, const ShotGridSchemaField &field, const nlohmann::
         }
         return;
     }
-    const std::string name = entityName(value);
-    if (!name.empty()) {
-        out.fields[field.domain] = name; ///< Linked entity: keep the label the card shows.
-    }
-    if (!value.is_object()) {
-        return;
-    }
-    if (value.contains("id") && value["id"].is_number_integer()) {
-        out.fields[field.domain + "_id"] = value["id"].get<std::int64_t>();
-    }
-    if (value.contains("type") && value["type"].is_string()) {
-        const std::string type = value["type"].get<std::string>();
-        if (!type.empty()) {
-            out.fields[field.domain + "_type"] = type; ///< Shot / Sequence / Asset / Project.
-        }
+    const std::optional<Link> link = linkFromJson(value);
+    if (link) {
+        out.fields[field.domain] = *link; ///< One entity stays one object.
     }
 }
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include "mapped_schema.hpp"
 #include "pms/fake/backend.hpp"
 #include "pms/pms.hpp"
 
@@ -24,7 +25,7 @@ constexpr std::size_t versionsPerProjectTotal() {
 
 TEST_CASE("the fake backend lists twenty projects") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records rows = Project().find(session).rows;
 
@@ -39,7 +40,7 @@ TEST_CASE("the fake backend lists twenty projects") {
 
 TEST_CASE("the fake backend applies a where clause") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records others = Project().Where(name != "paw01").find(session).rows;
     CHECK(others.size() == FakeBackend::projectCount - 1);
@@ -58,24 +59,27 @@ TEST_CASE("the fake backend applies a where clause") {
 
 TEST_CASE("the fake backend lists sequences in a project") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records rows = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
 
     REQUIRE(rows.size() == FakeBackend::sequencesPerProject);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010");
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw20_sq020");
-    CHECK(std::get<std::string>(rows[0].at("project")) == "paw20");
-    CHECK(std::get<std::int64_t>(rows[0].at("project_id")) == 1);
+    const Link &project = std::get<Link>(rows[0].at("project"));
+    CHECK(project.name == "paw20");
+    CHECK(project.id == 1);
+    CHECK(project.type == "Project");
     const auto &shots = std::get<std::vector<Link>>(rows[0].at("shots"));
     REQUIRE(shots.size() == FakeBackend::shotsPerSequence);
     CHECK(shots[0].name == "paw20_sq010_sh010");
+    CHECK(shots[0].type == "Shot");
     CHECK(shots[1].name == "paw20_sq010_sh020");
 }
 
 TEST_CASE("the fake backend counts sequences shots and assets in a project") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     CHECK(
         Sequence().In(project::id == std::int64_t{1}).count(session) ==
@@ -94,7 +98,7 @@ TEST_CASE("the fake backend counts sequences shots and assets in a project") {
 
 TEST_CASE("the fake backend lists shots in a sequence") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(sequences.size() == FakeBackend::sequencesPerProject);
@@ -105,26 +109,30 @@ TEST_CASE("the fake backend lists shots in a sequence") {
     REQUIRE(rows.size() == FakeBackend::shotsPerSequence);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_sq010_sh010");
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw20_sq010_sh020");
-    CHECK(std::get<std::string>(rows[0].at("sequence")) == "paw20_sq010");
-    CHECK(std::get<std::int64_t>(rows[0].at("sequence_id")) == sequenceId);
+    const Link &sequence = std::get<Link>(rows[0].at("sequence"));
+    CHECK(sequence.name == "paw20_sq010");
+    CHECK(sequence.id == sequenceId);
+    CHECK(sequence.type == "Sequence");
 }
 
 TEST_CASE("the fake backend lists assets in a project") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records rows = Asset().In(project::id == std::int64_t{1}).find(session).rows;
 
     REQUIRE(rows.size() == FakeBackend::assetsPerProject);
     CHECK(std::get<std::string>(rows[0].at("name")) == "paw20_ast01");
     CHECK(std::get<std::string>(rows[1].at("name")) == "paw20_ast02");
-    CHECK(std::get<std::string>(rows[0].at("project")) == "paw20");
-    CHECK(std::get<std::int64_t>(rows[0].at("project_id")) == 1);
+    const Link &project = std::get<Link>(rows[0].at("project"));
+    CHECK(project.name == "paw20");
+    CHECK(project.id == 1);
+    CHECK(project.type == "Project");
 }
 
 TEST_CASE("the fake backend accepts a fields projection on versions") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(sequences.empty());
@@ -145,7 +153,7 @@ TEST_CASE("the fake backend accepts a fields projection on versions") {
 
 TEST_CASE("the fake backend finds version thumbs by several ids") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records listed =
         Version().In(project::id == std::int64_t{1}).Limit(2).find(session).rows;
@@ -168,7 +176,7 @@ TEST_CASE("the fake backend finds version thumbs by several ids") {
 
 TEST_CASE("the fake backend lists versions in a sequence including shot versions") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(sequences.size() == FakeBackend::sequencesPerProject);
@@ -198,7 +206,7 @@ TEST_CASE("the fake backend lists versions in a sequence including shot versions
 
 TEST_CASE("the fake backend lists versions in a shot") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(shots.size() == FakeBackend::sequencesPerProject * FakeBackend::shotsPerSequence);
@@ -213,7 +221,7 @@ TEST_CASE("the fake backend lists versions in a shot") {
 
 TEST_CASE("the fake backend lists versions in an asset") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records assets = Asset().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(assets.size() == FakeBackend::assetsPerProject);
@@ -228,7 +236,7 @@ TEST_CASE("the fake backend lists versions in an asset") {
 
 TEST_CASE("the fake backend lists playlists in a project") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records rows = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
 
@@ -245,7 +253,7 @@ TEST_CASE("the fake backend lists playlists in a project") {
 
 TEST_CASE("the fake backend attaches version links on each playlist") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records playlists = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(playlists.size() == FakeBackend::playlistsPerProject);
@@ -258,7 +266,7 @@ TEST_CASE("the fake backend attaches version links on each playlist") {
 
 TEST_CASE("the fake backend lists versions in a playlist via weak membership") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records playlists = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE(playlists.size() == FakeBackend::playlistsPerProject);
@@ -277,7 +285,7 @@ TEST_CASE("the fake backend lists versions in a playlist via weak membership") {
 
 TEST_CASE("In(sequence) and In(playlist) combine with and") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(sequences.empty());
@@ -304,7 +312,7 @@ TEST_CASE("In(sequence) and In(playlist) combine with and") {
 
 TEST_CASE("a playlist member stays findable by its strong parent") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records sequences = Sequence().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(sequences.empty());
@@ -331,7 +339,7 @@ TEST_CASE("a playlist member stays findable by its strong parent") {
 
 TEST_CASE("the fake backend lists all versions in a project with one find") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records rows = Version().In(project::id == std::int64_t{1}).find(session).rows;
 
@@ -342,7 +350,7 @@ TEST_CASE("the fake backend lists all versions in a project with one find") {
 
 TEST_CASE("the fake backend pages projects by id") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Page first = Project().Limit(5).find(session);
     REQUIRE(first.rows.size() == 5);
@@ -365,7 +373,7 @@ TEST_CASE("the fake backend pages projects by id") {
 
 TEST_CASE("the fake backend pages versions with a playlist filter") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records playlists = Playlist().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(playlists.empty());
@@ -389,7 +397,7 @@ TEST_CASE("the fake backend pages versions with a playlist filter") {
 
 TEST_CASE("the fake backend applies string where operators") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(shots.empty());
@@ -444,51 +452,50 @@ TEST_CASE("the fake backend applies string where operators") {
 
 TEST_CASE("the fake backend applies int where operators") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
-    const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
-    REQUIRE_FALSE(shots.empty());
-    const auto shotId = std::get<std::int64_t>(shots[0].at("id"));
-
+    const std::size_t shotsPerProject =
+        FakeBackend::sequencesPerProject * FakeBackend::shotsPerSequence;
     const Records above =
-        Version()
-            .In(shot::id == shotId)
-            .Where(greaterThan(version::openNotesCount, std::int64_t{0}))
+        Shot()
+            .In(project::id == std::int64_t{1})
+            .Where(greaterThan(shot::cutOrder, std::int64_t{0}))
             .find(session)
             .rows;
-    REQUIRE_FALSE(above.empty());
+    CHECK(above.size() == shotsPerProject);
     for (const Record &row : above) {
-        CHECK(std::get<std::int64_t>(row.at("open_notes_count")) > 0);
+        CHECK(std::get<std::int64_t>(row.at("cut_order")) > 0);
     }
 
     const Records below =
-        Version()
-            .In(shot::id == shotId)
-            .Where(lessThan(version::openNotesCount, std::int64_t{2}))
+        Shot()
+            .In(project::id == std::int64_t{1})
+            .Where(lessThan(shot::cutOrder, std::int64_t{20}))
             .find(session)
             .rows;
     REQUIRE_FALSE(below.empty());
+    CHECK(below.size() < shotsPerProject);
 
     const Records ranged =
-        Version()
-            .In(shot::id == shotId)
-            .Where(between(version::openNotesCount, 0, 2))
+        Shot()
+            .In(project::id == std::int64_t{1})
+            .Where(between(shot::cutOrder, 0, 20))
             .find(session)
             .rows;
-    CHECK(ranged.size() == FakeBackend::versionsPerShot);
+    CHECK(ranged.size() == shotsPerProject);
 
     const Records listed =
-        Version()
-            .In(shot::id == shotId)
-            .Where(isIn(version::openNotesCount, std::vector<std::int64_t>{0, 2}))
+        Shot()
+            .In(project::id == std::int64_t{1})
+            .Where(isIn(shot::cutOrder, std::vector<std::int64_t>{10, 20}))
             .find(session)
             .rows;
-    CHECK(listed.size() == FakeBackend::versionsPerShot);
+    CHECK(listed.size() == shotsPerProject);
 }
 
 TEST_CASE("the fake backend applies entity name_* where operators") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(shots.empty());
@@ -502,7 +509,7 @@ TEST_CASE("the fake backend applies entity name_* where operators") {
             .rows;
     REQUIRE_FALSE(exact.empty());
     for (const Record &row : exact) {
-        CHECK(std::get<std::string>(row.at("author")) == "Ada");
+        CHECK(std::get<Link>(row.at("author")).name == "Ada");
     }
 
     const Records part =
@@ -513,18 +520,21 @@ TEST_CASE("the fake backend applies entity name_* where operators") {
             .rows;
     CHECK(part.size() == exact.size());
 
-    const Records prefix =
+    const Records excluded =
         Version()
             .In(shot::id == shotId)
-            .Where(nameStartsWith(version::author, "A"))
+            .Where(nameNotContains(version::author, "Ada"))
             .find(session)
             .rows;
-    CHECK(prefix.size() == exact.size());
+    CHECK(excluded.size() + exact.size() == FakeBackend::versionsPerShot);
+    for (const Record &row : excluded) {
+        CHECK(std::get<Link>(row.at("author")).name != "Ada");
+    }
 }
 
 TEST_CASE("the fake backend applies datetime where operators") {
     FakeBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records shots = Shot().In(project::id == std::int64_t{1}).find(session).rows;
     REQUIRE_FALSE(shots.empty());

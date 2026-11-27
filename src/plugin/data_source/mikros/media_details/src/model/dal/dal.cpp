@@ -44,10 +44,16 @@ std::string optionalString(const pms::Record &record, const std::string &key) {
  */
 std::int64_t optionalInt(const pms::Record &record, const std::string &key) {
     const auto found = record.fields.find(key);
-    if (found == record.fields.end() || !std::holds_alternative<std::int64_t>(found->second)) {
+    if (found == record.fields.end()) {
         return 0;
     }
-    return std::get<std::int64_t>(found->second);
+    if (const auto *number = std::get_if<std::int64_t>(&found->second)) {
+        return *number;
+    }
+    if (const auto *fraction = std::get_if<double>(&found->second)) {
+        return static_cast<std::int64_t>(*fraction); ///< A float duration shown as whole seconds.
+    }
+    return 0;
 }
 
 /**
@@ -57,13 +63,95 @@ std::int64_t optionalInt(const pms::Record &record, const std::string &key) {
  * @return True when the field is a non-zero integer.
  */
 bool optionalFlag(const pms::Record &record, const std::string &key) {
-    return optionalInt(record, key) != 0;
+    const auto found = record.fields.find(key);
+    if (found == record.fields.end()) {
+        return false;
+    }
+    if (const auto *flag = std::get_if<bool>(&found->second)) {
+        return *flag;
+    }
+    return optionalInt(record, key) != 0; ///< Older rows stored a checkbox as 0 or 1.
+}
+
+/**
+ * @brief Reads one entity object stored on a record.
+ * @param record Domain row.
+ * @param key Field name.
+ * @return The link, or null when the field is absent or not a link.
+ */
+const pms::Link *optionalLink(const pms::Record &record, const std::string &key) {
+    const auto found = record.fields.find(key);
+    if (found == record.fields.end()) {
+        return nullptr;
+    }
+    return std::get_if<pms::Link>(&found->second);
+}
+
+/**
+ * @brief Reads the name of one entity field.
+ * @param record Domain row.
+ * @param key Field name.
+ * @return The link name, or empty when the field is absent.
+ */
+std::string linkName(const pms::Record &record, const std::string &key) {
+    const pms::Link *link = optionalLink(record, key);
+    return link ? link->name : std::string{};
+}
+
+/**
+ * @brief Reads the id of one entity field.
+ * @param record Domain row.
+ * @param key Field name.
+ * @return The link id, or 0 when the field is absent.
+ */
+std::int64_t linkId(const pms::Record &record, const std::string &key) {
+    const pms::Link *link = optionalLink(record, key);
+    return link ? link->id : 0;
+}
+
+/**
+ * @brief Reads the ShotGrid type of one entity field.
+ * @param record Domain row.
+ * @param key Field name.
+ * @return The link type, or empty when the field is absent.
+ */
+std::string linkType(const pms::Record &record, const std::string &key) {
+    const pms::Link *link = optionalLink(record, key);
+    return link ? link->type : std::string{};
+}
+
+/**
+ * @brief Joins the names of a multi-entity list.
+ * @param record Domain row.
+ * @param key Field name.
+ * @return Names separated by commas. Empty when the field is absent.
+ */
+std::string joinLinkNames(const pms::Record &record, const std::string &key) {
+    const auto found = record.fields.find(key);
+    if (found == record.fields.end()) {
+        return {};
+    }
+    const auto *links = std::get_if<std::vector<pms::Link>>(&found->second);
+    if (!links) {
+        return {};
+    }
+    std::string joined;
+    for (const pms::Link &link : *links) {
+        if (link.name.empty()) {
+            continue;
+        }
+        if (!joined.empty()) {
+            joined += ',';
+        }
+        joined += link.name; ///< The card shows labels, not ids.
+    }
+    return joined;
 }
 
 /**
  * @brief Copies playlist links from a version record.
  * @param record Domain version row.
- * @return Playlist id/name pairs in record order.
+ * @return Playlist id, name, and type in record order.
  */
 std::vector<poco::PlaylistLink> playlistLinksFromRecord(const pms::Record &record) {
     std::vector<poco::PlaylistLink> playlists;
@@ -77,7 +165,7 @@ std::vector<poco::PlaylistLink> playlistLinksFromRecord(const pms::Record &recor
     }
     playlists.reserve(links->size());
     for (const pms::Link &link : *links) {
-        playlists.push_back(poco::PlaylistLink{link.id, link.name});
+        playlists.push_back(poco::PlaylistLink{link.id, link.name, link.type});
     }
     return playlists;
 }
@@ -114,11 +202,11 @@ poco::NoteDetail mapNote(const pms::Record &record) {
     row.id = std::get<std::int64_t>(record.at("id"));
     row.name = std::get<std::string>(record.at("name"));
     row.content = optionalString(record, "content");
-    row.author = optionalString(record, "author");
+    row.author = linkName(record, "author");
     row.created_at = optionalString(record, "created_at");
     row.status = optionalString(record, "status");
-    row.to = optionalString(record, "to");
-    row.department = optionalString(record, "department");
+    row.to = joinLinkNames(record, "to");
+    row.department = linkName(record, "department");
     row.attachments = attachmentsFromRecord(record);
     return row;
 }
@@ -144,7 +232,7 @@ poco::VersionDetail mapVersion(const pms::Record &record) {
     poco::VersionDetail row;
     row.id = std::get<std::int64_t>(record.at("id"));
     row.name = std::get<std::string>(record.at("name"));
-    row.author = optionalString(record, "author");
+    row.author = linkName(record, "author");
     row.created_at = optionalString(record, "created_at");
     row.frame_range = optionalString(record, "frame_range");
     row.frame_count = optionalInt(record, "frame_count");
@@ -154,11 +242,11 @@ poco::VersionDetail mapVersion(const pms::Record &record) {
     row.client_approved = optionalFlag(record, "client_approved");
     row.is_latest = optionalFlag(record, "is_latest");
     row.version_number = optionalInt(record, "version_number");
-    row.task = optionalString(record, "task");
-    row.step = optionalString(record, "step");
+    row.task = linkName(record, "task");
+    row.step = linkName(record, "step");
     row.status = optionalString(record, "status");
     row.artistic_status = optionalString(record, "artistic_status");
-    row.sites = optionalString(record, "sites");
+    row.sites = joinLinkNames(record, "sites");
     row.open_notes_count = optionalInt(record, "open_notes_count");
     row.synced_to_client = optionalFlag(record, "synced_to_client");
     row.work_source_scene = optionalString(record, "work_source_scene");
@@ -171,11 +259,11 @@ poco::VersionDetail mapVersion(const pms::Record &record) {
     row.image = optionalString(record, "image");
     row.image_provider = optionalString(record, "image_provider");
     row.playlists = playlistLinksFromRecord(record);
-    row.project_id = optionalInt(record, "project_id");
-    row.project_name = optionalString(record, "project");
-    row.entity_name = optionalString(record, "entity");
-    row.entity_id = optionalInt(record, "entity_id");
-    row.entity_type = optionalString(record, "entity_type");
+    row.project_id = linkId(record, "project");
+    row.project_name = linkName(record, "project");
+    row.entity_name = linkName(record, "entity");
+    row.entity_id = linkId(record, "entity");
+    row.entity_type = linkType(record, "entity");
     return row;
 }
 
@@ -194,8 +282,8 @@ poco::ShotDetail mapShot(const pms::Record &record) {
     row.cut_in = optionalInt(record, "cut_in");
     row.cut_out = optionalInt(record, "cut_out");
     row.cut_order = optionalInt(record, "cut_order");
-    row.sequence_id = optionalInt(record, "sequence_id");
-    row.sequence_name = optionalString(record, "sequence");
+    row.sequence_id = linkId(record, "sequence");
+    row.sequence_name = linkName(record, "sequence");
     return row;
 }
 
@@ -215,8 +303,8 @@ poco::SequenceDetail mapSequence(const pms::Record &record) {
     row.estimated_shots_count = optionalInt(record, "estimated_shots_count");
     row.shot_count = optionalInt(record, "shot_count");
     row.sequence_order = optionalInt(record, "sequence_order");
-    row.project_id = optionalInt(record, "project_id");
-    row.project_name = optionalString(record, "project");
+    row.project_id = linkId(record, "project");
+    row.project_name = linkName(record, "project");
     return row;
 }
 
@@ -231,8 +319,8 @@ poco::AssetDetail mapAsset(const pms::Record &record) {
     row.name = std::get<std::string>(record.at("name"));
     row.description = optionalString(record, "description");
     row.status = optionalString(record, "status");
-    row.project_id = optionalInt(record, "project_id");
-    row.project_name = optionalString(record, "project");
+    row.project_id = linkId(record, "project");
+    row.project_name = linkName(record, "project");
     return row;
 }
 

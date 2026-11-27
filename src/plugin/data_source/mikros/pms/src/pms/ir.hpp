@@ -38,13 +38,20 @@ enum class ExprOp {
     Gt,              ///< Field is greater than the leaf.
     Lt,              ///< Field is less than the leaf.
     Between,         ///< Field lies in the inclusive [low, high] bounds.
+    NotBetween,      ///< Field lies outside the inclusive [low, high] bounds.
     InLast,          ///< Datetime is inside a past period.
+    NotInLast,       ///< Datetime is outside a past period.
+    InNext,          ///< Datetime is inside a coming period.
+    NotInNext,       ///< Datetime is outside a coming period.
     InCalendarDay,   ///< Datetime falls on a day offset from today.
     InCalendarWeek,  ///< Datetime falls in a week offset from this week.
     InCalendarMonth, ///< Datetime falls in a month offset from this month.
+    InCalendarYear,  ///< Datetime falls in a year offset from this year.
     NameContains,    ///< Linked entity name contains the leaf.
-    NameStartsWith,  ///< Linked entity name starts with the leaf.
+    NameNotContains, ///< Linked entity name does not contain the leaf.
     NameIs,          ///< Linked entity name equals the leaf.
+    TypeIs,          ///< Linked entity type equals the leaf.
+    TypeIsNot,       ///< Linked entity type differs from the leaf.
     And,             ///< Group that requires every child.
     Or,              ///< Group that requires one child.
     Not,             ///< Group with exactly one child.

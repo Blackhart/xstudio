@@ -47,10 +47,12 @@ add_custom_command(
     COMMAND Python3::Interpreter
         "${PMS_SRC_DIR}/tools/gen_entities.py"
         "${PMS_CONFIG_DIR}/schema.yaml"
+        "${PMS_CONFIG_DIR}/shotgrid/mapping.yaml.example"
         "${PMS_GEN_DIR}/pms/gen"
     DEPENDS
         "${PMS_SRC_DIR}/tools/gen_entities.py"
         "${PMS_CONFIG_DIR}/schema.yaml"
+        "${PMS_CONFIG_DIR}/shotgrid/mapping.yaml.example"
     VERBATIM
 )
 add_custom_target(pms_codegen DEPENDS "${PMS_GEN_ENTITIES}" "${PMS_GEN_FACTORIES}")

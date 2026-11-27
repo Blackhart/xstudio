@@ -50,9 +50,10 @@ struct DateTime {};
  *
  * `author` is one linked record. `sites` and `departments` are a list of
  * linked records. Both use this tag, so they share `nameContains`,
- * `nameStartsWith`, and `nameIs`. The record still stores the label as a
- * string. Only the generated Field proxy uses this type, so those operators
- * do not apply to plain text fields.
+ * `nameNotContains`, `nameIs`, `typeIs`, and `typeIsNot`. The record stores one `Link` for an entity
+ * and a list of `Link` for a multi_entity. A screen that wants a joined label
+ * builds it in its DAL. Only the generated Field proxy uses this type, so
+ * those operators do not apply to plain text fields.
  */
 struct EntityRef {};
 
@@ -74,7 +75,24 @@ struct IntBounds {
 };
 
 /**
- * @brief Inclusive pair of calendar days passed to between on date / datetime.
+ * @brief Inclusive pair passed to between on a float field.
+ */
+struct FloatBounds {
+    double low = 0;  ///< Inclusive lower bound.
+    double high = 0; ///< Inclusive upper bound.
+
+    /**
+     * @brief Compares two float ranges.
+     * @param other Range to compare with.
+     * @return True when both bounds are equal.
+     */
+    bool operator==(const FloatBounds &other) const {
+        return low == other.low && high == other.high;
+    }
+};
+
+/**
+ * @brief Inclusive pair of calendar days passed to between on a datetime.
  */
 struct DateBounds {
     Date low;  ///< Inclusive first day.
@@ -111,44 +129,53 @@ struct Period {
 };
 
 /**
- * @brief One linked row carried on a parent, such as a shot on a sequence.
+ * @brief One linked entity, alone or inside a multi-entity list.
  *
  * `id` is the linked entity id. `name` is the label ShotGrid puts on the link.
- * `image` is an optional thumbnail URL. Equality ignores it: two links are the
- * same row when id and name match.
+ * `type` is the ShotGrid entity type, such as `Shot` or `Playlist`. `image`
+ * is an optional thumbnail URL. Equality ignores `image`: two links are the
+ * same row when id, name, and type match.
  */
 struct Link {
     std::int64_t id = 0; ///< Linked entity id.
     std::string name;    ///< Linked entity label.
+    std::string type;    ///< ShotGrid entity type. Empty when the payload has none.
     std::string image;   ///< Thumbnail URL. Empty when the link has none.
 
     /**
-     * @brief Compares two links by id and name.
+     * @brief Compares two links by id, name, and type.
      * @param other Link to compare with.
-     * @return True when id and name are equal. `image` is display-only.
+     * @return True when id, name, and type are equal. `image` is display-only.
      */
-    bool operator==(const Link &other) const { return id == other.id && name == other.name; }
+    bool operator==(const Link &other) const {
+        return id == other.id && name == other.name && type == other.type;
+    }
 };
 
 /**
  * @brief Value stored in a filter leaf or in a record field.
  *
- * `string` maps to `std::string`, `int` to `std::int64_t`, `date` to Date, and
- * `links` to a list of Link. An `in` leaf stores a list of strings or ints.
- * An `in_last` leaf stores a Period. A `between` leaf stores IntBounds or
- * DateBounds. `DateTime` and `EntityRef` are field proxies, not values. A
- * record field such as `shots` stores the link list. `created_at` and
- * `author` stay strings on the record.
+ * `text` maps to `std::string`, `number` to `std::int64_t`, `float` to
+ * `double`, and `checkbox` to `bool`. An entity field stores one `Link`. A
+ * multi_entity field stores a list of `Link`. An `in` leaf stores a list. An
+ * `in_last` leaf stores a Period. A `between` leaf stores bounds.
+ * `DateTime` and `EntityRef` are field proxies, not values. `created_at`
+ * stays a string on the record.
  */
 using Value = std::variant<
     std::string,
     std::int64_t,
+    double,
+    bool,
     Date,
+    Link,
     std::vector<Link>,
     std::vector<std::string>,
     std::vector<std::int64_t>,
+    std::vector<double>,
     Period,
     IntBounds,
+    FloatBounds,
     DateBounds>;
 
 /**

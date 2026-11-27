@@ -24,6 +24,14 @@ const ShotGridSchemaField *ShotGridSchema::findField(const std::string &key) con
     return nullptr;
 }
 
+const std::vector<std::string> *ShotGridMapping::opsFor(const std::string &typeName) const {
+    const auto found = types_.find(typeName);
+    if (found == types_.end()) {
+        return nullptr;
+    }
+    return &found->second;
+}
+
 const ShotGridSchemaLink *ShotGridSchema::findLink(const std::string &key) const {
     for (const ShotGridSchemaLink &spec : links) {
         if (spec.domain == key) {
@@ -40,11 +48,27 @@ ShotGridMapping ShotGridMapping::parse(const std::string &yaml) {
     } catch (const YAML::Exception &ex) {
         throw Error(std::string("shotgrid mapping: ") + ex.what());
     }
+    if (!root["types"] || !root["types"].IsMap()) {
+        throw Error("shotgrid mapping: missing types");
+    }
     if (!root["entities"]) {
         throw Error("shotgrid mapping: missing entities");
     }
 
     ShotGridMapping mapping;
+    for (YAML::const_iterator typeEntry = root["types"].begin(); typeEntry != root["types"].end();
+         ++typeEntry) {
+        const std::string typeName = typeEntry->first.as<std::string>();
+        const YAML::Node ops = typeEntry->second["ops"];
+        if (!ops || !ops.IsSequence()) {
+            throw Error("shotgrid mapping: type \"" + typeName + "\" needs an ops list");
+        }
+        std::vector<std::string> names;
+        for (YAML::const_iterator op = ops.begin(); op != ops.end(); ++op) {
+            names.push_back(op->as<std::string>());
+        }
+        mapping.types_.emplace(typeName, std::move(names));
+    }
     const YAML::Node entities = root["entities"];
     for (YAML::const_iterator it = entities.begin(); it != entities.end(); ++it) {
         ShotGridSchema schema;
@@ -69,6 +93,17 @@ ShotGridMapping ShotGridMapping::parse(const std::string &yaml) {
                     "\" missing shotgrid");
             }
             field.shotgrid = fieldBody["shotgrid"].as<std::string>("");
+            if (!fieldBody["type"]) {
+                throw Error(
+                    "shotgrid mapping: field \"" + schema.domainName + "." + field.domain +
+                    "\" missing type");
+            }
+            field.type = fieldBody["type"].as<std::string>("");
+            if (field.type.empty() || mapping.types_.find(field.type) == mapping.types_.end()) {
+                throw Error(
+                    "shotgrid mapping: field \"" + schema.domainName + "." + field.domain +
+                    "\" has unknown type \"" + field.type + "\"");
+            }
             if (fieldBody["provider"]) {
                 field.provider = fieldBody["provider"].as<std::string>("");
             }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include "mapped_schema.hpp"
 #include "pms/pms.hpp"
 
 #include <doctest/doctest.h>
@@ -9,7 +10,7 @@ using namespace pms::project;
 
 namespace {
 
-Schema schema() { return Schema::load(PMS_SCHEMA_PATH); }
+Schema schema() { return mappedSchema(); }
 
 Ir fieldIr(const std::string &key, ExprOp op, Value value) {
     auto leaf = std::make_shared<ExprNode>();
@@ -26,7 +27,7 @@ Ir fieldIr(const std::string &key, ExprOp op, Value value) {
 
 Ir versionWhere(const std::string &key, ExprOp op, Value value) {
     Ir ir = fieldIr(key, op, std::move(value));
-    ir.entity = "version"; ///< created_at and open notes live on version.
+    ir.entity = "version"; ///< created_at and frame_count live on version.
     return ir;
 }
 
@@ -55,15 +56,17 @@ TEST_CASE("validate accepts the new shelf operators and rejects a bad value") {
     CHECK_NOTHROW(validate(
         versionWhere("status", ExprOp::NotIn, std::vector<std::string>{"omt", "na"}), loaded));
     CHECK_NOTHROW(validate(
-        versionWhere("open_notes_count", ExprOp::In, std::vector<std::int64_t>{0, 1}), loaded));
+        versionWhere("frame_count", ExprOp::In, std::vector<std::int64_t>{0, 1}), loaded));
     CHECK_NOTHROW(validate(
-        versionWhere("open_notes_count", ExprOp::NotIn, std::vector<std::int64_t>{0}), loaded));
+        versionWhere("frame_count", ExprOp::NotIn, std::vector<std::int64_t>{0}), loaded));
     CHECK_NOTHROW(validate(
-        versionWhere("open_notes_count", ExprOp::Lt, std::int64_t{5}), loaded));
+        versionWhere("frame_count", ExprOp::Lt, std::int64_t{5}), loaded));
     CHECK_NOTHROW(validate(
-        versionWhere("open_notes_count", ExprOp::Gt, std::int64_t{0}), loaded));
+        versionWhere("frame_count", ExprOp::Gt, std::int64_t{0}), loaded));
     CHECK_NOTHROW(validate(
-        versionWhere("open_notes_count", ExprOp::Between, IntBounds{0, 5}), loaded));
+        versionWhere("frame_count", ExprOp::Between, IntBounds{0, 5}), loaded));
+    CHECK_NOTHROW(validate(
+        versionWhere("frame_count", ExprOp::NotBetween, IntBounds{0, 5}), loaded));
     CHECK_NOTHROW(validate(
         versionWhere("created_at", ExprOp::Eq, std::string("2024-03-01")), loaded));
     CHECK_NOTHROW(validate(
@@ -97,7 +100,7 @@ TEST_CASE("validate accepts the new shelf operators and rejects a bad value") {
     CHECK_NOTHROW(validate(
         versionWhere("author", ExprOp::NameContains, std::string("Ada")), loaded));
     CHECK_NOTHROW(validate(
-        versionWhere("author", ExprOp::NameStartsWith, std::string("Ad")), loaded));
+        versionWhere("author", ExprOp::NameNotContains, std::string("Ad")), loaded));
     CHECK_NOTHROW(validate(
         versionWhere("author", ExprOp::NameIs, std::string("Ada")), loaded));
 
@@ -130,8 +133,8 @@ TEST_CASE("validate accepts the new shelf operators and rejects a bad value") {
         "where: operator not allowed on \"name\"",
         Error);
     CHECK_THROWS_WITH_AS(
-        validate(versionWhere("open_notes_count", ExprOp::InLast, Period{7, "DAY"}), loaded),
-        "where: operator not allowed on \"open_notes_count\"",
+        validate(versionWhere("frame_count", ExprOp::InLast, Period{7, "DAY"}), loaded),
+        "where: operator not allowed on \"frame_count\"",
         Error);
     CHECK_THROWS_WITH_AS(
         validate(fieldIr("name", ExprOp::In, std::vector<std::string>{}), loaded),
@@ -151,8 +154,8 @@ TEST_CASE("validate accepts the new shelf operators and rejects a bad value") {
         Error);
     CHECK_THROWS_WITH_AS(
         validate(
-            versionWhere("open_notes_count", ExprOp::In, std::vector<std::string>{"0"}), loaded),
-        "where: type mismatch on \"open_notes_count\"",
+            versionWhere("frame_count", ExprOp::In, std::vector<std::string>{"0"}), loaded),
+        "where: type mismatch on \"frame_count\"",
         Error);
     CHECK_THROWS_WITH_AS(
         validate(fieldIr("name", ExprOp::Between, IntBounds{0, 5}), loaded),
@@ -164,8 +167,8 @@ TEST_CASE("validate accepts the new shelf operators and rejects a bad value") {
         Error);
     CHECK_THROWS_WITH_AS(
         validate(
-            versionWhere("open_notes_count", ExprOp::Between, IntBounds{5, 0}), loaded),
-        "where: type mismatch on \"open_notes_count\"",
+            versionWhere("frame_count", ExprOp::Between, IntBounds{5, 0}), loaded),
+        "where: type mismatch on \"frame_count\"",
         Error);
     CHECK_THROWS_WITH_AS(
         validate(
@@ -179,6 +182,14 @@ TEST_CASE("validate accepts the new shelf operators and rejects a bad value") {
     CHECK_THROWS_WITH_AS(
         validate(versionWhere("author", ExprOp::NameIs, std::string("")), loaded),
         "where: type mismatch on \"author\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(versionWhere("status", ExprOp::Contains, std::string("ip")), loaded),
+        "where: operator not allowed on \"status\"",
+        Error);
+    CHECK_THROWS_WITH_AS(
+        validate(versionWhere("sites", ExprOp::NameIs, std::string("Paris")), loaded),
+        "where: operator not allowed on \"sites\"",
         Error);
 }
 

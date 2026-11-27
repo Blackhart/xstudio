@@ -88,10 +88,16 @@ std::string optionalString(const pms::Record &record, const std::string &key) {
  */
 bool optionalFlag(const pms::Record &record, const std::string &key) {
     const auto found = record.fields.find(key);
-    if (found == record.fields.end() || !std::holds_alternative<std::int64_t>(found->second)) {
+    if (found == record.fields.end()) {
         return false;
     }
-    return std::get<std::int64_t>(found->second) != 0;
+    if (const auto *flag = std::get_if<bool>(&found->second)) {
+        return *flag;
+    }
+    if (const auto *number = std::get_if<std::int64_t>(&found->second)) {
+        return *number != 0; ///< Older rows stored a checkbox as 0 or 1.
+    }
+    return false;
 }
 
 /**
@@ -106,6 +112,59 @@ std::int64_t optionalInt64(const pms::Record &record, const std::string &key) {
         return 0;
     }
     return std::get<std::int64_t>(found->second);
+}
+
+/**
+ * @brief Reads one entity object stored on a record.
+ * @param record Domain row.
+ * @param key Field name.
+ * @return The link, or null when the field is absent or not a link.
+ */
+const pms::Link *optionalLink(const pms::Record &record, const std::string &key) {
+    const auto found = record.fields.find(key);
+    if (found == record.fields.end()) {
+        return nullptr;
+    }
+    return std::get_if<pms::Link>(&found->second);
+}
+
+/**
+ * @brief Reads the name of one entity field.
+ * @param record Domain row.
+ * @param key Field name.
+ * @return The link name, or empty when the field is absent.
+ */
+std::string linkName(const pms::Record &record, const std::string &key) {
+    const pms::Link *link = optionalLink(record, key);
+    return link ? link->name : std::string{};
+}
+
+/**
+ * @brief Joins the names of a multi-entity list.
+ * @param record Domain row.
+ * @param key Field name.
+ * @return Names separated by commas. Empty when the field is absent.
+ */
+std::string joinLinkNames(const pms::Record &record, const std::string &key) {
+    const auto found = record.fields.find(key);
+    if (found == record.fields.end()) {
+        return {};
+    }
+    const auto *links = std::get_if<std::vector<pms::Link>>(&found->second);
+    if (!links) {
+        return {};
+    }
+    std::string joined;
+    for (const pms::Link &link : *links) {
+        if (link.name.empty()) {
+            continue;
+        }
+        if (!joined.empty()) {
+            joined += ',';
+        }
+        joined += link.name; ///< The card shows labels, not ids.
+    }
+    return joined;
 }
 
 /**
@@ -142,14 +201,14 @@ std::vector<poco::VersionListElement> mapRecordsToRows<poco::VersionListElement>
         poco::VersionListElement row;
         row.id = std::get<std::int64_t>(record.at("id"));
         row.name = std::get<std::string>(record.at("name"));
-        row.author = optionalString(record, "author");
+        row.author = linkName(record, "author");
         row.created_at = optionalString(record, "created_at");
         row.frame_range = optionalString(record, "frame_range");
         row.description = optionalString(record, "description");
-        row.step = optionalString(record, "step");
+        row.step = linkName(record, "step");
         row.status = optionalString(record, "status");
         row.artistic_status = optionalString(record, "artistic_status");
-        row.sites = optionalString(record, "sites");
+        row.sites = joinLinkNames(record, "sites");
         row.open_notes_count = optionalInt64(record, "open_notes_count");
         row.synced_to_client = optionalFlag(record, "synced_to_client");
         row.frames = optionalString(record, "frames");
@@ -443,8 +502,8 @@ std::vector<FilterableField> filterableFields(const std::string &entity) {
     }
     std::vector<FilterableField> fields;
     for (const pms::FieldSpec &field : spec->fields) {
-        if (!field.filter) {
-            continue; ///< Shelf editor only lists filterable fields.
+        if (!field.filter || field.ops.empty()) {
+            continue; ///< Empty operators mean the ShotGrid type cannot be filtered.
         }
         FilterableField row;
         row.entity = entity;
@@ -590,10 +649,10 @@ RowPage<poco::Playlist> findPlaylists(
             row.name = std::get<std::string>(record.at("name"));
             row.version_count = versionCountFromPlaylist(record);
             row.open_notes_count = optionalInt64(record, "open_notes_count");
-            row.departments = optionalString(record, "departments");
+            row.departments = joinLinkNames(record, "departments");
             row.created_at = optionalString(record, "created_at");
             row.category = optionalString(record, "category");
-            row.author = optionalString(record, "author");
+            row.author = linkName(record, "author");
             out.rows.push_back(std::move(row));
         }
         return out;

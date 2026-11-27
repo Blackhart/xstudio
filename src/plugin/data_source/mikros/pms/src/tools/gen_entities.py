@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Generates entity proxies and query factories from the domain schema.
+"""Generates entity proxies and query factories from the schema and mapping.
 
-The generated headers are build outputs. Edit schema.yaml, not the headers.
-YAML `scope` lists direct parents only. Ancestors are inherited for In().
+The generated headers are build outputs. Edit schema.yaml and the mapping,
+not the headers. YAML `scope` lists direct parents only. Ancestors are
+inherited for In(). The C++ proxy type comes from the mapping field type.
 """
 
 import sys
@@ -11,10 +12,16 @@ from pathlib import Path
 import yaml
 
 TYPE_CPP = {
-    "string": "std::string",
-    "int": "std::int64_t",
-    "date": "Date",
-    "datetime": "DateTime",
+    "text": "std::string",
+    "list": "std::string",
+    "status_list": "std::string",
+    "image": "std::string",
+    "url": "std::string",
+    "number": "std::int64_t",
+    "summary": "std::int64_t",
+    "float": "double",
+    "checkbox": "bool",
+    "date_time": "DateTime",
     "entity": "EntityRef",
     "multi_entity": "EntityRef",
 }
@@ -89,13 +96,17 @@ def main():
 
     Args:
         sys.argv[1]: Path to schema.yaml.
-        sys.argv[2]: Directory that receives the two headers.
+        sys.argv[2]: Path to the ShotGrid mapping YAML.
+        sys.argv[3]: Directory that receives the two headers.
     """
     schema_path = Path(sys.argv[1])
-    out_dir = Path(sys.argv[2])
+    mapping_path = Path(sys.argv[2])
+    out_dir = Path(sys.argv[3])
     data = yaml.safe_load(schema_path.read_text())
+    mapping = yaml.safe_load(mapping_path.read_text())
     out_dir.mkdir(parents=True, exist_ok=True)
     entities_yaml = data["entities"]
+    mapped_entities = mapping["entities"]
 
     entities = file_banner() + ["#pragma once", '#include "pms/expr.hpp"', "", "namespace pms {", ""]
     factories = file_banner() + ["#pragma once", "", "namespace pms {", ""]
@@ -117,12 +128,12 @@ def main():
                 f'    static constexpr const char* entityName = "{key}";',
             ]
         )
+        mapped_fields = mapped_entities[key]["fields"]
         for field, meta in spec["fields"].items():
-            if meta["type"] == "links":
-                continue  # A link list is read from the record. It is not a filter leaf.
-            cpp_type = TYPE_CPP[meta["type"]]
+            shotgrid_type = mapped_fields[field]["type"]
+            cpp_type = TYPE_CPP[shotgrid_type]
             ident = camel(field)
-            entities.append(f"    /// Field `{field}`, type `{meta['type']}`.")
+            entities.append(f"    /// Field `{field}`, ShotGrid type `{shotgrid_type}`.")
             entities.append(
                 f'    static constexpr Field<{struct}, {cpp_type}> {ident}{{"{field}"}};'
             )
@@ -143,8 +154,6 @@ def main():
             ]
         )
         for field, meta in spec["fields"].items():
-            if meta["type"] == "links":
-                continue
             ident = camel(field)
             entities.append(f"    /// Proxy for `{field}`.")
             entities.append(f"    inline constexpr auto {ident} = {struct}::{ident};")

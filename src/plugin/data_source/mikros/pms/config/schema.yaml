@@ -1,125 +1,119 @@
 # Domain schema for this slice. Project, sequence, shot, asset, playlist, version, note.
-types:
-  string:   { ops: [eq, ne, contains, not_contains, starts_with, ends_with, in, not_in] }
-  int:      { ops: [eq, ne, gt, lt, between, in, not_in] }
-  date:     { ops: [eq, ne, gt, lt, between] }
-  datetime: { ops: [eq, ne, gt, lt, between, in_last, in_calendar_day, in_calendar_week, in_calendar_month] }
-  entity:       { ops: [name_contains, name_starts_with, name_is] }
-  multi_entity: { ops: [name_contains, name_starts_with, name_is] }
-  links:        { ops: [] }
+# Field types and operators live in the ShotGrid mapping, not here.
 
 entities:
   project:
     creatable: false
     fields:
-      id:     { type: int,    filter: true, set: false }
-      name:   { type: string, filter: true, set: true }
-      code:   { type: string, filter: true, set: true }
-      status: { type: string, filter: true, set: false, show: [Active] }
-      type:   { type: string, filter: true, set: false, show: [Feature Film, Episodic] }
+      id:     { filter: true, set: false }
+      name:   { filter: true, set: true }
+      code:   { filter: true, set: true }
+      status: { filter: true, set: false, show: [Active] }
+      type:   { filter: true, set: false, show: [Feature Film, Episodic] }
     scope: []
 
   sequence:
     creatable: false
     shelf: true
     fields:
-      id:                     { type: int,    filter: true,  set: false }
-      name:                   { type: string, filter: true,  set: true }
-      description:            { type: string, filter: true,  set: false }
-      status:                 { type: string, filter: true,  set: false }
-      cut_duration_in_sec:    { type: int,    filter: true,  set: false }
-      estimated_frames_count: { type: int,    filter: true,  set: false }
-      estimated_shots_count:  { type: int,    filter: true,  set: false }
-      shot_count:             { type: int,    filter: true,  set: false }
-      sequence_order:         { type: int,    filter: true,  set: false }
-      shots:                  { type: links,  filter: false, set: false }
-      project:                { type: entity, filter: true,  set: false }
+      id:                     { filter: true,  set: false }
+      name:                   { filter: true,  set: true }
+      description:            { filter: true,  set: false }
+      status:                 { filter: true,  set: false }
+      cut_duration_in_sec:    { filter: true,  set: false }
+      estimated_frames_count: { filter: true,  set: false }
+      estimated_shots_count:  { filter: true,  set: false }
+      shot_count:             { filter: true,  set: false }
+      sequence_order:         { filter: true,  set: false }
+      shots:                  { filter: true,  set: false }
+      project:                { filter: true,  set: false }
     scope: [project]
 
   shot:
     creatable: false
     shelf: true
     fields:
-      id:                  { type: int,    filter: true, set: false }
-      name:                { type: string, filter: true, set: true }
-      description:         { type: string, filter: true, set: false }
-      status:              { type: string, filter: true, set: false }
-      cut_duration_in_sec: { type: int,    filter: true, set: false }
-      cut_in:              { type: int,    filter: true, set: false }
-      cut_out:             { type: int,    filter: true, set: false }
-      cut_order:           { type: int,    filter: true, set: false }
-      sequence:            { type: entity, filter: true, set: false }
+      id:                  { filter: true, set: false }
+      name:                { filter: true, set: true }
+      description:         { filter: true, set: false }
+      status:              { filter: true, set: false }
+      cut_duration_in_sec: { filter: true, set: false }
+      cut_in:              { filter: true, set: false }
+      cut_out:             { filter: true, set: false }
+      cut_order:           { filter: true, set: false }
+      sequence:            { filter: true, set: false }
     scope: [sequence]
 
   asset:
     creatable: false
     shelf: true
     fields:
-      id:          { type: int,    filter: true, set: false }
-      name:        { type: string, filter: true, set: true }
-      description: { type: string, filter: true, set: false }
-      status:      { type: string, filter: true, set: false }
-      project:     { type: entity, filter: true, set: false }
+      id:          { filter: true, set: false }
+      name:        { filter: true, set: true }
+      description: { filter: true, set: false }
+      status:      { filter: true, set: false }
+      project:     { filter: true, set: false }
     scope: [project]
 
   playlist:
     creatable: false
     shelf: true
     fields:
-      id:               { type: int,    filter: true,  set: false }
-      name:             { type: string, filter: true,  set: true }
-      versions:         { type: links,  filter: false, set: false }
-      open_notes_count: { type: int,    filter: true,  set: false }
-      departments:      { type: multi_entity, filter: true,  set: false }
-      created_at:       { type: datetime, filter: true, set: false }
-      category:         { type: string, filter: true,  set: false }
-      author:           { type: entity, filter: true,  set: false }
+      id:               { filter: true,  set: false }
+      name:             { filter: true,  set: true }
+      versions:         { filter: true,  set: false }
+      open_notes_count: { filter: true,  set: false }
+      departments:      { filter: true,  set: false }
+      created_at:       { filter: true,  set: false }
+      category:         { filter: true,  set: false }
+      author:           { filter: true,  set: false }
     scope: [project]
 
   version:
     creatable: false
     shelf: true
     fields:
-      id:    { type: int,    filter: true, set: false }
-      name:  { type: string, filter: true, set: true }
-      image: { type: string, filter: false, set: false, providers: [http, file] }
-      author:            { type: entity, filter: true,  set: false }
-      created_at:        { type: datetime, filter: true, set: false }
-      frame_range:       { type: string, filter: true,  set: false }
-      frame_count:       { type: int,    filter: true,  set: false }
-      description:       { type: string, filter: true,  set: false }
-      client_code:       { type: string, filter: true,  set: false }
-      client_reviewed:   { type: int,    filter: true,  set: false }
-      client_approved:   { type: int,    filter: true,  set: false }
-      is_latest:         { type: int,    filter: true,  set: false }
-      version_number:    { type: int,    filter: true,  set: false }
-      task:              { type: entity, filter: true,  set: false }
-      step:              { type: entity, filter: true,  set: false }
-      status:            { type: string, filter: true,  set: false }
-      artistic_status:   { type: string, filter: true,  set: false }
-      sites:             { type: multi_entity, filter: true,  set: false }
-      open_notes_count:  { type: int,    filter: true,  set: false }
-      synced_to_client:  { type: int,    filter: true,  set: false }
-      work_source_scene: { type: string, filter: true,  set: false }
-      frames:            { type: string, filter: false, set: false, providers: [fileSeq] }
-      movie:             { type: string, filter: false, set: false, providers: [file] }
-      uploaded_movie:    { type: string, filter: false, set: false, providers: [signedurl] }
-      playlists:         { type: links,  filter: false, set: false }
-      project:           { type: entity, filter: true,  set: false }
-      entity:            { type: entity, filter: true,  set: false }
+      id:                { filter: true,  set: false }
+      name:              { filter: true,  set: true }
+      image:             { filter: false, set: false, providers: [http, file] }
+      author:            { filter: true,  set: false }
+      created_at:        { filter: true,  set: false }
+      frame_range:       { filter: true,  set: false }
+      frame_count:       { filter: true,  set: false }
+      description:       { filter: true,  set: false }
+      client_code:       { filter: true,  set: false }
+      client_reviewed:   { filter: true,  set: false }
+      client_approved:   { filter: true,  set: false }
+      is_latest:         { filter: true,  set: false }
+      version_number:    { filter: true,  set: false }
+      task:              { filter: true,  set: false }
+      step:              { filter: true,  set: false }
+      status:            { filter: true,  set: false }
+      artistic_status:   { filter: true,  set: false }
+      sites:             { filter: true,  set: false }
+      notes:             { filter: true,  set: false }
+      open_notes:        { filter: true,  set: false }
+      open_notes_count:  { filter: false, set: false }
+      synced_to_client:  { filter: true,  set: false }
+      work_source_scene: { filter: true,  set: false }
+      frames:            { filter: false, set: false, providers: [fileSeq] }
+      movie:             { filter: false, set: false, providers: [file] }
+      uploaded_movie:    { filter: false, set: false, providers: [signedurl] }
+      playlists:         { filter: true,  set: false }
+      project:           { filter: true,  set: false }
+      entity:            { filter: true,  set: false }
     scope: [shot, sequence, asset, playlist]
 
   note:
     creatable: false
     shelf: false
     fields:
-      id:         { type: int,      filter: true, set: false }
-      name:       { type: string,   filter: true, set: false }
-      content:    { type: string,   filter: true, set: false }
-      author:     { type: entity,   filter: true, set: false }
-      created_at: { type: datetime, filter: true, set: false }
+      id:         { filter: true, set: false }
+      name:       { filter: true, set: false }
+      content:    { filter: true, set: false }
+      author:     { filter: true, set: false }
+      created_at: { filter: true, set: false }
       status:
-        type: string
         filter: true
         set: false
         colors:
@@ -144,7 +138,7 @@ entities:
           ip: In Progress
           opn: Open
           hld: On Hold
-      to:          { type: multi_entity, filter: true,  set: false }
-      department:  { type: entity,       filter: true,  set: false }
-      attachments: { type: links,        filter: false, set: false }
+      to:          { filter: true, set: false }
+      department:  { filter: true, set: false }
+      attachments: { filter: true, set: false }
     scope: [version]

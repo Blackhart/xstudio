@@ -14,8 +14,7 @@ namespace xstudio::mikros_media_details::poco {
 /**
  * @brief One attachment on a note.
  *
- * `image` is the thumbnail URL. The schema link only stores id and name;
- * the DAL copies the thumbnail onto this row.
+ * `image` is the thumbnail URL. The DAL copies it from the link.
  */
 struct NoteAttachment {
     std::int64_t id = 0; ///< Attachment id.

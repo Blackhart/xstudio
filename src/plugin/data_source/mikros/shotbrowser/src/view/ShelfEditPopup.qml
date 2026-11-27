@@ -111,19 +111,29 @@ XsPopup {
         const fields = root.fieldsFor(entity)
         for (let i = 0; i < fields.length; i++) {
             if (fields[i].key === fieldKey)
-                return fields[i].type || "string"
+                return fields[i].type || "text"
         }
-        return "string"
+        return "text"
     }
 
     function displayValue(value, op) {
-        if (Array.isArray(value)) {
-            if (op === "between")
-                return value.join(" .. ")
-            return value.join(", ")
+        function linkText(item) {
+            if (item && item.type !== undefined && item.id !== undefined)
+                return String(item.type) + ":" + String(item.id)
+            return String(item)
         }
-        if (value && typeof value === "object")
-            return String(value.count) + " " + String(value.unit || "")
+        if (Array.isArray(value)) {
+            if (op === "between" || op === "not_between")
+                return value.join(" .. ")
+            return value.map(linkText).join(", ")
+        }
+        if (value && typeof value === "object") {
+            if (value.count !== undefined)
+                return String(value.count) + " " + String(value.unit || "")
+            return linkText(value)
+        }
+        if (typeof value === "boolean")
+            return value ? "true" : "false"
         if (value === undefined || value === null)
             return ""
         return String(value)
@@ -132,36 +142,50 @@ XsPopup {
     function encodeValue(entity, key, op, text) {
         const raw = String(text).trim()
         if (op === "in" || op === "not_in") {
+            const type = root.fieldType(entity, key)
             const parts = raw.split(",").map(function(part) { return part.trim() })
                 .filter(function(part) { return part.length > 0 })
             if (!parts.length)
                 return null
-            if (root.fieldType(entity, key) === "int") {
+            if (type === "entity" || type === "multi_entity") {
+                const links = []
+                for (let i = 0; i < parts.length; i++) {
+                    const link = /^([A-Za-z][A-Za-z0-9_]*):(\d+)$/.exec(parts[i])
+                    if (!link || Number(link[2]) < 1)
+                        return null
+                    links.push({ type: link[1], id: Number(link[2]) })
+                }
+                return links
+            }
+            if (type === "number" || type === "float") {
                 const nums = []
                 for (let i = 0; i < parts.length; i++) {
-                    if (!/^-?\d+$/.test(parts[i]))
+                    if (type === "number" && !/^-?\d+$/.test(parts[i]))
                         return null
-                    nums.push(Number(parts[i]))
+                    const number = Number(parts[i])
+                    if (!isFinite(number))
+                        return null
+                    nums.push(number)
                 }
                 return nums
             }
             return parts
         }
-        if (op === "between") {
+        if (op === "between" || op === "not_between") {
             const parts = raw.split("..").map(function(part) { return part.trim() })
             if (parts.length !== 2 || !parts[0] || !parts[1])
                 return null
             const type = root.fieldType(entity, key)
-            if (type === "int") {
-                if (!/^-?\d+$/.test(parts[0]) || !/^-?\d+$/.test(parts[1]))
-                    return null
+            if (type === "number" || type === "float") {
                 const low = Number(parts[0])
                 const high = Number(parts[1])
-                if (low > high)
+                if (!isFinite(low) || !isFinite(high) || low > high)
+                    return null
+                if (type === "number" && (!/^-?\d+$/.test(parts[0]) || !/^-?\d+$/.test(parts[1])))
                     return null
                 return [low, high]
             }
-            if (type === "date" || type === "datetime") {
+            if (type === "date_time") {
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(parts[0]) || !/^\d{4}-\d{2}-\d{2}$/.test(parts[1]))
                     return null
                 if (parts[0] > parts[1])
@@ -170,27 +194,45 @@ XsPopup {
             }
             return null
         }
-        if (op === "in_last") {
+        if (op === "in_last" || op === "not_in_last" || op === "in_next" || op === "not_in_next") {
             const match = /^(\d+)\s+(HOUR|DAY|WEEK|MONTH|YEAR)$/.exec(raw)
             if (!match || Number(match[1]) < 1)
                 return null
             return { count: Number(match[1]), unit: match[2] }
         }
-        if (op === "in_calendar_day" || op === "in_calendar_week" || op === "in_calendar_month") {
+        if (op === "in_calendar_day" || op === "in_calendar_week" || op === "in_calendar_month" ||
+                op === "in_calendar_year") {
             if (!/^-?\d+$/.test(raw))
                 return null
             return Number(raw)
         }
         const type = root.fieldType(entity, key)
-        if (type === "datetime" && (op === "eq" || op === "ne" || op === "gt" || op === "lt")) {
+        if (type === "date_time" && (op === "eq" || op === "ne" || op === "gt" || op === "lt")) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(raw))
                 return null
             return raw
         }
-        if (type === "int") {
+        if ((type === "entity" || type === "multi_entity") && (op === "eq" || op === "ne")) {
+            const link = /^([A-Za-z][A-Za-z0-9_]*):(\d+)$/.exec(raw)
+            if (!link || Number(link[2]) < 1)
+                return null
+            return { type: link[1], id: Number(link[2]) }
+        }
+        if (type === "checkbox") {
+            if (raw !== "true" && raw !== "false")
+                return null
+            return raw === "true"
+        }
+        if (type === "number") {
             if (!/^-?\d+$/.test(raw))
                 return null
             return Number(raw)
+        }
+        if (type === "float") {
+            const number = Number(raw)
+            if (!isFinite(number) || raw === "")
+                return null
+            return number
         }
         return raw
     }
@@ -440,25 +482,42 @@ XsPopup {
     }
 
     function valuePlaceholder(entity, fieldKey, op) {
-        if (op === "in" || op === "not_in")
+        const type = root.fieldType(entity, fieldKey)
+        if (op === "in" || op === "not_in") {
+            if (type === "entity" || type === "multi_entity")
+                return "Shot:10, Asset:3"
+            if (type === "number" || type === "float")
+                return "1, 2, 5"
             return "ip, rev, wtg"
-        if (op === "between") {
-            if (root.fieldType(entity, fieldKey) === "int")
+        }
+        if (op === "between" || op === "not_between") {
+            if (type === "number")
                 return "0 .. 5"
+            if (type === "float")
+                return "0.5 .. 2"
             return "2024-01-01 .. 2024-03-01"
         }
-        if (op === "in_last")
+        if (op === "in_last" || op === "not_in_last" || op === "in_next" || op === "not_in_next")
             return "7 DAY"
-        if (op === "in_calendar_day" || op === "in_calendar_week" || op === "in_calendar_month")
+        if (op === "in_calendar_day" || op === "in_calendar_week" || op === "in_calendar_month" ||
+                op === "in_calendar_year")
             return "0"
-        if (root.fieldType(entity, fieldKey) === "datetime")
+        if (type === "date_time")
             return "YYYY-MM-DD"
-        if (root.fieldType(entity, fieldKey) === "entity" || fieldKey === "author")
+        if (type === "checkbox")
+            return "true"
+        if ((type === "entity" || type === "multi_entity") && (op === "eq" || op === "ne"))
+            return "Shot:10"
+        if (op === "type_is" || op === "type_is_not")
+            return "Shot"
+        if (op === "name_contains" || op === "name_not_contains" || op === "name_is")
             return "e.g. Ada"
         if (fieldKey === "name")
             return "e.g. paw17_sq010"
-        if (root.fieldType(entity, fieldKey) === "int")
+        if (type === "number")
             return "e.g. 1"
+        if (type === "float")
+            return "e.g. 1.5"
         return "Filter value"
     }
 
@@ -470,24 +529,42 @@ XsPopup {
         let format = ""
         if (op === "eq") {
             meaning = "Matches when the field equals the value."
-            if (type === "datetime") {
+            if (type === "date_time") {
                 value = "A calendar day"
                 format = "YYYY-MM-DD"
-            } else if (type === "int") {
+            } else if (type === "number") {
                 value = "An integer"
                 format = "digits only"
+            } else if (type === "float") {
+                value = "A decimal number"
+                format = "digits, optional fraction"
+            } else if (type === "checkbox") {
+                value = "A boolean"
+                format = "true or false"
+            } else if (type === "entity" || type === "multi_entity") {
+                value = "One linked entity"
+                format = "Type:id"
             } else {
                 value = "Exact text"
                 format = "free text"
             }
         } else if (op === "ne") {
             meaning = "Matches when the field differs from the value."
-            if (type === "datetime") {
+            if (type === "date_time") {
                 value = "A calendar day"
                 format = "YYYY-MM-DD"
-            } else if (type === "int") {
+            } else if (type === "number") {
                 value = "An integer"
                 format = "digits only"
+            } else if (type === "float") {
+                value = "A decimal number"
+                format = "digits, optional fraction"
+            } else if (type === "checkbox") {
+                value = "A boolean"
+                format = "true or false"
+            } else if (type === "entity" || type === "multi_entity") {
+                value = "One linked entity"
+                format = "Type:id"
             } else {
                 value = "Exact text"
                 format = "free text"
@@ -511,35 +588,51 @@ XsPopup {
         } else if (op === "in") {
             meaning = "Matches when the field is one of the listed values."
             value = "A non-empty list"
-            format = type === "int" ? "integers separated by commas" : "values separated by commas"
+            format = (type === "entity" || type === "multi_entity") ? "Type:id, Type:id" :
+                     (type === "number" || type === "float") ? "numbers separated by commas" :
+                     "values separated by commas"
         } else if (op === "not_in") {
             meaning = "Matches when the field is none of the listed values."
             value = "A non-empty list"
-            format = type === "int" ? "integers separated by commas" : "values separated by commas"
+            format = (type === "entity" || type === "multi_entity") ? "Type:id, Type:id" :
+                     (type === "number" || type === "float") ? "numbers separated by commas" :
+                     "values separated by commas"
         } else if (op === "gt") {
             meaning = "Matches when the field is greater than the value."
-            if (type === "datetime" || type === "date") {
+            if (type === "date_time") {
                 value = "A calendar day"
                 format = "YYYY-MM-DD"
+            } else if (type === "float") {
+                value = "A decimal number"
+                format = "digits, optional fraction"
             } else {
                 value = "An integer"
                 format = "digits only"
             }
         } else if (op === "lt") {
             meaning = "Matches when the field is less than the value."
-            if (type === "datetime" || type === "date") {
+            if (type === "date_time") {
                 value = "A calendar day"
                 format = "YYYY-MM-DD"
+            } else if (type === "float") {
+                value = "A decimal number"
+                format = "digits, optional fraction"
             } else {
                 value = "An integer"
                 format = "digits only"
             }
-        } else if (op === "between") {
-            meaning = "Matches when the field lies in the inclusive range."
+        } else if (op === "between" || op === "not_between") {
+            meaning = op === "between" ?
+                "Matches when the field lies in the inclusive range." :
+                "Matches when the field lies outside the inclusive range."
             value = "Lower and upper bounds"
-            format = type === "int" ? "low .. high (integers)" : "YYYY-MM-DD .. YYYY-MM-DD"
-        } else if (op === "in_last") {
-            meaning = "Matches when the datetime falls in the past period."
+            format = type === "number" ? "low .. high (integers)" :
+                     type === "float" ? "low .. high (decimals)" : "YYYY-MM-DD .. YYYY-MM-DD"
+        } else if (op === "in_last" || op === "not_in_last" || op === "in_next" || op === "not_in_next") {
+            meaning = op === "in_last" ? "Matches when the datetime falls in the past period." :
+                      op === "not_in_last" ? "Matches when the datetime falls outside the past period." :
+                      op === "in_next" ? "Matches when the datetime falls in the coming period." :
+                      "Matches when the datetime falls outside the coming period."
             value = "A positive count and a unit"
             format = "N HOUR|DAY|WEEK|MONTH|YEAR"
         } else if (op === "in_calendar_day") {
@@ -554,14 +647,26 @@ XsPopup {
             meaning = "Matches a month offset from this month (0 = this month, -1 = last month)."
             value = "An integer offset"
             format = "signed integer"
+        } else if (op === "in_calendar_year") {
+            meaning = "Matches a year offset from this year (0 = this year, -1 = last year)."
+            value = "An integer offset"
+            format = "signed integer"
         } else if (op === "name_contains") {
             meaning = "Matches when the linked entity name contains the substring."
             value = "A substring of the person or entity name"
             format = "free text"
-        } else if (op === "name_starts_with") {
-            meaning = "Matches when the linked entity name starts with the prefix."
-            value = "A name prefix"
+        } else if (op === "name_not_contains") {
+            meaning = "Matches when the linked entity name does not contain the substring."
+            value = "A substring to exclude"
             format = "free text"
+        } else if (op === "type_is") {
+            meaning = "Matches when the linked entity has this ShotGrid type."
+            value = "An entity type name"
+            format = "Shot, Asset, Playlist, …"
+        } else if (op === "type_is_not") {
+            meaning = "Matches when the linked entity does not have this ShotGrid type."
+            value = "An entity type name to exclude"
+            format = "Shot, Asset, Playlist, …"
         } else if (op === "name_is") {
             meaning = "Matches when the linked entity name equals the value."
             value = "Exact linked name"

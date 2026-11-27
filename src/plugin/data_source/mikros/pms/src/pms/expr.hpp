@@ -30,9 +30,10 @@ template <typename T> struct NonDeduced {
  * The proxy is not the value. Comparing it builds a FieldExpr and leaves the
  * proxy unchanged. `==`, `!=`, `contains()`, `notContains()`, `startsWith()`,
  * `endsWith()`, `isIn()`, `isNotIn()`, `greaterThan()`, `lessThan()`,
- * `between()`, `inLast()`, `inCalendarDay()` / `inCalendarWeek()` /
- * `inCalendarMonth()`, and `nameContains()` / `nameStartsWith()` / `nameIs()`
- * are the field operators.
+ * `between()`, `notBetween()`, `inLast()`, `inCalendarDay()` /
+ * `inCalendarWeek()` / `inCalendarMonth()` / `inCalendarYear()`, and
+ * `nameContains()` / `nameNotContains()` / `nameIs()` / `typeIs()` are the
+ * field operators.
  *
  * @tparam Entity Entity tag that owns the field.
  * @tparam T C++ type of the field value.
@@ -387,6 +388,60 @@ FieldExpr<Entity> inCalendarMonth(const Field<Entity, DateTime> &field, std::int
 }
 
 /**
+ * @brief Tests whether a datetime field falls in a year offset from this year.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param offset `0` is this year, `1` is next year, `-1` is last year.
+ * @return An int leaf with `op` InCalendarYear.
+ */
+template <typename Entity>
+FieldExpr<Entity> inCalendarYear(const Field<Entity, DateTime> &field, std::int64_t offset) {
+    return makeComparison(field, ExprOp::InCalendarYear, Value{offset});
+}
+
+/**
+ * @brief Tests whether a datetime field falls outside a past period.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param count Positive number of units.
+ * @param unit `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR`.
+ * @return A period leaf with `op` NotInLast.
+ */
+template <typename Entity>
+FieldExpr<Entity> notInLast(
+    const Field<Entity, DateTime> &field, std::int64_t count, const std::string &unit) {
+    return makeComparison(field, ExprOp::NotInLast, Value{Period{count, unit}});
+}
+
+/**
+ * @brief Tests whether a datetime field falls in a coming period.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param count Positive number of units.
+ * @param unit `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR`.
+ * @return A period leaf with `op` InNext.
+ */
+template <typename Entity>
+FieldExpr<Entity> inNext(
+    const Field<Entity, DateTime> &field, std::int64_t count, const std::string &unit) {
+    return makeComparison(field, ExprOp::InNext, Value{Period{count, unit}});
+}
+
+/**
+ * @brief Tests whether a datetime field falls outside a coming period.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Datetime proxy on the left.
+ * @param count Positive number of units.
+ * @param unit `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR`.
+ * @return A period leaf with `op` NotInNext.
+ */
+template <typename Entity>
+FieldExpr<Entity> notInNext(
+    const Field<Entity, DateTime> &field, std::int64_t count, const std::string &unit) {
+    return makeComparison(field, ExprOp::NotInNext, Value{Period{count, unit}});
+}
+
+/**
  * @brief Tests whether an int field lies in an inclusive range.
  * @tparam Entity Entity tag that owns the field.
  * @param field Int proxy on the left.
@@ -398,6 +453,33 @@ template <typename Entity>
 FieldExpr<Entity> between(
     const Field<Entity, std::int64_t> &field, std::int64_t low, std::int64_t high) {
     return makeComparison(field, ExprOp::Between, Value{IntBounds{low, high}});
+}
+
+/**
+ * @brief Tests whether an int field lies outside an inclusive range.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Int proxy on the left.
+ * @param low Inclusive lower bound.
+ * @param high Inclusive upper bound.
+ * @return A field leaf with `op` NotBetween.
+ */
+template <typename Entity>
+FieldExpr<Entity> notBetween(
+    const Field<Entity, std::int64_t> &field, std::int64_t low, std::int64_t high) {
+    return makeComparison(field, ExprOp::NotBetween, Value{IntBounds{low, high}});
+}
+
+/**
+ * @brief Tests whether a float field lies in an inclusive range.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Float proxy on the left.
+ * @param low Inclusive lower bound.
+ * @param high Inclusive upper bound.
+ * @return A field leaf with `op` Between.
+ */
+template <typename Entity>
+FieldExpr<Entity> between(const Field<Entity, double> &field, double low, double high) {
+    return makeComparison(field, ExprOp::Between, Value{FloatBounds{low, high}});
 }
 
 /**
@@ -443,15 +525,63 @@ FieldExpr<Entity> nameContains(const Field<Entity, EntityRef> &field, const std:
 }
 
 /**
- * @brief Tests whether a linked entity name starts with a prefix.
+ * @brief Tests whether a linked entity name does not contain a substring.
  * @tparam Entity Entity tag that owns the field.
  * @param field Entity proxy on the left.
- * @param text Prefix to look for in the linked name.
- * @return A field leaf with `op` NameStartsWith.
+ * @param text Substring that must be absent from the linked name.
+ * @return A field leaf with `op` NameNotContains.
  */
 template <typename Entity>
-FieldExpr<Entity> nameStartsWith(const Field<Entity, EntityRef> &field, const std::string &text) {
-    return makeComparison(field, ExprOp::NameStartsWith, Value{text});
+FieldExpr<Entity> nameNotContains(const Field<Entity, EntityRef> &field, const std::string &text) {
+    return makeComparison(field, ExprOp::NameNotContains, Value{text});
+}
+
+/**
+ * @brief Tests whether a linked entity has a ShotGrid type.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Entity proxy on the left.
+ * @param typeName ShotGrid entity type, such as `"Shot"`.
+ * @return A field leaf with `op` TypeIs.
+ */
+template <typename Entity>
+FieldExpr<Entity> typeIs(const Field<Entity, EntityRef> &field, const std::string &typeName) {
+    return makeComparison(field, ExprOp::TypeIs, Value{typeName});
+}
+
+/**
+ * @brief Tests whether a linked entity does not have a ShotGrid type.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Entity proxy on the left.
+ * @param typeName ShotGrid entity type to exclude.
+ * @return A field leaf with `op` TypeIsNot.
+ */
+template <typename Entity>
+FieldExpr<Entity> typeIsNot(const Field<Entity, EntityRef> &field, const std::string &typeName) {
+    return makeComparison(field, ExprOp::TypeIsNot, Value{typeName});
+}
+
+/**
+ * @brief Tests whether an entity field equals one link.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Entity proxy on the left.
+ * @param link Linked row. `id` and `type` are the filter.
+ * @return A field leaf with `op` Eq.
+ */
+template <typename Entity>
+FieldExpr<Entity> operator==(const Field<Entity, EntityRef> &field, const Link &link) {
+    return makeComparison(field, ExprOp::Eq, Value{link});
+}
+
+/**
+ * @brief Tests whether an entity field differs from one link.
+ * @tparam Entity Entity tag that owns the field.
+ * @param field Entity proxy on the left.
+ * @param link Linked row that must not match.
+ * @return A field leaf with `op` Ne.
+ */
+template <typename Entity>
+FieldExpr<Entity> operator!=(const Field<Entity, EntityRef> &field, const Link &link) {
+    return makeComparison(field, ExprOp::Ne, Value{link});
 }
 
 /**

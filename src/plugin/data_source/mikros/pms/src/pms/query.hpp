@@ -148,8 +148,8 @@ template <typename Entity> class Query {
     /**
      * @brief Restricts which domain fields find() loads, by key name.
      *
-     * Use this when a field has no proxy (for example `links` fields such as
-     * `shots`, `versions`, or `playlists`). `id` and `name` are always kept.
+     * Use this when the caller names fields by key, including lists such as
+     * `shots`, `versions`, or `playlists`. `id` and `name` are always kept.
      *
      * @param keys Domain field names from the schema.
      * @return A new query. This query is unchanged.

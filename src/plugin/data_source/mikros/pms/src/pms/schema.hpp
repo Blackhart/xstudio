@@ -11,6 +11,8 @@
 
 namespace pms {
 
+class ShotGridMapping;
+
 /**
  * @brief One field of an entity, as declared in the domain YAML.
  *
@@ -18,14 +20,16 @@ namespace pms {
  * and is loaded for later slices; this slice does not write fields.
  * `show` lists the values a UI filter checks on start. Empty means no filter.
  * `colors` and `labels` name a code, such as a note status. Empty means none.
+ * `type` and `ops` stay empty until `applyMapping` copies them from the
+ * ShotGrid mapping. The schema file does not name a type.
  */
 struct FieldSpec {
     std::string key;  ///< YAML field name.
-    std::string type; ///< `string`, `int`, `date`, `datetime`, `entity`, or `links`.
+    std::string type; ///< ShotGrid data type copied from the mapping. Empty before that.
     bool filter = false; ///< True when Where may use the field.
     bool canSet = false; ///< True when a later slice may assign the field.
     bool requiredOnCreate = false; ///< True when a later create must send the field.
-    std::vector<std::string> ops;  ///< Comparison names allowed for `type`.
+    std::vector<std::string> ops;  ///< Operators of `type`, copied from the mapping.
     std::vector<std::string> providers; ///< Ways a worker may read this field, such as `http`.
     std::vector<std::string> show; ///< Values the UI checks on start. Empty = no filter.
     std::map<std::string, std::string> colors; ///< Code → colour, such as `opn` → `#f9a825`.
@@ -67,6 +71,17 @@ class Schema {
      * @throw Error When the file cannot be read or a type or entity is incomplete.
      */
     static Schema load(const std::string &path);
+
+    /**
+     * @brief Copies each field's ShotGrid type and operators from `mapping`.
+     *
+     * The schema file has no type. Validation and the shelf read the copies
+     * this method writes.
+     *
+     * @param mapping Domain ↔ ShotGrid map, including the `types` block.
+     * @throw Error When an entity or field is missing, or its type is unknown.
+     */
+    void applyMapping(const ShotGridMapping &mapping);
 
     /**
      * @brief Finds an entity by its YAML name.

@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@ namespace pms {
 struct ShotGridSchemaField {
     std::string domain;   ///< Domain field key, such as `"name"`.
     std::string shotgrid; ///< REST attribute name. Empty until filled in.
+    std::string type;     ///< ShotGrid data type, such as `"text"` or `"status_list"`.
     std::string provider; ///< How a worker reads the value. Empty when the field is plain text.
 };
 
@@ -93,12 +95,21 @@ class ShotGridMapping {
     const std::vector<ShotGridSchema> &entities() const { return entities_; }
 
     /**
+     * @brief Returns the operators allowed on a ShotGrid data type.
+     * @param typeName Type name from a field, such as `"number"`.
+     * @return The operators in file order, or null when the type is unknown.
+     *     An empty vector means the type cannot be filtered.
+     */
+    const std::vector<std::string> *opsFor(const std::string &typeName) const;
+
+    /**
      * @brief Throws when a ShotGrid name is empty or a link target is unknown.
      * @throw Error Naming the first missing name.
      */
     void throwIfNamesMissing() const;
 
   private:
+    std::map<std::string, std::vector<std::string>> types_; ///< Data type → operators.
     std::vector<ShotGridSchema> entities_; ///< Entities in YAML order.
 };
 

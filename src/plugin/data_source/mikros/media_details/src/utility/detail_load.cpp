@@ -140,7 +140,7 @@ nlohmann::json assetJson(const poco::AssetDetail &row) {
 /**
  * @brief Builds the playlists JSON array from version links.
  * @param playlists Playlist id/name pairs.
- * @return Array of `{id,name}` objects.
+ * @return Array of `{id,name,type}` objects.
  */
 nlohmann::json playlistsJson(const std::vector<poco::PlaylistLink> &playlists) {
     nlohmann::json list = nlohmann::json::array();
@@ -148,7 +148,7 @@ nlohmann::json playlistsJson(const std::vector<poco::PlaylistLink> &playlists) {
         if (link.id <= 0) {
             continue;
         }
-        list.push_back({{"id", link.id}, {"name", link.name}});
+        list.push_back({{"id", link.id}, {"name", link.name}, {"type", link.type}});
     }
     return list;
 }

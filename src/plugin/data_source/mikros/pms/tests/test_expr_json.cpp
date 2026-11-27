@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include "mapped_schema.hpp"
 #include "pms/pms.hpp"
 
 #include "recording_backend.hpp"
@@ -189,8 +190,8 @@ TEST_CASE("expr_json round-trips every remaining leaf and group operator") {
         CHECK(std::get<std::string>(*restored->value) == "Ada");
     }
     {
-        const auto restored = roundTrip(nameStartsWith(author, "Ad").node);
-        CHECK(restored->op == ExprOp::NameStartsWith);
+        const auto restored = roundTrip(nameNotContains(author, "Ad").node);
+        CHECK(restored->op == ExprOp::NameNotContains);
         CHECK(std::get<std::string>(*restored->value) == "Ad");
     }
     {
@@ -211,7 +212,7 @@ TEST_CASE("Where accepts FieldExpr built from JSON") {
     row.fields["id"] = std::int64_t{7};
     row.fields["name"] = std::string("v001");
     backend.next = {row};
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const nlohmann::json json = {
         {"kind", "field"}, {"op", "eq"}, {"key", "status"}, {"value", "apr"}};

@@ -80,8 +80,26 @@ std::string trimNewline(std::string text) {
 }
 
 /**
+ * @brief Renders one link for the page log.
+ * @param link Entity object stored on a record.
+ * @return `{ id, name, type, image }` with empty display fields omitted.
+ */
+std::string formatLink(const Link &link) {
+    std::ostringstream out;
+    out << "{ id: " << link.id << ", name: \"" << escapeQuoted(link.name) << "\"";
+    if (!link.type.empty()) {
+        out << ", type: \"" << escapeQuoted(link.type) << "\"";
+    }
+    if (!link.image.empty()) {
+        out << ", image: \"" << escapeQuoted(link.image) << "\"";
+    }
+    out << " }";
+    return out.str();
+}
+
+/**
  * @brief Renders one record field value for the page log.
- * @param value String, int, date, link list, filter list, or period.
+ * @param value String, int, date, link, link list, filter list, or period.
  * @return Text that fits inside a `{ key: … }` line.
  */
 std::string formatFieldValue(const Value &value) {
@@ -129,6 +147,15 @@ std::string formatFieldValue(const Value &value) {
             << '-' << std::setw(2) << bounds->high.day;
         return out.str();
     }
+    if (const auto *flag = std::get_if<bool>(&value)) {
+        return *flag ? "true" : "false";
+    }
+    if (const auto *number = std::get_if<double>(&value)) {
+        return std::to_string(*number);
+    }
+    if (const auto *link = std::get_if<Link>(&value)) {
+        return formatLink(*link);
+    }
     if (const auto *links = std::get_if<std::vector<Link>>(&value)) {
         std::ostringstream out;
         out << "[ ";
@@ -136,8 +163,7 @@ std::string formatFieldValue(const Value &value) {
             if (i != 0) {
                 out << ", ";
             }
-            const Link &link = (*links)[i];
-            out << "{ id: " << link.id << ", name: \"" << escapeQuoted(link.name) << "\" }";
+            out << formatLink((*links)[i]);
         }
         out << " ]";
         return out.str();
@@ -267,6 +293,29 @@ std::string requireSchemaPath() {
 }
 
 /**
+ * @brief Mapping path that must be set for both backends.
+ * @return Absolute path from `SHOTGRID_MAPPING`.
+ * @throw Error When `SHOTGRID_MAPPING` is missing or empty.
+ */
+std::string requireMappingPath() {
+    const TextSetting path = shotGridMapping();
+    if (!path.set || path.value.empty()) {
+        throw Error("set SHOTGRID_MAPPING to the ShotGrid mapping YAML");
+    }
+    return path.value;
+}
+
+/**
+ * @brief Loads the schema and copies types and operators from the mapping.
+ * @return Schema whose fields carry the ShotGrid type.
+ */
+Schema loadMappedSchema() {
+    Schema schema = Schema::load(requireSchemaPath());
+    schema.applyMapping(ShotGridMapping::load(requireMappingPath())); ///< Fake uses the same ops.
+    return schema;
+}
+
+/**
  * @brief Shared backend + CachingBackend + Session for the process.
  *
  * Owns the concrete backend through `unique_ptr` so construction order stays
@@ -293,7 +342,7 @@ class SharedPms {
     SharedPms()
         : backend_(buildBackend()),
           cache_(*backend_, buildCacheOptions(useShotGrid() ? "shotgrid" : "fake")),
-          session_(Schema::load(requireSchemaPath()), cache_) {}
+          session_(loadMappedSchema(), cache_) {}
 
     /**
      * @brief Builds the selected concrete backend.

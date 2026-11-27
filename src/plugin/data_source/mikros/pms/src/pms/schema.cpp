@@ -7,6 +7,7 @@
 #include "pms/schema.hpp"
 
 #include "pms/error.hpp"
+#include "pms/shotgrid/mapping.hpp"
 
 #include <unordered_set>
 #include <utility>
@@ -38,25 +39,6 @@ void loadStringMap(
     }
 }
 
-/**
- * @brief Reads the operators declared for a YAML value type.
- * @param types `types` map from the schema file.
- * @param typeName Type name stored on a field, such as `"date"`.
- * @return Operator names, in file order. Empty when the type is not filtered.
- * @throw Error When the type is missing.
- */
-std::vector<std::string> loadOps(const YAML::Node &types, const std::string &typeName) {
-    const YAML::Node type = types[typeName];
-    if (!type || !type["ops"] || !type["ops"].IsSequence()) {
-        throw Error("schema: unknown type \"" + typeName + "\"");
-    }
-    std::vector<std::string> ops;
-    for (YAML::const_iterator op = type["ops"].begin(); op != type["ops"].end(); ++op) {
-        ops.push_back(op->as<std::string>());
-    }
-    return ops; ///< `links` declares no operators. Where cannot use that field.
-}
-
 } // namespace
 
 const FieldSpec *EntitySpec::field(const std::string &key) const {
@@ -75,8 +57,8 @@ Schema Schema::load(const std::string &path) {
     } catch (const YAML::Exception &ex) {
         throw Error(std::string("schema: ") + ex.what());
     }
-    if (!root["types"] || !root["entities"]) {
-        throw Error("schema: missing types or entities");
+    if (!root["entities"]) {
+        throw Error("schema: missing entities");
     }
 
     Schema schema;
@@ -102,7 +84,6 @@ Schema Schema::load(const std::string &path) {
             FieldSpec spec;
             spec.key = fieldEntry->first.as<std::string>();
             const YAML::Node meta = fieldEntry->second;
-            spec.type = meta["type"].as<std::string>();
             spec.filter = meta["filter"].as<bool>(false);
             spec.canSet = meta["set"].as<bool>(false);
             spec.requiredOnCreate = meta["required_on_create"].as<bool>(false);
@@ -122,7 +103,6 @@ Schema Schema::load(const std::string &path) {
             }
             loadStringMap(meta["colors"], spec.colors, spec.key + " colors");
             loadStringMap(meta["labels"], spec.labels, spec.key + " labels");
-            spec.ops = loadOps(root["types"], spec.type);
             entity.fields.push_back(std::move(spec));
         }
         schema.entities_.push_back(std::move(entity));
@@ -131,6 +111,31 @@ Schema Schema::load(const std::string &path) {
         throw Error("schema: no entities");
     }
     return schema;
+}
+
+void Schema::applyMapping(const ShotGridMapping &mapping) {
+    for (EntitySpec &entity : entities_) {
+        const ShotGridSchema *mapped = mapping.findSchema(entity.name);
+        if (!mapped) {
+            throw Error("schema: entity \"" + entity.name + "\" is missing from the mapping");
+        }
+        for (FieldSpec &field : entity.fields) {
+            const ShotGridSchemaField *mappedField = mapped->findField(field.key);
+            if (!mappedField) {
+                throw Error(
+                    "schema: field \"" + entity.name + "." + field.key +
+                    "\" is missing from the mapping");
+            }
+            const std::vector<std::string> *ops = mapping.opsFor(mappedField->type);
+            if (!ops) {
+                throw Error(
+                    "schema: field \"" + entity.name + "." + field.key + "\" has unknown type \"" +
+                    mappedField->type + "\"");
+            }
+            field.type = mappedField->type; ///< ShotGrid data type, not a schema type.
+            field.ops = *ops;
+        }
+    }
 }
 
 const EntitySpec *Schema::entity(const std::string &name) const {

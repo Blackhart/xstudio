@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#include "mapped_schema.hpp"
 #include "pms/pms.hpp"
 
 #include "recording_backend.hpp"
@@ -24,7 +25,7 @@ Record projectRow(std::int64_t id, const std::string &name) {
 TEST_CASE("find sends the ir and returns the backend records") {
     RecordingBackend backend;
     backend.next = {projectRow(12, "paw3"), projectRow(13, "paw4")};
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records rows = Project().Where(code == "PAW").find(session).rows;
 
@@ -44,7 +45,7 @@ where:
 TEST_CASE("find without a where is a full project list") {
     RecordingBackend backend;
     backend.next = {projectRow(1, "paw3")};
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records rows = Project().find(session).rows;
 
@@ -57,7 +58,7 @@ TEST_CASE("find without a where is a full project list") {
 
 TEST_CASE("find of nothing is an empty vector") {
     RecordingBackend backend;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
     const Records rows = Project().Where(name == "missing").find(session).rows;
     CHECK(rows.empty());
 }
@@ -67,14 +68,14 @@ TEST_CASE("find rejects a record without identity") {
     Record row;
     row.fields["name"] = std::string("paw");
     backend.next = {row};
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
     CHECK_THROWS_WITH_AS(Project().find(session), "record missing \"id\"", Error);
 }
 
 TEST_CASE("where id is a legal filter") {
     RecordingBackend backend;
     backend.next = {projectRow(42, "paw3")};
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
     const Records rows = Project().Where(id == std::int64_t{42}).find(session).rows;
     REQUIRE(rows.size() == 1);
     CHECK(std::get<std::int64_t>(rows[0].at("id")) == 42);
@@ -86,7 +87,7 @@ TEST_CASE("find versions in a sequence sends a scope leaf by id") {
     version.fields["id"] = std::int64_t{7};
     version.fields["name"] = std::string("paw01_sq010_v001");
     backend.next = {version};
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const Records rows = Version().In(sequence::id == std::int64_t{1}).find(session).rows;
 
@@ -105,7 +106,7 @@ where:
 TEST_CASE("count sends the ir and returns the backend total") {
     RecordingBackend backend;
     backend.next_count = 12;
-    Session session(Schema::load(PMS_SCHEMA_PATH), backend);
+    Session session(mappedSchema(), backend);
 
     const std::size_t total =
         Shot().In(project::id == std::int64_t{3}).count(session);

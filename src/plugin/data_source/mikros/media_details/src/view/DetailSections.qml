@@ -652,7 +652,9 @@ Item {
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
                                             if (modelData && modelData.id)
-                                                root.openEntity("Playlist", modelData.id)
+                                                root.openEntity(
+                                                    modelData.type ? String(modelData.type) : "Playlist",
+                                                    modelData.id)
                                         }
                                     }
                                 }

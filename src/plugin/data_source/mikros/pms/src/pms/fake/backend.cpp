@@ -840,6 +840,10 @@ std::pair<Date, Date> calendarWindow(ExprOp op, std::int64_t offset, const Date 
         const Date end{year, month, daysInMonth(year, month)};
         return {start, end};
     }
+    if (op == ExprOp::InCalendarYear) {
+        const int year = today.year + static_cast<int>(offset);
+        return {Date{year, 1, 1}, Date{year, 12, 31}};
+    }
     throw Error("fake backend: not a calendar operator");
 }
 
@@ -966,24 +970,24 @@ bool matchesWhere(const Record &row, const ExprNode &node) {
 
     if (node.op == ExprOp::Contains || node.op == ExprOp::NotContains ||
         node.op == ExprOp::StartsWith || node.op == ExprOp::EndsWith ||
-        node.op == ExprOp::NameContains || node.op == ExprOp::NameStartsWith) {
+        node.op == ExprOp::NameContains || node.op == ExprOp::NameNotContains) {
         const auto *needle = std::get_if<std::string>(&leaf);
         if (!needle) {
             throw Error("fake backend: string op expects a string on \"" + node.key + "\"");
         }
         const std::string *haystack = fieldString();
         if (!haystack) {
-            return node.op == ExprOp::NotContains;
+            return node.op == ExprOp::NotContains || node.op == ExprOp::NameNotContains;
         }
         const std::string left = toLower(*haystack);
         const std::string right = toLower(*needle);
         if (node.op == ExprOp::Contains || node.op == ExprOp::NameContains) {
             return left.find(right) != std::string::npos;
         }
-        if (node.op == ExprOp::NotContains) {
+        if (node.op == ExprOp::NotContains || node.op == ExprOp::NameNotContains) {
             return left.find(right) == std::string::npos;
         }
-        if (node.op == ExprOp::StartsWith || node.op == ExprOp::NameStartsWith) {
+        if (node.op == ExprOp::StartsWith) {
             return left.size() >= right.size() && left.compare(0, right.size(), right) == 0;
         }
         return left.size() >= right.size() &&
@@ -1021,21 +1025,24 @@ bool matchesWhere(const Record &row, const ExprNode &node) {
         throw Error("fake backend: in expects a list on \"" + node.key + "\"");
     }
 
-    if (node.op == ExprOp::Between) {
+    if (node.op == ExprOp::Between || node.op == ExprOp::NotBetween) {
+        const bool outside = node.op == ExprOp::NotBetween;
         std::int64_t lowInt = 0;
         std::int64_t highInt = 0;
         if (intBounds(leaf, lowInt, highInt)) {
             const std::int64_t *number = fieldInt();
-            return number && *number >= lowInt && *number <= highInt;
+            const bool inside = number && *number >= lowInt && *number <= highInt;
+            return outside ? !inside : inside;
         }
         Date lowDay;
         Date highDay;
         if (dayBounds(leaf, lowDay, highDay)) {
             if (found == row.fields.end()) {
-                return false;
+                return outside;
             }
             const auto day = asDay(found->second);
-            return day && dayOnOrBefore(lowDay, *day) && dayOnOrBefore(*day, highDay);
+            const bool inside = day && dayOnOrBefore(lowDay, *day) && dayOnOrBefore(*day, highDay);
+            return outside ? !inside : inside;
         }
         throw Error("fake backend: between expects bounds on \"" + node.key + "\"");
     }
@@ -1077,7 +1084,7 @@ bool matchesWhere(const Record &row, const ExprNode &node) {
     }
 
     if (node.op == ExprOp::InCalendarDay || node.op == ExprOp::InCalendarWeek ||
-        node.op == ExprOp::InCalendarMonth) {
+        node.op == ExprOp::InCalendarMonth || node.op == ExprOp::InCalendarYear) {
         const auto *offset = std::get_if<std::int64_t>(&leaf);
         if (!offset) {
             throw Error("fake backend: calendar op expects an int on \"" + node.key + "\"");
@@ -1279,7 +1286,69 @@ void copyPresent(Record &out, const Record &row, const std::string &key) {
 }
 
 /**
- * @brief Attaches a linked entity name, `{key}_id`, and `{key}_type` on a public row.
+ * @brief Writes a label stored as a string onto the public row as one link.
+ * @param out Public row being built.
+ * @param row Private catalog row.
+ * @param key Domain field copied from `row`.
+ * @param typeName ShotGrid entity type stored on the link.
+ */
+void copyNameAsLink(
+    Record &out, const Record &row, const std::string &key, const char *typeName) {
+    const auto found = row.fields.find(key);
+    if (found == row.fields.end()) {
+        return;
+    }
+    const auto *text = std::get_if<std::string>(&found->second);
+    if (!text || text->empty()) {
+        return;
+    }
+    Link link;
+    link.name = *text;
+    link.type = typeName;
+    out.fields[key] = std::move(link); ///< The private row keeps the string for Where.
+}
+
+/**
+ * @brief Splits a comma-separated label into one link per name.
+ * @param out Public row being built.
+ * @param row Private catalog row.
+ * @param key Domain field that stores the joined names.
+ * @param typeName ShotGrid entity type stored on each link.
+ */
+void copyCommaNamesAsLinks(
+    Record &out, const Record &row, const std::string &key, const char *typeName) {
+    const auto found = row.fields.find(key);
+    if (found == row.fields.end()) {
+        return;
+    }
+    const auto *text = std::get_if<std::string>(&found->second);
+    if (!text || text->empty()) {
+        return;
+    }
+    std::vector<Link> links;
+    std::size_t start = 0;
+    while (start <= text->size()) {
+        const std::size_t comma = text->find(',', start);
+        const std::size_t end = comma == std::string::npos ? text->size() : comma;
+        const std::string name = text->substr(start, end - start);
+        if (!name.empty()) {
+            Link link;
+            link.name = name;
+            link.type = typeName;
+            links.push_back(std::move(link));
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    if (!links.empty()) {
+        out.fields[key] = std::move(links); ///< Same list shape as a ShotGrid multi_entity.
+    }
+}
+
+/**
+ * @brief Attaches one parent as a `{id, name, type}` link on a public row.
  * @param out Public row being built.
  * @param row Private catalog row that holds the parent int under `linkKey`.
  * @param parents Catalog used to resolve the parent name.
@@ -1298,16 +1367,17 @@ void attachParentEntity(
     if (linked == row.fields.end() || !std::holds_alternative<std::int64_t>(linked->second)) {
         return;
     }
-    const std::int64_t parentId = std::get<std::int64_t>(linked->second);
-    out.fields[fieldKey + "_id"] = parentId;
-    out.fields[fieldKey + "_type"] = std::string(typeName);
-    if (const Record *parent = parentById(parents, parentId)) {
-        out.fields[fieldKey] = std::get<std::string>(parent->fields.at("name"));
+    Link link;
+    link.id = std::get<std::int64_t>(linked->second);
+    link.type = typeName;
+    if (const Record *parent = parentById(parents, link.id)) {
+        link.name = std::get<std::string>(parent->fields.at("name"));
     }
+    out.fields[fieldKey] = std::move(link); ///< One object. The private int stays for In().
 }
 
 /**
- * @brief Returns a sequence with public `project` / `project_id` for Media Details.
+ * @brief Returns a sequence with public `project` as one link for Media Details.
  * @param row Private sequence row.
  * @param projects Project catalog for name lookup.
  * @return Id, name, and project label fields.
@@ -1326,7 +1396,7 @@ Record publicSequence(const Record &row, const Records &projects) {
 }
 
 /**
- * @brief Returns a shot with public `sequence` / `sequence_id` for Media Details.
+ * @brief Returns a shot with public `sequence` as one link for Media Details.
  * @param row Private shot row.
  * @param sequences Sequence catalog for name lookup.
  * @return Id, name, and sequence label fields.
@@ -1344,7 +1414,7 @@ Record publicShot(const Record &row, const Records &sequences) {
 }
 
 /**
- * @brief Returns an asset with public `project` / `project_id` for Media Details.
+ * @brief Returns an asset with public `project` as one link for Media Details.
  * @param row Private asset row.
  * @param projects Project catalog for name lookup.
  * @return Id, name, and project label fields.
@@ -1360,8 +1430,8 @@ Record publicAsset(const Record &row, const Records &projects) {
 /**
  * @brief Returns a version without its private parent link ints.
  *
- * Fills public `project` / `project_id` and polymorphic `entity` /
- * `entity_id` / `entity_type` for Media Details from the private links.
+ * Fills public `project` and polymorphic `entity` as `{id, name, type}` links
+ * from the private parent ints.
  *
  * @param row Catalog version, including the card fields and thumb path.
  * @param projects Project catalog for name lookup.
@@ -1379,7 +1449,7 @@ Record publicVersion(
     Record out = publicNamed(row);
     copyPresent(out, row, "image");
     copyPresent(out, row, "image_provider");
-    copyPresent(out, row, "author");
+    copyNameAsLink(out, row, "author", "HumanUser");
     copyPresent(out, row, "created_at");
     copyPresent(out, row, "frame_range");
     copyPresent(out, row, "frame_count");
@@ -1389,11 +1459,11 @@ Record publicVersion(
     copyPresent(out, row, "client_approved");
     copyPresent(out, row, "is_latest");
     copyPresent(out, row, "version_number");
-    copyPresent(out, row, "task");
-    copyPresent(out, row, "step");
+    copyNameAsLink(out, row, "task", "Task");
+    copyNameAsLink(out, row, "step", "Step");
     copyPresent(out, row, "status");
     copyPresent(out, row, "artistic_status");
-    copyPresent(out, row, "sites");
+    copyCommaNamesAsLinks(out, row, "sites", "Site");
     copyPresent(out, row, "open_notes_count");
     copyPresent(out, row, "synced_to_client");
     copyPresent(out, row, "work_source_scene");
@@ -1404,15 +1474,7 @@ Record publicVersion(
     copyPresent(out, row, "uploaded_movie");
     copyPresent(out, row, "uploaded_movie_provider");
 
-    const auto projectField = row.fields.find("project");
-    if (projectField != row.fields.end() &&
-        std::holds_alternative<std::int64_t>(projectField->second)) {
-        const std::int64_t projectId = std::get<std::int64_t>(projectField->second);
-        out.fields["project_id"] = projectId;
-        if (const Record *project = parentById(projects, projectId)) {
-            out.fields["project"] = std::get<std::string>(project->fields.at("name"));
-        }
-    }
+    attachParentEntity(out, row, projects, "project", "project", "Project");
 
     const auto attachEntity =
         [&out](const char *type, const Records &catalog, const std::string &linkKey, const Record &src) {
@@ -1426,9 +1488,11 @@ Record publicVersion(
             if (!entity) {
                 return false;
             }
-            out.fields["entity_type"] = std::string(type);
-            out.fields["entity_id"] = entityId;
-            out.fields["entity"] = std::get<std::string>(entity->fields.at("name"));
+            Link link;
+            link.id = entityId;
+            link.name = std::get<std::string>(entity->fields.at("name"));
+            link.type = type;
+            out.fields["entity"] = std::move(link); ///< Shot, Asset, or Sequence.
             return true;
         };
 
@@ -1447,10 +1511,10 @@ Record publicVersion(
 Record publicPlaylist(const Record &row) {
     Record out = publicNamed(row);
     copyPresent(out, row, "open_notes_count");
-    copyPresent(out, row, "departments");
+    copyCommaNamesAsLinks(out, row, "departments", "Department");
     copyPresent(out, row, "created_at");
     copyPresent(out, row, "category");
-    copyPresent(out, row, "author");
+    copyNameAsLink(out, row, "author", "HumanUser");
     return out;
 }
 
@@ -1465,6 +1529,7 @@ Link noteAttachment(std::int64_t id, const std::string &name, const std::string 
     Link link;
     link.id = id;
     link.name = name;
+    link.type = "Attachment";
     link.image = image; ///< Same file the version card already shows.
     return link;
 }
@@ -1581,11 +1646,11 @@ Records makeNotes(const Records &versions) {
 Record publicNote(const Record &row) {
     Record out = publicNamed(row);
     copyPresent(out, row, "content");
-    copyPresent(out, row, "author");
+    copyNameAsLink(out, row, "author", "HumanUser");
     copyPresent(out, row, "created_at");
     copyPresent(out, row, "status");
-    copyPresent(out, row, "to");
-    copyPresent(out, row, "department");
+    copyCommaNamesAsLinks(out, row, "to", "HumanUser");
+    copyNameAsLink(out, row, "department", "Department");
     copyPresent(out, row, "attachments");
     return out;
 }
@@ -1708,6 +1773,7 @@ Records FakeBackend::matchAll(const Ir &ir) const {
                 Link link;
                 link.id = std::get<std::int64_t>(shot.fields.at("id"));
                 link.name = std::get<std::string>(shot.fields.at("name"));
+                link.type = "Shot";
                 shots.push_back(std::move(link));
             }
             if (!shots.empty()) {
@@ -1765,6 +1831,7 @@ Records FakeBackend::matchAll(const Ir &ir) const {
                 }
                 Link link;
                 link.id = versionId;
+                link.type = "Version";
                 for (const Record &version : versions_) {
                     if (std::get<std::int64_t>(version.fields.at("id")) != versionId) {
                         continue;
@@ -1848,6 +1915,7 @@ Records FakeBackend::matchAll(const Ir &ir) const {
                     Link link;
                     link.id = playlistId;
                     link.name = std::get<std::string>(playlist->fields.at("name"));
+                    link.type = "Playlist";
                     playlists.push_back(std::move(link));
                 }
                 if (!playlists.empty()) {

@@ -1,102 +1,118 @@
 # Complete mapping fixture for unit tests (invented ShotGrid names).
+types:
+  text:         { ops: [eq, ne, contains, not_contains, starts_with, ends_with, in, not_in] }
+  list:         { ops: [eq, ne, in, not_in] }
+  status_list:  { ops: [eq, ne, in, not_in] }
+  number:       { ops: [eq, ne, gt, lt, between, not_between, in, not_in] }
+  float:        { ops: [eq, ne, gt, lt, between, in, not_in] }
+  date_time:    { ops: [eq, ne, gt, lt, between, in, not_in, in_last, not_in_last, in_next, not_in_next, in_calendar_day, in_calendar_week, in_calendar_month, in_calendar_year] }
+  checkbox:     { ops: [eq, ne] }
+  entity:       { ops: [eq, ne, type_is, type_is_not, name_contains, name_not_contains, name_is, in, not_in] }
+  multi_entity: { ops: [eq, ne, type_is, type_is_not, name_contains, name_not_contains, in, not_in] }
+  summary:      { ops: [] }
+  image:        { ops: [] }
+  url:          { ops: [] }
+
 entities:
   project:
     shotgrid: Project
     fields:
-      id:     { shotgrid: id }
-      name:   { shotgrid: name }
-      code:   { shotgrid: code }
-      status: { shotgrid: sg_status_list }
-      type:   { shotgrid: sg_type }
+      id:     { shotgrid: id,              type: number }
+      name:   { shotgrid: name,            type: text }
+      code:   { shotgrid: code,            type: text }
+      status: { shotgrid: sg_status_list,  type: list }
+      type:   { shotgrid: sg_type,         type: list }
     links: {}
 
   sequence:
     shotgrid: Sequence
     fields:
-      id:                     { shotgrid: id }
-      name:                   { shotgrid: code }
-      description:            { shotgrid: description }
-      status:                 { shotgrid: sg_status_list }
-      cut_duration_in_sec:    { shotgrid: sg_cut_duration_in_sec }
-      estimated_frames_count: { shotgrid: sg_estimated_frames_count }
-      estimated_shots_count:  { shotgrid: sg_estimated_shots_count }
-      shot_count:             { shotgrid: sg_query_shot_count }
-      sequence_order:         { shotgrid: sg_sequence_order }
-      shots:                  { shotgrid: shots }
-      project:                { shotgrid: project }
+      id:                     { shotgrid: id,                        type: number }
+      name:                   { shotgrid: code,                      type: text }
+      description:            { shotgrid: description,               type: text }
+      status:                 { shotgrid: sg_status_list,            type: status_list }
+      cut_duration_in_sec:    { shotgrid: sg_cut_duration_in_sec,    type: float }
+      estimated_frames_count: { shotgrid: sg_estimated_frames_count, type: text }
+      estimated_shots_count:  { shotgrid: sg_estimated_shots_count,  type: text }
+      shot_count:             { shotgrid: sg_query_shot_count,       type: summary }
+      sequence_order:         { shotgrid: sg_sequence_order,         type: number }
+      shots:                  { shotgrid: shots,                     type: multi_entity }
+      project:                { shotgrid: project,                   type: entity }
     links:
       project: { shotgrid: project, target: project }
 
   shot:
     shotgrid: Shot
     fields:
-      id:                  { shotgrid: id }
-      name:                { shotgrid: code }
-      description:         { shotgrid: description }
-      status:              { shotgrid: sg_status_list }
-      cut_duration_in_sec: { shotgrid: sg_cut_duration_in_sec }
-      cut_in:              { shotgrid: sg_cut_in }
-      cut_out:             { shotgrid: sg_cut_out }
-      cut_order:           { shotgrid: sg_cut_order }
-      sequence:            { shotgrid: sg_sequence }
+      id:                  { shotgrid: id,                     type: number }
+      name:                { shotgrid: code,                   type: text }
+      description:         { shotgrid: description,            type: text }
+      status:              { shotgrid: sg_status_list,         type: status_list }
+      cut_duration_in_sec: { shotgrid: sg_cut_duration_in_sec, type: float }
+      cut_in:              { shotgrid: sg_cut_in,              type: number }
+      cut_out:             { shotgrid: sg_cut_out,             type: number }
+      cut_order:           { shotgrid: sg_cut_order,           type: number }
+      sequence:            { shotgrid: sg_sequence,            type: entity }
     links:
       sequence: { shotgrid: sg_sequence, target: sequence }
 
   asset:
     shotgrid: Asset
     fields:
-      id:          { shotgrid: id }
-      name:        { shotgrid: code }
-      description: { shotgrid: description }
-      status:      { shotgrid: sg_status_list }
-      project:     { shotgrid: project }
+      id:          { shotgrid: id,             type: number }
+      name:        { shotgrid: code,           type: text }
+      description: { shotgrid: description,    type: text }
+      status:      { shotgrid: sg_status_list, type: status_list }
+      project:     { shotgrid: project,        type: entity }
     links:
       project: { shotgrid: project, target: project }
 
   playlist:
     shotgrid: Playlist
     fields:
-      id:               { shotgrid: id }
-      name:             { shotgrid: code }
-      versions:         { shotgrid: versions }
-      open_notes_count: { shotgrid: open_notes_count }
-      departments:      { shotgrid: sg_departments }
-      created_at:       { shotgrid: created_at }
-      category:         { shotgrid: sg_category }
-      author:           { shotgrid: created_by }
+      id:               { shotgrid: id,               type: number }
+      name:             { shotgrid: code,             type: text }
+      versions:         { shotgrid: versions,         type: multi_entity }
+      open_notes_count: { shotgrid: open_notes_count, type: summary }
+      departments:      { shotgrid: sg_departments,   type: multi_entity }
+      created_at:       { shotgrid: created_at,       type: date_time }
+      category:         { shotgrid: sg_category,      type: list }
+      author:           { shotgrid: created_by,       type: entity }
     links:
       project: { shotgrid: project, target: project }
 
   version:
     shotgrid: Version
     fields:
-      id:    { shotgrid: id }
-      name:  { shotgrid: code }
-      image: { shotgrid: image, provider: http }
-      author:            { shotgrid: created_by }
-      created_at:        { shotgrid: created_at }
-      frame_range:       { shotgrid: frame_range }
-      frame_count:       { shotgrid: frame_count }
-      description:       { shotgrid: description }
-      client_code:       { shotgrid: client_code }
-      client_reviewed:   { shotgrid: sg_client_reviewed }
-      client_approved:   { shotgrid: client_approved }
-      is_latest:         { shotgrid: sg_is_latest }
-      version_number:    { shotgrid: sg_query_tank_version_number }
-      task:              { shotgrid: sg_task }
-      step:              { shotgrid: sg_task.Task.step }
-      status:            { shotgrid: sg_status_list }
-      artistic_status:   { shotgrid: sg_status_artistique }
-      open_notes_count:  { shotgrid: open_notes_count }
-      synced_to_client:  { shotgrid: sg_synced_to_client }
-      sites:             { shotgrid: sg_published_file.PublishedFile.sg_sites }
-      work_source_scene: { shotgrid: sg_work_source_scene }
-      frames:            { shotgrid: sg_path_to_frames, provider: fileSeq }
-      movie:             { shotgrid: sg_path_to_movie, provider: file }
-      uploaded_movie:    { shotgrid: sg_uploaded_movie_mp4, provider: signedurl }
-      playlists:         { shotgrid: playlists }
-      project:           { shotgrid: project }
-      entity:            { shotgrid: entity }
+      id:                { shotgrid: id,                                       type: number }
+      name:              { shotgrid: code,                                     type: text }
+      image:             { shotgrid: image,                                    type: image, provider: http }
+      author:            { shotgrid: created_by,                               type: entity }
+      created_at:        { shotgrid: created_at,                               type: date_time }
+      frame_range:       { shotgrid: frame_range,                              type: text }
+      frame_count:       { shotgrid: frame_count,                              type: number }
+      description:       { shotgrid: description,                              type: text }
+      client_code:       { shotgrid: client_code,                              type: text }
+      client_reviewed:   { shotgrid: sg_client_reviewed,                       type: checkbox }
+      client_approved:   { shotgrid: client_approved,                          type: checkbox }
+      is_latest:         { shotgrid: sg_is_latest,                             type: checkbox }
+      version_number:    { shotgrid: sg_query_tank_version_number,             type: summary }
+      task:              { shotgrid: sg_task,                                  type: entity }
+      step:              { shotgrid: sg_task.Task.step,                        type: entity }
+      status:            { shotgrid: sg_status_list,                           type: status_list }
+      artistic_status:   { shotgrid: sg_status_artistique,                     type: status_list }
+      notes:             { shotgrid: notes,                                    type: multi_entity }
+      open_notes:        { shotgrid: open_notes,                               type: multi_entity }
+      open_notes_count:  { shotgrid: open_notes_count,                         type: summary }
+      synced_to_client:  { shotgrid: sg_synced_to_client,                      type: checkbox }
+      sites:             { shotgrid: sg_published_file.PublishedFile.sg_sites, type: multi_entity }
+      work_source_scene: { shotgrid: sg_work_source_scene,                     type: text }
+      frames:            { shotgrid: sg_path_to_frames,                        type: text, provider: fileSeq }
+      movie:             { shotgrid: sg_path_to_movie,                         type: text, provider: file }
+      uploaded_movie:    { shotgrid: sg_uploaded_movie_mp4,                    type: url, provider: signedurl }
+      playlists:         { shotgrid: playlists,                                type: multi_entity }
+      project:           { shotgrid: project,                                  type: entity }
+      entity:            { shotgrid: entity,                                   type: entity }
     links:
       project:  { shotgrid: project, target: project }
       shot:     { shotgrid: entity, target: shot }
@@ -107,14 +123,14 @@ entities:
   note:
     shotgrid: Note
     fields:
-      id:         { shotgrid: id }
-      name:       { shotgrid: subject }
-      content:    { shotgrid: content }
-      author:     { shotgrid: created_by }
-      created_at: { shotgrid: created_at }
-      status:     { shotgrid: sg_status_list }
-      to:          { shotgrid: addressings_to }
-      department:  { shotgrid: sg_department }
-      attachments: { shotgrid: attachments }
+      id:          { shotgrid: id,             type: number }
+      name:        { shotgrid: subject,        type: text }
+      content:     { shotgrid: content,        type: text }
+      author:      { shotgrid: created_by,     type: entity }
+      created_at:  { shotgrid: created_at,     type: date_time }
+      status:      { shotgrid: sg_status_list, type: status_list }
+      to:          { shotgrid: addressings_to, type: multi_entity }
+      department:  { shotgrid: sg_department,  type: entity }
+      attachments: { shotgrid: attachments,    type: multi_entity }
     links:
       version: { shotgrid: note_links, target: version }

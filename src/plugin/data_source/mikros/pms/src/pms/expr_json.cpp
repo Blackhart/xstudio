@@ -43,20 +43,34 @@ const char *opName(ExprOp op) {
         return "lt";
     case ExprOp::Between:
         return "between";
+    case ExprOp::NotBetween:
+        return "not_between";
     case ExprOp::InLast:
         return "in_last";
+    case ExprOp::NotInLast:
+        return "not_in_last";
+    case ExprOp::InNext:
+        return "in_next";
+    case ExprOp::NotInNext:
+        return "not_in_next";
     case ExprOp::InCalendarDay:
         return "in_calendar_day";
     case ExprOp::InCalendarWeek:
         return "in_calendar_week";
     case ExprOp::InCalendarMonth:
         return "in_calendar_month";
+    case ExprOp::InCalendarYear:
+        return "in_calendar_year";
     case ExprOp::NameContains:
         return "name_contains";
-    case ExprOp::NameStartsWith:
-        return "name_starts_with";
+    case ExprOp::NameNotContains:
+        return "name_not_contains";
     case ExprOp::NameIs:
         return "name_is";
+    case ExprOp::TypeIs:
+        return "type_is";
+    case ExprOp::TypeIsNot:
+        return "type_is_not";
     case ExprOp::And:
         return "and";
     case ExprOp::Or:
@@ -107,8 +121,20 @@ ExprOp opFromName(const std::string &text) {
     if (text == "between") {
         return ExprOp::Between;
     }
+    if (text == "not_between") {
+        return ExprOp::NotBetween;
+    }
     if (text == "in_last") {
         return ExprOp::InLast;
+    }
+    if (text == "not_in_last") {
+        return ExprOp::NotInLast;
+    }
+    if (text == "in_next") {
+        return ExprOp::InNext;
+    }
+    if (text == "not_in_next") {
+        return ExprOp::NotInNext;
     }
     if (text == "in_calendar_day") {
         return ExprOp::InCalendarDay;
@@ -119,14 +145,23 @@ ExprOp opFromName(const std::string &text) {
     if (text == "in_calendar_month") {
         return ExprOp::InCalendarMonth;
     }
+    if (text == "in_calendar_year") {
+        return ExprOp::InCalendarYear;
+    }
     if (text == "name_contains") {
         return ExprOp::NameContains;
     }
-    if (text == "name_starts_with") {
-        return ExprOp::NameStartsWith;
+    if (text == "name_not_contains") {
+        return ExprOp::NameNotContains;
     }
     if (text == "name_is") {
         return ExprOp::NameIs;
+    }
+    if (text == "type_is") {
+        return ExprOp::TypeIs;
+    }
+    if (text == "type_is_not") {
+        return ExprOp::TypeIsNot;
     }
     if (text == "and") {
         return ExprOp::And;
@@ -184,7 +219,33 @@ Value listFromJson(const nlohmann::json &json) {
         }
         return items;
     }
-    throw Error("expr_json: list item must be a string or int");
+    if (json.front().is_number()) {
+        std::vector<double> items;
+        items.reserve(json.size());
+        for (const nlohmann::json &item : json) {
+            if (!item.is_number()) {
+                throw Error("expr_json: list mixes types");
+            }
+            items.push_back(item.get<double>());
+        }
+        return items;
+    }
+    if (json.front().is_object()) {
+        std::vector<Link> items;
+        items.reserve(json.size());
+        for (const nlohmann::json &item : json) {
+            if (!item.is_object() || !item.contains("id") || !item["id"].is_number_integer() ||
+                !item.contains("type") || !item["type"].is_string()) {
+                throw Error("expr_json: link list item needs id and type");
+            }
+            Link link;
+            link.id = item["id"].get<std::int64_t>();
+            link.type = item["type"].get<std::string>();
+            items.push_back(std::move(link));
+        }
+        return items;
+    }
+    throw Error("expr_json: list item must be a string, number, or link");
 }
 
 /**
@@ -206,9 +267,9 @@ Period periodFromJson(const nlohmann::json &json) {
 
 /**
  * @brief Writes a filter leaf value as JSON.
- * @param value String, int, date, list, or period. Links are rejected.
+ * @param value String, int, date, list, or period. A link is rejected.
  * @return JSON string, number, array, or `{count, unit}` object.
- * @throw Error When the value is a links list.
+ * @throw Error When the value is a link or a link list.
  */
 nlohmann::json valueToJson(const Value &value) {
     if (const auto *text = std::get_if<std::string>(&value)) {
@@ -232,8 +293,27 @@ nlohmann::json valueToJson(const Value &value) {
     if (const auto *bounds = std::get_if<DateBounds>(&value)) {
         return nlohmann::json::array({formatDate(bounds->low), formatDate(bounds->high)});
     }
-    if (std::holds_alternative<std::vector<Link>>(value)) {
-        throw Error("expr_json: links are not a filter value");
+    if (const auto *flag = std::get_if<bool>(&value)) {
+        return *flag;
+    }
+    if (const auto *number = std::get_if<double>(&value)) {
+        return *number;
+    }
+    if (const auto *bounds = std::get_if<FloatBounds>(&value)) {
+        return nlohmann::json::array({bounds->low, bounds->high});
+    }
+    if (const auto *doubles = std::get_if<std::vector<double>>(&value)) {
+        return nlohmann::json(*doubles);
+    }
+    if (const auto *link = std::get_if<Link>(&value)) {
+        return nlohmann::json{{"type", link->type}, {"id", link->id}};
+    }
+    if (const auto *links = std::get_if<std::vector<Link>>(&value)) {
+        nlohmann::json array = nlohmann::json::array();
+        for (const Link &link : *links) {
+            array.push_back({{"type", link.type}, {"id", link.id}});
+        }
+        return array;
     }
     return formatDate(std::get<Date>(value));
 }
@@ -248,16 +328,28 @@ Value valueFromJson(const nlohmann::json &json) {
     if (json.is_string()) {
         return json.get<std::string>();
     }
+    if (json.is_boolean()) {
+        return json.get<bool>();
+    }
     if (json.is_number_integer()) {
         return json.get<std::int64_t>();
+    }
+    if (json.is_number()) {
+        return json.get<double>();
     }
     if (json.is_array()) {
         return listFromJson(json);
     }
-    if (json.is_object()) {
+    if (json.is_object() && json.contains("count")) {
         return periodFromJson(json);
     }
-    throw Error("expr_json: value must be a string, int, list, or period");
+    if (json.is_object() && json.contains("id") && json.contains("type")) {
+        Link link;
+        link.id = json["id"].get<std::int64_t>();
+        link.type = json["type"].get<std::string>();
+        return link;
+    }
+    throw Error("expr_json: value must be a string, number, bool, list, link, or period");
 }
 
 } // namespace
