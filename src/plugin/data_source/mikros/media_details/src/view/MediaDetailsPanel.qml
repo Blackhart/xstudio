@@ -43,6 +43,13 @@ Item {
     property alias shotgridBaseUrl: shotgridUrlAttr.value
 
     XsAttributeValue {
+        id: shotgridEnvUrlAttr
+        attributeTitle: "ShotgridEnvUrl"
+        model: attrs
+    }
+    property alias shotgridEnvUrl: shotgridEnvUrlAttr.value
+
+    XsAttributeValue {
         id: openShotgridUrl
         attributeTitle: "OpenShotgridUrl"
         model: attrs
@@ -136,7 +143,7 @@ Item {
             detail: detailJson && typeof detailJson === "object" ? detailJson : ({})
             detailState: panel.detailState || "empty"
             detailError: panel.detailError || ""
-            shotgridBaseUrl: panel.shotgridBaseUrl || ""
+            shotgridBaseUrl: panel.shotgridBaseUrl || panel.shotgridEnvUrl || ""
             onShotgridLink: panel.notifyShotgridLink
             showTabs: panel.showTabs
             pageIndex: panel.pageIndex

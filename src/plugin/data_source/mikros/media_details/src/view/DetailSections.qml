@@ -118,7 +118,6 @@ Item {
             return
         if (onShotgridLink)
             onShotgridLink(url)
-        Qt.openUrlExternally(url)
     }
 
     function openEntity(entityType, entityId) {

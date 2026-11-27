@@ -45,7 +45,7 @@ class MediaDetails : public QObject {
      * @brief Handles a panel attribute change owned by this screen.
      *
      * Ignores non-Value roles. ShotgridBaseUrl is preference-backed.
-     * OpenShotgridUrl logs the link QML is about to open.
+     * OpenShotgridUrl opens the link in the desktop browser.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed.
      */
@@ -125,7 +125,7 @@ class MediaDetails : public QObject {
     void applyThumbUrl(const std::string &fileUrl);
 
     /**
-     * @brief Logs one ShotGrid page the user asked to open.
+     * @brief Opens one ShotGrid page in the desktop browser.
      * @param url Absolute Detail URL. Empty does nothing.
      */
     void openShotgridUrl(const std::string &url);
@@ -144,8 +144,8 @@ class MediaDetails : public QObject {
     /**
      * @brief Applies env-backed defaults after the attributes exist.
      *
-     * Call after `initQmlAttributes`. Sets ShotgridBaseUrl from `SHOTGRID_URL`
-     * when present.
+     * Call after `initQmlAttributes`. Sets ShotgridEnvUrl from `SHOTGRID_URL`
+     * when present. An empty ShotgridBaseUrl preference keeps that env URL.
      */
     void setDefaultValues();
 
@@ -160,7 +160,8 @@ class MediaDetails : public QObject {
     module::StringAttribute *detail_error_ = nullptr; ///< Error text when state is error.
     module::JsonAttribute *detail_json_ = nullptr;    ///< Full UI payload.
     module::JsonAttribute *status_styles_ = nullptr; ///< Entity → field → colours, labels, default.
-    module::StringAttribute *shotgrid_base_url_ = nullptr; ///< Pref for ShotGrid links.
+    module::StringAttribute *shotgrid_base_url_ = nullptr; ///< Pref for ShotGrid links. Empty uses the env URL.
+    module::StringAttribute *shotgrid_env_url_ = nullptr;  ///< `SHOTGRID_URL`, used when the pref is empty.
     module::StringAttribute *open_shotgrid_url_ = nullptr; ///< URL QML writes on a link click.
     std::atomic<std::uint64_t> generation_{0}; ///< Bumped on each on_screen_media_changed.
 };

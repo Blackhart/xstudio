@@ -89,7 +89,6 @@ Item {
             return
         if (onShotgridLink)
             onShotgridLink(url)
-        Qt.openUrlExternally(url)
     }
 
     function openAttachment(source, name) {

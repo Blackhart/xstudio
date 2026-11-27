@@ -20,7 +20,15 @@
 #include <caf/actor_system.hpp>
 #include <caf/event_based_actor.hpp>
 
+#include <fcntl.h>
+#include <spawn.h>
+#include <unistd.h>
+
+#include <cstring>
 #include <utility>
+#include <vector>
+
+extern char **environ;
 
 namespace xstudio::mikros_media_details {
 namespace {
@@ -42,6 +50,51 @@ std::string escapeQuoted(const std::string &text) {
         out.push_back(ch);
     }
     return out;
+}
+
+/**
+ * @brief Opens one page in the desktop browser.
+ * @param url Absolute address. Passed as an argument, not through a shell.
+ *
+ * The child does not inherit `LD_LIBRARY_PATH`. A debug session points that
+ * variable at vcpkg and Qt, and `xdg-open` then fails to load the system cairo.
+ * Its standard streams go to `/dev/null`: Chrome writes zygote errors on the
+ * inherited debugger pipes.
+ */
+void openUrlInBrowser(const std::string &url) {
+    std::vector<std::string> kept;
+    for (char **entry = environ; entry && *entry; ++entry) {
+        if (std::strncmp(*entry, "LD_LIBRARY_PATH=", 16) == 0) {
+            continue; ///< System opener must use the system libraries.
+        }
+        kept.emplace_back(*entry);
+    }
+    std::vector<char *> envp;
+    envp.reserve(kept.size() + 1);
+    for (std::string &entry : kept) {
+        envp.push_back(entry.data());
+    }
+    envp.push_back(nullptr);
+
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP); ///< Leave the debugger process group.
+    posix_spawnattr_setpgroup(&attr, 0);
+
+    char *argv[] = {const_cast<char *>("xdg-open"), const_cast<char *>(url.c_str()), nullptr};
+    pid_t pid = 0;
+    const int error = posix_spawnp(&pid, "xdg-open", &actions, &attr, argv, envp.data());
+    posix_spawn_file_actions_destroy(&actions);
+    posix_spawnattr_destroy(&attr);
+    if (error != 0) {
+        log::error(std::string("ui open shotgrid browser failed: ") + std::strerror(error));
+    }
 }
 
 /**
@@ -125,6 +178,8 @@ void MediaDetails::initQmlAttributes(plugin::StandardPlugin &panel) {
     shotgrid_base_url_->expose_in_ui_attrs_group(kAttrsGroup);
     shotgrid_base_url_->set_preference_path(
         "/plugin/data_source/mikros_media_details/shotgrid_url");
+    shotgrid_env_url_ = panel.add_string_attribute("ShotgridEnvUrl", "ShotgridEnvUrl", "");
+    shotgrid_env_url_->expose_in_ui_attrs_group(kAttrsGroup); ///< Not a preference: prefs must not clear it.
     open_shotgrid_url_ = panel.add_string_attribute("OpenShotgridUrl", "OpenShotgridUrl", "");
     open_shotgrid_url_->expose_in_ui_attrs_group(kAttrsGroup);
 }
@@ -135,8 +190,8 @@ void MediaDetails::publishStatusStyles() {
 
 void MediaDetails::setDefaultValues() {
     const pms::TextSetting envUrl = pms::shotGridUrl();
-    if (envUrl.set && !envUrl.value.empty() && shotgrid_base_url_) {
-        shotgrid_base_url_->set_value(envUrl.value);
+    if (envUrl.set && !envUrl.value.empty() && shotgrid_env_url_) {
+        shotgrid_env_url_->set_value(envUrl.value); ///< Preference stays empty and still means "use env".
     }
 }
 
@@ -145,7 +200,7 @@ void MediaDetails::attribute_changed(const utility::Uuid &attr_uuid, int role) {
         return; ///< Only a new value is a panel edit this screen handles.
     }
     if (open_shotgrid_url_ && attr_uuid == open_shotgrid_url_->uuid()) {
-        openShotgridUrl(open_shotgrid_url_->value()); ///< QML still opens the browser.
+        openShotgridUrl(open_shotgrid_url_->value()); ///< Opens the page outside the debug library path.
     }
 }
 
@@ -155,6 +210,7 @@ void MediaDetails::openShotgridUrl(const std::string &url) {
     }
     // Names the ShotGrid page the user clicked.
     log::info("ui open shotgrid url=\"" + escapeQuoted(url) + "\"");
+    openUrlInBrowser(url); ///< Qt.openUrlExternally inherits LD_LIBRARY_PATH and fails.
 }
 
 void MediaDetails::sendDetailsToQml(

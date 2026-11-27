@@ -28,6 +28,10 @@
         {
           "name": "DISPLAY",
           "value": "${env:DISPLAY}"
+        },
+        {
+          "name": "SHOTGRID_URL",
+          "value": "http://shotgrid.fake"
         }
       ],
       "MIMode": "gdb",
@@ -77,6 +81,10 @@
         {
           "name": "DISPLAY",
           "value": "${env:DISPLAY}"
+        },
+        {
+          "name": "SHOTGRID_URL",
+          "value": "http://shotgrid.fake"
         }
       ],
       "MIMode": "gdb",
