@@ -209,6 +209,8 @@ void AssetList::loadAssetsAsync() {
 }
 
 void AssetList::loadAssetsFromNameOrIdAsync(const std::string &text) {
+    // Empty text clears the filter and reloads.
+    trace::info("ui search assets text=" + trace::quoted(text));
     search_query_ = text; ///< Empty clears the filter; the DAL trims before Where.
     loadAssetsAsync();
 }
@@ -217,6 +219,7 @@ void AssetList::loadMoreAssetsAsync() {
     if (dal::selectedProject() == -1 || !next_cursor_ || more_incoming_) {
         return; ///< Nothing left to fetch, or a more-page is already on the way.
     }
+    trace::info("ui scroll assets"); ///< The next asset page follows this line.
     more_incoming_ = true;
     const std::uint64_t requestId = asset_request_id_->load(); ///< Same generation as the first page.
     CatalogLoadRequest request =

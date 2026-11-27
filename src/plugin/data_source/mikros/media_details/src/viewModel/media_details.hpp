@@ -45,6 +45,7 @@ class MediaDetails : public QObject {
      * @brief Handles a panel attribute change owned by this screen.
      *
      * Ignores non-Value roles. ShotgridBaseUrl is preference-backed.
+     * OpenShotgridUrl logs the link QML is about to open.
      * @param attr_uuid Attribute the panel changed.
      * @param role Role that changed.
      */
@@ -124,7 +125,13 @@ class MediaDetails : public QObject {
     void applyThumbUrl(const std::string &fileUrl);
 
     /**
-     * @brief Creates DetailState, DetailError, DetailJson, and ShotgridBaseUrl.
+     * @brief Logs one ShotGrid page the user asked to open.
+     * @param url Absolute Detail URL. Empty does nothing.
+     */
+    void openShotgridUrl(const std::string &url);
+
+    /**
+     * @brief Creates the detail attributes, including OpenShotgridUrl.
      * @param panel Panel actor that owns the attributes.
      */
     void initQmlAttributes(plugin::StandardPlugin &panel);
@@ -148,6 +155,7 @@ class MediaDetails : public QObject {
     module::StringAttribute *detail_error_ = nullptr; ///< Error text when state is error.
     module::JsonAttribute *detail_json_ = nullptr;    ///< Full UI payload.
     module::StringAttribute *shotgrid_base_url_ = nullptr; ///< Pref for ShotGrid links.
+    module::StringAttribute *open_shotgrid_url_ = nullptr; ///< URL QML writes on a link click.
     std::atomic<std::uint64_t> generation_{0}; ///< Bumped on each on_screen_media_changed.
 };
 

@@ -337,6 +337,8 @@ void scheduleThumbs(
     if (needFind.empty()) {
         return;
     }
+    // These ids still need an image URL from the DAL.
+    trace::info("thumbs versions count=" + std::to_string(needFind.size()));
     std::thread([projectId,
                  root,
                  needFind = std::move(needFind),

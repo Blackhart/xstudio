@@ -261,6 +261,8 @@ void VersionList::loadVersionsAsync() {
 }
 
 void VersionList::loadVersionsFromNameOrIdAsync(const std::string &text) {
+    // Empty text clears the filter and reloads.
+    trace::info("ui search versions text=" + trace::quoted(text));
     search_query_ = text; ///< Empty clears the filter; the DAL trims before Where.
     loadVersionsAsync();
 }
@@ -269,6 +271,7 @@ void VersionList::loadMoreVersionsAsync() {
     if (dal::selectedProject() == -1 || !next_cursor_ || more_incoming_) {
         return; ///< Nothing left to fetch, or a more-page is already on the way.
     }
+    trace::info("ui scroll versions"); ///< The next version page follows this line.
     more_incoming_ = true;
     const std::uint64_t requestId = version_request_id_->load(); ///< Same generation as the first page.
     const std::int64_t projectId = dal::selectedProject();
@@ -572,6 +575,9 @@ void VersionList::open_version(const std::string &text) {
         return;
     }
     const std::int64_t versionId = body.value("versionId", std::int64_t{0});
+    trace::info(
+        "ui open version id=" + std::to_string(versionId) + " name=" +
+        trace::quoted(body.value("name", std::string()))); ///< Open loads paths when missing.
     const std::int64_t projectId =
         dal::selectedProject() == -1 ? std::int64_t{0} : dal::selectedProject();
     std::string frameRange = body.value("frameRange", std::string());
@@ -617,6 +623,9 @@ void VersionList::preview_version(const std::string &text) {
         return;
     }
     const std::int64_t versionId = body.value("versionId", std::int64_t{0});
+    trace::info(
+        "ui preview version id=" + std::to_string(versionId) + " name=" +
+        trace::quoted(body.value("name", std::string()))); ///< Preview loads one version.
     const std::int64_t projectId =
         dal::selectedProject() == -1 ? std::int64_t{0} : dal::selectedProject();
     std::string frameRange = body.value("frameRange", std::string());

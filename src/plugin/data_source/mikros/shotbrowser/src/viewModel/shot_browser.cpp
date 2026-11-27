@@ -12,6 +12,8 @@
 #include "viewModel/shot_tree.hpp"
 #include "viewModel/version_list.hpp"
 
+#include "model/log.hpp"
+
 #include "xstudio/global_store/global_store.hpp"
 
 #include <QObject>
@@ -195,6 +197,7 @@ void ShotBrowser::initSignals() {
         this,
         [this](dal::BrowserMode mode) {
             if (mode == dal::BrowserMode::Shot) {
+                log::info("ui tab browser=shot"); ///< Left tab reloads the shot catalogs.
                 shelf_list_->clearSelection(); ///< Shelf filters must not leak into Shot loads.
                 shot_tree_->loadSequenceShotsAsync(); ///< Loads only on the Shot tab, and keeps a tree already stored.
                 version_list_->clearVersions();
@@ -202,6 +205,7 @@ void ShotBrowser::initSignals() {
                 playlist_tree_->clearPlaylists();
                 playlist_tree_->loadPlaylistListAsync();
             } else if (mode == dal::BrowserMode::Asset) {
+                log::info("ui tab browser=asset"); ///< Left tab reloads the asset catalogs.
                 shelf_list_->clearSelection(); ///< Shelf filters must not leak into Asset loads.
                 asset_list_->loadAssetsAsync(); ///< Loads only on the Asset tab, and keeps a list already stored.
                 version_list_->clearVersions();
@@ -209,6 +213,7 @@ void ShotBrowser::initSignals() {
                 playlist_tree_->clearPlaylists();
                 playlist_tree_->loadPlaylistListAsync();
             } else {
+                log::info("ui tab browser=shelf"); ///< Shelf tab selects All.
                 shot_tree_->clearSelectedSequenceAndShot();
                 asset_list_->clearSelectedAsset();
                 version_list_->clearVersions();
@@ -247,12 +252,14 @@ void ShotBrowser::initSignals() {
         this,
         [this](ResultView view) {
             if (view == ResultView::Playlist) {
+                log::info("ui tab result=playlist"); ///< Right tab loads playlists.
                 version_list_->clearVersions(); ///< Versions and playlist are mutually exclusive.
                 playlist_tree_->clearPlaylists();
                 if (dal::browserMode() != dal::BrowserMode::Shelf || dal::hasActiveShelf()) {
                     playlist_tree_->loadPlaylistListAsync();
                 }
             } else {
+                log::info("ui tab result=versions"); ///< Right tab loads versions.
                 playlist_tree_->clearPlaylists();
                 version_list_->clearVersions();
                 if (dal::browserMode() != dal::BrowserMode::Shelf || dal::hasActiveShelf()) {

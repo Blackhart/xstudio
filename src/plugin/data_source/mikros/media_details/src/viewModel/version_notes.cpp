@@ -7,6 +7,7 @@
 #include "viewModel/version_notes.hpp"
 
 #include "model/dal/dal.hpp"
+#include "model/log.hpp"
 #include "utility/media_meta.hpp"
 #include "utility/notes_load.hpp"
 
@@ -125,6 +126,9 @@ void VersionNotes::on_screen_media_changed(
                     showNotMikros();
                     return;
                 }
+                log::info(
+                    "ui load notes version=" +
+                    std::to_string(*versionId)); ///< The notes find follows this media change.
                 loadNotesFromIdAsync(*versionId, generation);
             },
             [=](const caf::error &) {

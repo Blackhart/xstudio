@@ -6,6 +6,7 @@
 
 #include "viewModel/media_details.hpp"
 
+#include "model/log.hpp"
 #include "utility/detail_load.hpp"
 #include "utility/thumbnails.hpp"
 
@@ -24,6 +25,23 @@ namespace xstudio::mikros_media_details {
 namespace {
 
 constexpr const char *kAttrsGroup = "mikros_media_details_attributes";
+
+/**
+ * @brief Escapes quotes and backslashes for a quoted log field.
+ * @param text Raw URL.
+ * @return Text safe to wrap in double quotes.
+ */
+std::string escapeQuoted(const std::string &text) {
+    std::string out;
+    out.reserve(text.size());
+    for (const char ch : text) {
+        if (ch == '\\' || ch == '"') {
+            out.push_back('\\');
+        }
+        out.push_back(ch);
+    }
+    return out;
+}
 
 /**
  * @brief Panel actor pointer from the StandardPlugin reference.
@@ -66,6 +84,8 @@ void MediaDetails::initQmlAttributes(plugin::StandardPlugin &panel) {
     shotgrid_base_url_->expose_in_ui_attrs_group(kAttrsGroup);
     shotgrid_base_url_->set_preference_path(
         "/plugin/data_source/mikros_media_details/shotgrid_url");
+    open_shotgrid_url_ = panel.add_string_attribute("OpenShotgridUrl", "OpenShotgridUrl", "");
+    open_shotgrid_url_->expose_in_ui_attrs_group(kAttrsGroup);
 }
 
 void MediaDetails::setDefaultValues() {
@@ -75,11 +95,21 @@ void MediaDetails::setDefaultValues() {
     }
 }
 
-void MediaDetails::attribute_changed(const utility::Uuid & /*attr_uuid*/, int role) {
+void MediaDetails::attribute_changed(const utility::Uuid &attr_uuid, int role) {
     if (role != module::Attribute::Value) {
         return; ///< Only a new value is a panel edit this screen handles.
     }
-    ///< ShotgridBaseUrl is preference-backed; no extra work.
+    if (open_shotgrid_url_ && attr_uuid == open_shotgrid_url_->uuid()) {
+        openShotgridUrl(open_shotgrid_url_->value()); ///< QML still opens the browser.
+    }
+}
+
+void MediaDetails::openShotgridUrl(const std::string &url) {
+    if (url.empty()) {
+        return; ///< The clear before a repeat click is not a new link.
+    }
+    // Names the ShotGrid page the user clicked.
+    log::info("ui open shotgrid url=\"" + escapeQuoted(url) + "\"");
 }
 
 void MediaDetails::sendDetailsToQml(
@@ -142,6 +172,9 @@ void MediaDetails::on_screen_media_changed(
                     showNotMikros(mediaDetails);
                     return;
                 }
+                log::info(
+                    "ui select media version=" +
+                    std::to_string(*versionId)); ///< The detail find follows this media change.
                 loadVersionDetailsFromIdAsync(*versionId, mediaDetails, generation);
             },
             [=](const caf::error &) {

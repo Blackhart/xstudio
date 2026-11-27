@@ -42,6 +42,18 @@ Item {
     }
     property alias shotgridBaseUrl: shotgridUrlAttr.value
 
+    XsAttributeValue {
+        id: openShotgridUrl
+        attributeTitle: "OpenShotgridUrl"
+        model: attrs
+    }
+
+    function notifyShotgridLink(url) {
+        // Clear first so a second click on the same link still notifies C++.
+        openShotgridUrl.value = ""
+        openShotgridUrl.value = url
+    }
+
     property int pageIndex: 0
     readonly property bool showTabs: detailState === "loading" || detailState === "ready"
 
@@ -111,6 +123,7 @@ Item {
             detailState: panel.detailState || "empty"
             detailError: panel.detailError || ""
             shotgridBaseUrl: panel.shotgridBaseUrl || ""
+            onShotgridLink: panel.notifyShotgridLink
             showTabs: panel.showTabs
             pageIndex: panel.pageIndex
             onPageSelected: function(index) { panel.pageIndex = index }

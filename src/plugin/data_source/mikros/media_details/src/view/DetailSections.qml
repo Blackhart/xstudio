@@ -13,6 +13,7 @@ Item {
 
     property var detail: ({})
     property string shotgridBaseUrl: ""
+    property var onShotgridLink: null
     property string detailState: "empty"
     property string detailError: ""
     property bool showTabs: false
@@ -86,6 +87,8 @@ Item {
     function openUrl(url) {
         if (!url)
             return
+        if (onShotgridLink)
+            onShotgridLink(url)
         Qt.openUrlExternally(url)
     }
 
@@ -993,6 +996,7 @@ Item {
             statusColors: root.statusColors
             statusLabels: root.statusLabels
             shotgridBaseUrl: root.shotgridBaseUrl
+            onShotgridLink: root.onShotgridLink
         }
     }
 }

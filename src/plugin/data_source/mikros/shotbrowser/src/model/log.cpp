@@ -182,4 +182,6 @@ void failure(const std::exception &caught) {
     error(formatDalFailure(what));
 }
 
+std::string quoted(const std::string &text) { return "\"" + escapeQuoted(text) + "\""; }
+
 } // namespace xstudio::mikros_shotbrowser::log

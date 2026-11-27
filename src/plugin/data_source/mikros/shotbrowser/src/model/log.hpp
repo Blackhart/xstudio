@@ -53,4 +53,11 @@ void drop(const std::string &catalog, std::uint64_t request);
  */
 void failure(const std::exception &caught);
 
+/**
+ * @brief Wraps text in quotes for one log field.
+ * @param text Raw text. Quotes and backslashes are escaped.
+ * @return `"escaped"`.
+ */
+std::string quoted(const std::string &text);
+
 } // namespace xstudio::mikros_shotbrowser::log

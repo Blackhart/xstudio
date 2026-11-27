@@ -300,6 +300,8 @@ void ProjectSelector::loadProjectsAsync() {
     if (!projects_.empty()) {
         return; ///< The combo already has the project list.
     }
+    // First project catalog of this panel session.
+    trace::info("ui open shot browser");
     const std::uint64_t requestId = ++(*project_request_id_); ///< Drop pages from the previous project load.
     page_ = [this](std::uint64_t id, bool append, const utility::JsonStore &payload) {
         if (id != project_request_id_->load()) {
@@ -391,6 +393,8 @@ void ProjectSelector::clearSelectionWhenHidden() {
             continue;
         }
         if (!projectPassesFilters(project)) {
+            // A hidden project is cleared and the catalogs reload.
+            trace::info("ui filter projects");
             clearProjectSelected(); ///< The trees follow None.
         }
         return;

@@ -15,6 +15,7 @@ Item {
     property var statusColors: ({})
     property var statusLabels: ({})
     property string shotgridBaseUrl: ""
+    property var onShotgridLink: null
     property string previewSource: ""
     property string previewName: ""
 
@@ -81,8 +82,11 @@ Item {
 
     function openNote(entityId) {
         const url = root.shotgridUrl(entityId)
-        if (url)
-            Qt.openUrlExternally(url)
+        if (!url)
+            return
+        if (onShotgridLink)
+            onShotgridLink(url)
+        Qt.openUrlExternally(url)
     }
 
     function openAttachment(source, name) {

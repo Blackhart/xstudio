@@ -245,6 +245,8 @@ void scheduleVersionTranscodedResolve(
     if (missing.empty()) {
         return;
     }
+    // These versions still need a signed movie URL.
+    log::info("resolve movies count=" + std::to_string(missing.size()));
     std::thread([missing = std::move(missing), onBatchReady = std::move(onBatchReady)]() mutable {
         const std::vector<poco::VersionTranscodedMedia> found =
             dal::findVersionTranscodedMovies(missing);

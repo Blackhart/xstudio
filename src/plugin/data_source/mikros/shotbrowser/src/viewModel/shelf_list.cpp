@@ -7,6 +7,7 @@
 #include "viewModel/shelf_list.hpp"
 
 #include "model/dal/dal.hpp"
+#include "model/log.hpp"
 
 #include "pms/expr_json.hpp"
 
@@ -127,11 +128,16 @@ void ShelfList::publishShelfFields() {
 
 void ShelfList::selectShelf(const std::string &shelfId) {
     if (shelfId.empty()) {
+        log::info("ui select shelf none"); ///< A cleared shelf empties the result panes.
         clearSelection();
         emit onShelfSelected(); ///< Cleared selection still notifies so results empty.
         return;
     }
     if (shelfId == ShelfStore::allShelfId()) {
+        const poco::Shelf all = ShelfStore::allShelf();
+        log::info(
+            "ui select shelf id=" + all.id + " name=" +
+            log::quoted(all.name)); ///< All reloads the project with no extra Where.
         store_.setActiveId(shelfId);
         dal::setActiveShelf({}); ///< All: no extra Where / In.
         emit onShelfSelected();
@@ -147,6 +153,9 @@ void ShelfList::selectShelf(const std::string &shelfId) {
     } catch (const std::exception &) {
         return; ///< Bad JSON: leave the previous selection alone.
     }
+    log::info(
+        "ui select shelf id=" + shelf->id + " name=" +
+        log::quoted(shelf->name)); ///< The shelf Where reloads the result pane.
     emit onShelfSelected();
 }
 
@@ -177,14 +186,24 @@ void ShelfList::upsertFromJson(const nlohmann::json &payload) {
     store_.save(panel_);
     publishShelves();
     if (!savedId.empty() && store_.activeId() == savedId) {
+        if (const std::optional<poco::Shelf> saved = store_.findById(savedId)) {
+            log::info(
+                "ui save shelf id=" + saved->id + " name=" +
+                log::quoted(saved->name)); ///< The displayed shelf changed, so results reload.
+        }
         selectShelf(savedId); ///< Keep the DAL Where in sync with the edited filters.
     }
 }
 
 void ShelfList::removeShelf(const std::string &shelfId) {
+    const bool displayed = store_.activeId() == shelfId;
     store_.remove(shelfId);
     store_.save(panel_);
     if (store_.activeId().empty()) {
+        if (displayed) {
+            // The displayed shelf is gone, so results clear.
+            log::info("ui remove shelf id=" + shelfId);
+        }
         dal::clearActiveShelf();
         if (selected_shelf_) {
             selected_shelf_->set_value("");

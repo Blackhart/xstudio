@@ -286,6 +286,9 @@ void PlaylistTree::open_playlist(const std::string &text) {
     }
     const std::int64_t playlistId = body.value("playlistId", std::int64_t{0});
     const std::string name = body.value("name", std::string());
+    trace::info(
+        "ui open playlist id=" + std::to_string(playlistId) + " name=" +
+        trace::quoted(name)); ///< Open loads the playlist versions into the viewer.
     const std::int64_t projectId =
         dal::selectedProject() == -1 ? std::int64_t{0} : dal::selectedProject();
     mikros_shotbrowser::openPlaylist(panel_, playlistId, projectId, name);
@@ -306,6 +309,9 @@ void PlaylistTree::expandPlaylist() {
         }
         const std::int64_t playlistId = node["id"].get<std::int64_t>();
         if (!versionsReady(playlistId)) {
+            trace::info(
+                "ui unfold playlist id=" + std::to_string(playlistId) + " name=" +
+                trace::quoted(name)); ///< Unfold loads this playlist's versions.
             loadVersionsForPlaylistAsync(playlistId); ///< Unfold loads versions.
         }
         return;
@@ -387,6 +393,8 @@ void PlaylistTree::loadPlaylistListAsync() {
 }
 
 void PlaylistTree::loadPlaylistsFromNameOrIdAsync(const std::string &text) {
+    // Empty text clears the filter and reloads.
+    trace::info("ui search playlists text=" + trace::quoted(text));
     search_query_ = text; ///< Empty clears the filter; the DAL trims before Where.
     loadPlaylistListAsync();
 }
@@ -395,6 +403,7 @@ void PlaylistTree::loadMorePlaylistsAsync() {
     if (dal::selectedProject() == -1 || !next_cursor_ || more_incoming_) {
         return; ///< Nothing left to fetch, or a more-page is already on the way.
     }
+    trace::info("ui scroll playlists"); ///< The next playlist page follows this line.
     more_incoming_ = true;
     const std::uint64_t requestId = playlist_request_id_->load(); ///< Same generation as the first page.
     CatalogLoadRequest request = makeCatalogRequest(
