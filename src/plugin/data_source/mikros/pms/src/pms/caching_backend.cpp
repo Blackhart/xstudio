@@ -181,6 +181,12 @@ std::size_t CachingBackend::count(const Ir &ir) {
     return std::get<std::size_t>(store(key, inner_->count(ir), nowPoint));
 }
 
+void CachingBackend::update(const Ir &ir) {
+    traceQuery(ir);
+    inner_->update(ir); ///< The write is not cached.
+    clear(); ///< Shot Browser lists share this cache and must not keep the old code.
+}
+
 void CachingBackend::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     map_.clear();

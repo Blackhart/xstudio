@@ -9,6 +9,8 @@
 #include "xstudio/utility/json_store.hpp"
 #include "xstudio/utility/media_reference.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <QObject>
 
 #include <atomic>
@@ -47,6 +49,15 @@ class VersionNotes : public QObject {
      * @param media_ref Path and frame data. Unused; the stamp is on the actor.
      */
     void on_screen_media_changed(caf::actor media, const utility::MediaReference &media_ref);
+
+    /**
+     * @brief Handles a panel attribute change owned by this screen.
+     *
+     * Ignores non-Value roles. NoteStatusEdit starts one status write.
+     * @param attr_uuid Attribute the panel changed.
+     * @param role Role that changed.
+     */
+    void attribute_changed(const utility::Uuid &attr_uuid, int role);
 
     /**
      * @brief Applies a worker page when the generation still matches.
@@ -93,9 +104,21 @@ class VersionNotes : public QObject {
     void initQmlAttributes(plugin::StandardPlugin &panel);
 
     /**
-     * @brief Publishes the note status colour, label, and default colour once.
+     * @brief Publishes the note status colour, label, default colour, and editable flag once.
      */
     void publishStatusStyles();
+
+    /**
+     * @brief Starts a note status write when QML sends an id and a code.
+     * @param edit JSON object. An object without `entity` is the clear before a repeat choice.
+     */
+    void submitStatusEdit(const nlohmann::json &edit);
+
+    /**
+     * @brief Writes the confirmed code onto the matching note.
+     * @param payload `{entity, id, field, code}` from the worker.
+     */
+    void applyNoteStatus(const nlohmann::json &payload);
 
     plugin::StandardPlugin &panel_; ///< Actor that owns attributes and receives pages.
     module::StringAttribute *notes_state_ = nullptr; ///< empty / not_mikros / loading / ready / error.
@@ -104,6 +127,10 @@ class VersionNotes : public QObject {
     module::JsonAttribute *status_colors_ = nullptr; ///< Code → colour from the schema.
     module::JsonAttribute *status_labels_ = nullptr; ///< Code → accessible name from the schema.
     module::StringAttribute *status_default_color_ = nullptr; ///< Colour for an unknown note code.
+    module::BooleanAttribute *note_status_editable_ = nullptr; ///< True when note.status is editable.
+    module::JsonAttribute *note_status_edit_ = nullptr; ///< `{entity,id,field,code}` QML writes.
+    module::StringAttribute *note_status_error_ = nullptr; ///< Update error. Empty after a new choice.
+    module::BooleanAttribute *note_status_busy_ = nullptr; ///< True while a note status write is in flight.
     std::atomic<std::uint64_t> generation_{0}; ///< Bumped on each on_screen_media_changed.
 };
 

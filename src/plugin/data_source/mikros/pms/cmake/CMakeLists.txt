@@ -59,6 +59,7 @@ add_custom_target(pms_codegen DEPENDS "${PMS_GEN_ENTITIES}" "${PMS_GEN_FACTORIES
 
 set(PMS_LIB_SOURCES
     "${PMS_SRC_DIR}/pms/schema.cpp"
+    "${PMS_SRC_DIR}/pms/update.cpp"
     "${PMS_SRC_DIR}/pms/validate.cpp"
     "${PMS_SRC_DIR}/pms/session.cpp"
     "${PMS_SRC_DIR}/pms/dump.cpp"

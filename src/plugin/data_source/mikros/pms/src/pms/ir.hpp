@@ -19,8 +19,9 @@ namespace pms {
  * @brief Verb carried by an intermediate representation once it is executed.
  */
 enum class Op {
-    Find,  ///< Read matching rows.
-    Count, ///< Return how many rows match. No pagination.
+    Find,   ///< Read matching rows.
+    Count,  ///< Return how many rows match. No pagination.
+    Update, ///< Write one field of one record.
 };
 
 /**
@@ -86,10 +87,14 @@ struct ExprNode {
  *
  * Query::ir() leaves `op` empty and does not validate. find() and count() set
  * `op` before validation. `in` and `where` are null when the clause is absent.
+ * Update fills `id`, `field`, and `value` and leaves the filter trees null.
  */
 struct Ir {
     std::optional<Op> op; ///< Empty until a verb runs.
     std::string entity;   ///< Domain entity name.
+    std::int64_t id = 0; ///< Update target. Zero on find and count.
+    std::string field;   ///< Domain field written by Update. Empty otherwise.
+    std::optional<Value> value; ///< Value written by Update.
     std::shared_ptr<const ExprNode> in;    ///< Parent field filter tree, or null.
     std::shared_ptr<const ExprNode> where; ///< Field filter tree, or null.
     std::optional<std::size_t> limit;      ///< Page size when set. Empty means every match.

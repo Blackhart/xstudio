@@ -61,6 +61,30 @@ Item {
         openShotgridUrl.value = url
     }
 
+    XsAttributeValue {
+        id: statusEditAttr
+        attributeTitle: "StatusEdit"
+        model: attrs
+    }
+    XsAttributeValue {
+        id: statusEditErrorAttr
+        attributeTitle: "StatusEditError"
+        model: attrs
+    }
+    property alias statusEditError: statusEditErrorAttr.value
+
+    XsAttributeValue {
+        id: statusEditBusyAttr
+        attributeTitle: "StatusEditBusy"
+        model: attrs
+    }
+    property alias statusEditBusy: statusEditBusyAttr.value
+
+    function notifyStatusEdit(entity, id, field, code) {
+        statusEditAttr.value = ({})
+        statusEditAttr.value = { "entity": entity, "id": id, "field": field, "code": code }
+    }
+
     property int pageIndex: 0
     readonly property bool showTabs: detailState === "loading" || detailState === "ready"
 
@@ -118,6 +142,37 @@ Item {
     }
     property alias statusStyles: statusStylesAttr.value
 
+    XsAttributeValue {
+        id: noteStatusEditableAttr
+        attributeTitle: "NoteStatusEditable"
+        model: noteAttrs
+    }
+    property alias noteStatusEditable: noteStatusEditableAttr.value
+
+    XsAttributeValue {
+        id: noteStatusEdit
+        attributeTitle: "NoteStatusEdit"
+        model: noteAttrs
+    }
+    XsAttributeValue {
+        id: noteStatusEditError
+        attributeTitle: "NoteStatusEditError"
+        model: noteAttrs
+    }
+    property alias noteStatusError: noteStatusEditError.value
+
+    XsAttributeValue {
+        id: noteStatusEditBusy
+        attributeTitle: "NoteStatusEditBusy"
+        model: noteAttrs
+    }
+    property alias noteStatusBusy: noteStatusEditBusy.value
+
+    function notifyNoteStatusEdit(id, field, code) {
+        noteStatusEdit.value = ({})
+        noteStatusEdit.value = { "entity": "note", "id": id, "field": field, "code": code }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: XsStyleSheet.panelBgColor
@@ -155,6 +210,13 @@ Item {
             statusLabels: panel.statusLabels && typeof panel.statusLabels === "object" ? panel.statusLabels : ({})
             statusDefaultColor: panel.statusDefaultColor || ""
             statusStyles: panel.statusStyles && typeof panel.statusStyles === "object" ? panel.statusStyles : ({})
+            onStatusEdit: panel.notifyStatusEdit
+            statusEditBusy: panel.statusEditBusy === true
+            statusEditError: panel.statusEditError || ""
+            noteStatusEditable: panel.noteStatusEditable === true
+            noteStatusBusy: panel.noteStatusBusy === true
+            noteStatusError: panel.noteStatusError || ""
+            onNoteStatusEdit: panel.notifyNoteStatusEdit
         }
     }
 }

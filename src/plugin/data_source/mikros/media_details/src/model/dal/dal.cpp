@@ -601,7 +601,16 @@ StatusStyle statusStyle(const std::string &entityName, const std::string &fieldK
     style.colors = field->colors;
     style.labels = field->labels;
     style.defaultColor = field->defaultColor; ///< Colour for a code the map does not name.
+    style.editable = field->editable;
     return style;
+}
+
+void updateField(
+    const std::string &entity,
+    std::int64_t id,
+    const std::string &field,
+    const std::string &code) {
+    pms::updateField(pms::sharedSession(), entity, id, field, pms::Value{code});
 }
 
 std::map<std::string, std::string> noteStatusColors() {

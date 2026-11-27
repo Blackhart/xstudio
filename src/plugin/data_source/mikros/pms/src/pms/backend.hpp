@@ -44,6 +44,13 @@ class Backend {
      * @return How many rows match the same filters as find().
      */
     virtual std::size_t count(const Ir &ir) = 0;
+
+    /**
+     * @brief Runs a validated update of one field.
+     * @param ir Query with `op` set to Update, plus `id`, `field`, and `value`.
+     * @throw Error When the backend rejects the write.
+     */
+    virtual void update(const Ir &ir) = 0;
 };
 
 } // namespace pms

@@ -12,6 +12,7 @@ Rectangle {
     property string label: code === "" ? "N/A" : code
     property string tone: "" ///< Schema fill. Empty keeps the built-in status map.
     property string accessibleLabel: label
+    property bool showsArrow: false ///< Draws a down chevron inside the capsule.
 
     readonly property color fill: {
         if (tone !== "")
@@ -30,19 +31,33 @@ Rectangle {
         return "#546e7a"
     }
 
+    readonly property color ink: code === "" ? XsStyleSheet.secondaryTextColor : "white"
+
     Accessible.name: accessibleLabel
-    Accessible.role: Accessible.StaticText
+    Accessible.role: showsArrow ? Accessible.Button : Accessible.StaticText
     visible: true
     implicitHeight: XsStyleSheet.widgetStdHeight - 4
-    implicitWidth: Math.max(labelText.implicitWidth + 16, 40)
+    implicitWidth: Math.max(labelText.implicitWidth + (showsArrow ? 18 : 0) + 16, 40)
     radius: height / 2
     color: fill
 
     Text {
         id: labelText
-        anchors.centerIn: parent
+        anchors.verticalCenter: parent.verticalCenter
+        x: badge.showsArrow ? 8 : (badge.width - width) / 2
         text: badge.label
-        color: code === "" ? XsStyleSheet.secondaryTextColor : "white"
+        color: badge.ink
+        font.pixelSize: XsStyleSheet.fontSize
+        font.family: XsStyleSheet.fontFamily
+    }
+
+    Text {
+        visible: badge.showsArrow
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.right: parent.right
+        anchors.rightMargin: 8
+        text: "▾"
+        color: badge.ink
         font.pixelSize: XsStyleSheet.fontSize
         font.family: XsStyleSheet.fontFamily
     }

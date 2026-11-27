@@ -98,7 +98,22 @@ struct StatusStyle {
     std::map<std::string, std::string> colors; ///< Code → colour. Empty when the field has none.
     std::map<std::string, std::string> labels; ///< Code → label. Empty when the field has none.
     std::string defaultColor; ///< Colour for a code missing from `colors`. Empty when unset.
+    bool editable = false; ///< True when the panel may write this field.
 };
+
+/**
+ * @brief Writes one editable field through the shared pms session.
+ * @param entity Domain entity, such as `"version"`.
+ * @param id Record id. Must be greater than zero.
+ * @param field Domain field, such as `"status"`.
+ * @param code Status code, such as `"ip"`.
+ * @throw std::exception When validation or ShotGrid rejects the write.
+ */
+void updateField(
+    const std::string &entity,
+    std::int64_t id,
+    const std::string &field,
+    const std::string &code);
 
 /**
  * @brief Reads the colours and labels of one schema field.

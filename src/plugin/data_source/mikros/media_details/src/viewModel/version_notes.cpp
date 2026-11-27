@@ -10,6 +10,7 @@
 #include "model/log.hpp"
 #include "utility/media_meta.hpp"
 #include "utility/notes_load.hpp"
+#include "utility/status_update.hpp"
 
 #include "xstudio/atoms.hpp"
 #include "xstudio/utility/helpers.hpp"
@@ -74,12 +75,69 @@ void VersionNotes::initQmlAttributes(plugin::StandardPlugin &panel) {
     status_default_color_ =
         panel.add_string_attribute("StatusDefaultColor", "StatusDefaultColor", "");
     status_default_color_->expose_in_ui_attrs_group(kAttrsGroup);
+    note_status_editable_ =
+        panel.add_boolean_attribute("NoteStatusEditable", "NoteStatusEditable", false);
+    note_status_editable_->expose_in_ui_attrs_group(kAttrsGroup);
+    note_status_edit_ =
+        panel.add_json_attribute("NoteStatusEdit", "NoteStatusEdit", nlohmann::json::object());
+    note_status_edit_->expose_in_ui_attrs_group(kAttrsGroup);
+    note_status_error_ =
+        panel.add_string_attribute("NoteStatusEditError", "NoteStatusEditError", "");
+    note_status_error_->expose_in_ui_attrs_group(kAttrsGroup);
+    note_status_busy_ = panel.add_boolean_attribute("NoteStatusEditBusy", "NoteStatusEditBusy", false);
+    note_status_busy_->expose_in_ui_attrs_group(kAttrsGroup);
 }
 
 void VersionNotes::publishStatusStyles() {
     status_colors_->set_value(styleJson(dal::noteStatusColors()));
     status_labels_->set_value(styleJson(dal::noteStatusLabels()));
     status_default_color_->set_value(dal::noteStatusDefaultColor()); ///< Unknown note codes.
+    note_status_editable_->set_value(dal::statusStyle("note", "status").editable);
+}
+
+void VersionNotes::attribute_changed(const utility::Uuid &attr_uuid, int role) {
+    if (role != module::Attribute::Value) {
+        return; ///< Only a new value is a panel edit this screen handles.
+    }
+    if (note_status_edit_ && attr_uuid == note_status_edit_->uuid()) {
+        submitStatusEdit(note_status_edit_->value());
+    }
+}
+
+void VersionNotes::submitStatusEdit(const nlohmann::json &edit) {
+    if (!edit.is_object() || !edit.contains("entity")) {
+        return; ///< The clear before a repeat choice is not a write.
+    }
+    note_status_error_->set_value("");
+    note_status_busy_->set_value(true);
+    StatusUpdateRequest request;
+    request.panel = caf::actor_cast<caf::weak_actor_ptr>(panelActor(panel_));
+    request.request_id = generation_.load(); ///< A media change bumps this and drops the result.
+    request.entity = edit.value("entity", std::string{});
+    request.id = edit.value("id", std::int64_t{0});
+    request.field = edit.value("field", std::string{});
+    request.code = edit.value("code", std::string{});
+    request.catalog_ok = "note_status_updated";
+    request.catalog_error = "note_status_error";
+    launchStatusUpdate(panel_.system(), std::move(request));
+}
+
+void VersionNotes::applyNoteStatus(const nlohmann::json &payload) {
+    if (!notes_json_) {
+        return;
+    }
+    nlohmann::json json = notes_json_->value();
+    if (!json.contains("notes") || !json["notes"].is_array()) {
+        return;
+    }
+    const std::int64_t id = payload.value("id", std::int64_t{0});
+    const std::string code = payload.value("code", std::string{});
+    for (nlohmann::json &note : json["notes"]) {
+        if (note.value("id", std::int64_t{0}) == id) {
+            note["status"] = code;
+        }
+    }
+    notes_json_->set_value(std::move(json)); ///< NotesState stays ready.
 }
 
 void VersionNotes::sendNotesToQml(
@@ -91,6 +149,12 @@ void VersionNotes::sendNotesToQml(
 
 void VersionNotes::clearNotes() {
     sendNotesToQml(nlohmann::json::object(), "empty");
+    if (note_status_error_) {
+        note_status_error_->set_value("");
+    }
+    if (note_status_busy_) {
+        note_status_busy_->set_value(false); ///< An in-flight write for the previous media is dropped.
+    }
 }
 
 void VersionNotes::showNotMikros() {
@@ -147,6 +211,16 @@ void VersionNotes::applyWorkerPage(
     std::uint64_t generation, const std::string &catalog, const utility::JsonStore &payload) {
     if (generation != generation_.load()) {
         return; ///< A newer selection already replaced this load.
+    }
+    if (catalog == "note_status_updated") {
+        note_status_busy_->set_value(false);
+        applyNoteStatus(payload);
+        return;
+    }
+    if (catalog == "note_status_error") {
+        note_status_busy_->set_value(false);
+        note_status_error_->set_value(payload.value("message", std::string{"Update failed"}));
+        return; ///< The badge keeps the previous code.
     }
     if (catalog == "version_notes_error") {
         sendNotesToQml(

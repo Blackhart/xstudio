@@ -18,6 +18,7 @@ class ShotGridMapping;
  *
  * `filter` allows the field in Where. `canSet` mirrors the YAML key `set`
  * and is loaded for later slices; this slice does not write fields.
+ * `editable` allows `updateField`. Empty means the field stays read-only.
  * `show` lists the values a UI filter checks on start. Empty means no filter.
  * `colors` and `labels` name a code, such as a note status. Empty means none.
  * `defaultColor` is the colour for a code that is not in `colors`. Empty means none.
@@ -29,6 +30,7 @@ struct FieldSpec {
     std::string type; ///< ShotGrid data type copied from the mapping. Empty before that.
     bool filter = false; ///< True when Where may use the field.
     bool canSet = false; ///< True when a later slice may assign the field.
+    bool editable = false; ///< True when updateField may change the field.
     bool requiredOnCreate = false; ///< True when a later create must send the field.
     std::vector<std::string> ops;  ///< Operators of `type`, copied from the mapping.
     std::vector<std::string> providers; ///< Ways a worker may read this field, such as `http`.

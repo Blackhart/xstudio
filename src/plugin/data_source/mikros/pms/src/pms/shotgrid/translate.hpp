@@ -70,4 +70,17 @@ std::vector<std::string> shotgridFieldNames(
  */
 Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridSchema &schema);
 
+/**
+ * @brief Builds the JSON body of one field update.
+ *
+ * The key is the mapped ShotGrid attribute. A dotted name, such as
+ * `sg_task.Task.step`, is rejected: it is a read path, not a column.
+ *
+ * @param ir Validated update. `value` is a string.
+ * @param mapping Domain ↔ ShotGrid map.
+ * @return Object with one attribute, such as `{"sg_status_list":"ip"}`.
+ * @throw Error When the field is missing or its ShotGrid name is a path.
+ */
+nlohmann::json shotgridUpdateBody(const Ir &ir, const ShotGridMapping &mapping);
+
 } // namespace pms

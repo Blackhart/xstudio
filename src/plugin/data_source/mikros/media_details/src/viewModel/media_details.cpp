@@ -9,6 +9,7 @@
 #include "model/dal/dal.hpp"
 #include "model/log.hpp"
 #include "utility/detail_load.hpp"
+#include "utility/status_update.hpp"
 #include "utility/thumbnails.hpp"
 
 #include "pms/env.hpp"
@@ -139,7 +140,7 @@ nlohmann::json publicDetailJson(nlohmann::json payload) {
 /**
  * @brief Turns one field style into the object QML looks up.
  * @param style Colours, labels, and the fallback colour.
- * @return `{colors, labels, defaultColor}`.
+ * @return `{colors, labels, defaultColor, editable}`.
  */
 nlohmann::json styleJson(const dal::StatusStyle &style) {
     nlohmann::json colors = nlohmann::json::object();
@@ -153,7 +154,8 @@ nlohmann::json styleJson(const dal::StatusStyle &style) {
     return nlohmann::json{
         {"colors", std::move(colors)},
         {"labels", std::move(labels)},
-        {"defaultColor", style.defaultColor}};
+        {"defaultColor", style.defaultColor},
+        {"editable", style.editable}};
 }
 
 /**
@@ -200,6 +202,13 @@ void MediaDetails::initQmlAttributes(plugin::StandardPlugin &panel) {
     shotgrid_env_url_->expose_in_ui_attrs_group(kAttrsGroup); ///< Not a preference: prefs must not clear it.
     open_shotgrid_url_ = panel.add_string_attribute("OpenShotgridUrl", "OpenShotgridUrl", "");
     open_shotgrid_url_->expose_in_ui_attrs_group(kAttrsGroup);
+    status_edit_ =
+        panel.add_json_attribute("StatusEdit", "StatusEdit", nlohmann::json::object());
+    status_edit_->expose_in_ui_attrs_group(kAttrsGroup);
+    status_edit_error_ = panel.add_string_attribute("StatusEditError", "StatusEditError", "");
+    status_edit_error_->expose_in_ui_attrs_group(kAttrsGroup);
+    status_edit_busy_ = panel.add_boolean_attribute("StatusEditBusy", "StatusEditBusy", false);
+    status_edit_busy_->expose_in_ui_attrs_group(kAttrsGroup);
 }
 
 void MediaDetails::publishStatusStyles() {
@@ -220,6 +229,48 @@ void MediaDetails::attribute_changed(const utility::Uuid &attr_uuid, int role) {
     if (open_shotgrid_url_ && attr_uuid == open_shotgrid_url_->uuid()) {
         openShotgridUrl(open_shotgrid_url_->value()); ///< Opens the page outside the debug library path.
     }
+    if (status_edit_ && attr_uuid == status_edit_->uuid()) {
+        submitStatusEdit(status_edit_->value());
+    }
+}
+
+void MediaDetails::submitStatusEdit(const nlohmann::json &edit) {
+    if (!edit.is_object() || !edit.contains("entity")) {
+        return; ///< The clear before a repeat choice is not a write.
+    }
+    status_edit_error_->set_value("");
+    status_edit_busy_->set_value(true);
+    StatusUpdateRequest request;
+    request.panel = caf::actor_cast<caf::weak_actor_ptr>(panelActor(panel_));
+    request.request_id = generation_.load(); ///< A media change bumps this and drops the result.
+    request.entity = edit.value("entity", std::string{});
+    request.id = edit.value("id", std::int64_t{0});
+    request.field = edit.value("field", std::string{});
+    request.code = edit.value("code", std::string{});
+    request.catalog_ok = "status_updated";
+    request.catalog_error = "status_error";
+    launchStatusUpdate(panel_.system(), std::move(request));
+}
+
+void MediaDetails::applyStatusPatch(const nlohmann::json &payload) {
+    if (!detail_json_) {
+        return;
+    }
+    nlohmann::json json = detail_json_->value();
+    if (!json.is_object()) {
+        json = nlohmann::json::object();
+    }
+    const std::string entity = payload.value("entity", std::string{});
+    const std::string field = payload.value("field", std::string{});
+    const std::string code = payload.value("code", std::string{});
+    if (entity == "version" && field == "status") {
+        json["status"]["technical"] = code;
+    } else if (entity == "version" && field == "artistic_status") {
+        json["status"]["artistic"] = code;
+    } else if (entity == "shot" || entity == "asset" || entity == "sequence") {
+        json[entity]["status"] = code;
+    }
+    detail_json_->set_value(std::move(json)); ///< DetailState stays ready.
 }
 
 void MediaDetails::openShotgridUrl(const std::string &url) {
@@ -240,6 +291,12 @@ void MediaDetails::sendDetailsToQml(
 
 void MediaDetails::clearDetails() {
     sendDetailsToQml(nlohmann::json::object(), "empty");
+    if (status_edit_error_) {
+        status_edit_error_->set_value("");
+    }
+    if (status_edit_busy_) {
+        status_edit_busy_->set_value(false); ///< An in-flight write for the previous media is dropped.
+    }
 }
 
 void MediaDetails::showNotMikros(const nlohmann::json &mediaDetails) {
@@ -376,6 +433,16 @@ void MediaDetails::applyWorkerPage(
     std::uint64_t generation, const std::string &catalog, const utility::JsonStore &payload) {
     if (generation != generation_.load()) {
         return;
+    }
+    if (catalog == "status_updated") {
+        status_edit_busy_->set_value(false);
+        applyStatusPatch(payload);
+        return;
+    }
+    if (catalog == "status_error") {
+        status_edit_busy_->set_value(false);
+        status_edit_error_->set_value(payload.value("message", std::string{"Update failed"}));
+        return; ///< The badge keeps the previous code.
     }
     if (catalog == "version_thumb") {
         applyThumbUrl(payload.value("image", std::string{}));

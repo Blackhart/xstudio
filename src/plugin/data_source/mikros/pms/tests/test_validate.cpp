@@ -396,3 +396,36 @@ TEST_CASE("a returned record must carry id and name") {
     badName.fields["name"] = std::int64_t{1};
     CHECK_THROWS_WITH_AS(checkRecord(badName), "record \"name\" is not a string", Error);
 }
+
+TEST_CASE("update rejects a field that is not editable") {
+    const Schema loaded = schema();
+    Ir ir;
+    ir.op = Op::Update;
+    ir.entity = "version";
+    ir.id = 1;
+    ir.field = "name";
+    ir.value = Value{std::string{"new"}};
+    CHECK_THROWS_AS(validate(ir, loaded), Error);
+}
+
+TEST_CASE("update rejects a status code outside the labels") {
+    const Schema loaded = schema();
+    Ir ir;
+    ir.op = Op::Update;
+    ir.entity = "version";
+    ir.id = 1;
+    ir.field = "status";
+    ir.value = Value{std::string{"nope"}};
+    CHECK_THROWS_AS(validate(ir, loaded), Error);
+}
+
+TEST_CASE("update rejects a zero id") {
+    const Schema loaded = schema();
+    Ir ir;
+    ir.op = Op::Update;
+    ir.entity = "shot";
+    ir.id = 0;
+    ir.field = "status";
+    ir.value = Value{std::string{"ip"}};
+    CHECK_THROWS_AS(validate(ir, loaded), Error);
+}

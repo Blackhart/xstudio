@@ -19,6 +19,16 @@ Item {
     property var onShotgridLink: null
     property string previewSource: ""
     property string previewName: ""
+    property bool noteStatusEditable: false
+    property bool noteStatusBusy: false
+    property string noteStatusError: ""
+    property var onNoteStatusEdit: null
+
+    function noteCodes() {
+        if (!statusLabels)
+            return []
+        return Object.keys(statusLabels)
+    }
 
     readonly property var noteRows: root.asList(notesJson && notesJson.notes)
 
@@ -80,7 +90,7 @@ Item {
         let base = String(shotgridBaseUrl)
         if (base.endsWith("/"))
             base = base.slice(0, -1)
-        return base + "/Detail/Note/" + String(entityId)
+        return base + "/detail/Note/" + String(entityId)
     }
 
     function openNote(entityId) {
@@ -149,6 +159,17 @@ Item {
             height: implicitHeight
             spacing: 0
 
+            Text {
+                x: XsStyleSheet.panelPadding
+                width: parent.width - XsStyleSheet.panelPadding * 2
+                visible: root.noteStatusError !== ""
+                wrapMode: Text.WordWrap
+                text: root.noteStatusError
+                color: XsStyleSheet.secondaryTextColor
+                font.pixelSize: XsStyleSheet.fontSize
+                font.family: XsStyleSheet.fontFamily
+            }
+
             Repeater {
                 model: root.noteRows
 
@@ -176,10 +197,27 @@ Item {
 
                         StatusBadge {
                             Layout.alignment: Qt.AlignTop
-                            visible: root.textOrEmpty(modelData.status) !== ""
+                            visible: !root.noteStatusEditable && root.textOrEmpty(modelData.status) !== ""
                             code: root.textOrEmpty(modelData.status)
                             tone: root.colorFor(modelData.status)
                             accessibleLabel: root.labelFor(modelData.status)
+                        }
+
+                        StatusMenu {
+                            Layout.alignment: Qt.AlignTop
+                            visible: root.noteStatusEditable
+                            code: root.textOrEmpty(modelData.status)
+                            label: root.labelFor(modelData.status)
+                            tone: root.colorFor(modelData.status)
+                            editable: true
+                            busy: root.noteStatusBusy
+                            codes: root.noteCodes()
+                            labelOf: function(key) { return root.labelFor(key) }
+                            toneOf: function(key) { return root.colorFor(key) }
+                            onChosen: function(next) {
+                                if (root.onNoteStatusEdit)
+                                    root.onNoteStatusEdit(modelData.id, "status", next)
+                            }
                         }
                     }
 

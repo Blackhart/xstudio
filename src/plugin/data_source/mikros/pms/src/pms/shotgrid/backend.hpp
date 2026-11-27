@@ -126,6 +126,13 @@ class ShotGridBackend : public Backend {
      */
     std::size_t count(const Ir &ir) override;
 
+    /**
+     * @brief Writes one field with PUT `/entity/{collection}/{id}`.
+     * @param ir Validated update. `value` is a string.
+     * @throw Error When the mapping is incomplete, auth fails, or HTTP fails.
+     */
+    void update(const Ir &ir) override;
+
   private:
     /**
      * @brief Reads the ShotGrid schema for the entity named in the IR.
@@ -270,6 +277,37 @@ class ShotGridBackend : public Backend {
      * @return HTTP result, which may have no status.
      */
     httplib::Result sendSearch(const std::string &url, const nlohmann::json &body);
+
+    /**
+     * @brief Builds `/api/v1.1/entity/{collection}/{id}`.
+     * @param schema ShotGrid schema for the updated entity.
+     * @param id Record id.
+     * @return The path.
+     */
+    std::string buildUpdateUrl(const ShotGridSchema &schema, std::int64_t id) const;
+
+    /**
+     * @brief Puts one update. Does not retry.
+     * @param url Full path.
+     * @param body JSON object from `shotgridUpdateBody`.
+     * @return HTTP result, which may have no status.
+     */
+    httplib::Result sendUpdate(const std::string &url, const nlohmann::json &body);
+
+    /**
+     * @brief Puts the update. On 401, connects again and puts once more.
+     * @param url Full path.
+     * @param body JSON object from `shotgridUpdateBody`.
+     * @return HTTP result. Status is checked by `throwIfUpdateFailed`.
+     * @throw Error When the connection fails before an HTTP status.
+     */
+    httplib::Result putUpdate(const std::string &url, const nlohmann::json &body);
+
+    /**
+     * @brief Throws when the update status is not 2xx.
+     * @param response HTTP result from `putUpdate`.
+     */
+    void throwIfUpdateFailed(const httplib::Result &response) const;
 
     /** @brief Logs the search path and body when a sink is set. */
     void logSearch(const std::string &url, const nlohmann::json &body) const;

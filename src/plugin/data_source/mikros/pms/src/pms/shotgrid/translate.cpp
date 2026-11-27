@@ -762,4 +762,25 @@ Record shotgridRecordFromJson(const nlohmann::json &row, const ShotGridSchema &s
     return out;
 }
 
+nlohmann::json shotgridUpdateBody(const Ir &ir, const ShotGridMapping &mapping) {
+    const ShotGridSchema *schema = mapping.findSchema(ir.entity);
+    if (!schema) {
+        throw Error("shotgrid: unknown entity \"" + ir.entity + "\"");
+    }
+    const ShotGridSchemaField *field = schema->findField(ir.field);
+    if (!field || field->shotgrid.empty()) {
+        throw Error("shotgrid: field \"" + ir.entity + "." + ir.field + "\" has no name");
+    }
+    if (field->shotgrid.find('.') != std::string::npos) {
+        throw Error("shotgrid: field \"" + ir.field + "\" is a path");
+    }
+    const auto *text = ir.value ? std::get_if<std::string>(&*ir.value) : nullptr;
+    if (!text) {
+        throw Error("shotgrid: update value is not a string");
+    }
+    nlohmann::json body = nlohmann::json::object();
+    body[field->shotgrid] = *text; ///< Status codes stay short codes, not labels.
+    return body;
+}
+
 } // namespace pms

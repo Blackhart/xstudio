@@ -189,3 +189,27 @@ TEST_CASE("caching backend evicts the least recently used entry") {
     REQUIRE(backend.calls.size() == 3);
     CHECK(std::get<std::int64_t>(page.rows[0].at("id")) == 3);
 }
+
+TEST_CASE("caching backend drops entries after an update") {
+    RecordingBackend backend;
+    backend.next = {projectRow(1, "paw01")};
+    CachingBackend cache(backend);
+    Session session(mappedSchema(), cache);
+
+    CHECK(Project().Limit(10).find(session).rows.size() == 1);
+    CHECK(cache.size() == 1);
+
+    Ir ir;
+    ir.op = Op::Update;
+    ir.entity = "shot";
+    ir.id = 4;
+    ir.field = "status";
+    ir.value = Value{std::string{"ip"}};
+    cache.update(ir);
+
+    CHECK(cache.size() == 0);
+    REQUIRE(backend.calls.size() == 2);
+    REQUIRE(backend.calls[1].op.has_value());
+    CHECK(*backend.calls[1].op == Op::Update);
+    CHECK(backend.calls[1].field == "status");
+}

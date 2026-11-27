@@ -483,6 +483,8 @@ void FakeBackend::maybeSleep() const {
     std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms(rng)));
 }
 
+void FakeBackend::update(const Ir & /*ir*/) {}
+
 Page FakeBackend::find(const Ir &ir) {
     Records matched = matchAll(ir);
     Page page;

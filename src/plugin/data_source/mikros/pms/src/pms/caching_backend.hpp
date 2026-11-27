@@ -83,6 +83,12 @@ class CachingBackend : public Backend {
     std::size_t count(const Ir &ir) override;
 
     /**
+     * @brief Forwards one update, then drops every cached entry.
+     * @param ir Validated update query.
+     */
+    void update(const Ir &ir) override;
+
+    /**
      * @brief Drops every cached entry immediately.
      */
     void clear();

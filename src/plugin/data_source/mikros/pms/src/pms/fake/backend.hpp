@@ -75,6 +75,12 @@ class FakeBackend : public Backend {
      */
     std::size_t count(const Ir &ir) override;
 
+    /**
+     * @brief Accepts a validated update and keeps the in-memory row unchanged.
+     * @param ir Update query. Ignored by the example catalog.
+     */
+    void update(const Ir &ir) override;
+
   private:
     /**
      * @brief Matches the query against the catalogs without sleeping.

@@ -20,9 +20,9 @@ namespace pms {
  * without a limit is rejected. For Count, `limit` and `cursor` are rejected.
  * Query::ir() does not call this.
  *
- * @param ir Query to check. `op` must be Find or Count.
+ * @param ir Query to check. `op` must be Find, Count, or Update.
  * @param schema Domain schema loaded for the session.
- * @throw Error When the verb, the entity, a where-node, or pagination is illegal.
+ * @throw Error When the verb, the entity, a where-node, pagination, or an update is illegal.
  */
 void validate(const Ir &ir, const Schema &schema);
 

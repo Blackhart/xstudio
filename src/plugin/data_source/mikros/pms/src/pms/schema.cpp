@@ -86,6 +86,7 @@ Schema Schema::load(const std::string &path) {
             const YAML::Node meta = fieldEntry->second;
             spec.filter = meta["filter"].as<bool>(false);
             spec.canSet = meta["set"].as<bool>(false);
+            spec.editable = meta["editable"].as<bool>(false); ///< Absent means the field stays read-only.
             spec.requiredOnCreate = meta["required_on_create"].as<bool>(false);
             if (meta["providers"]) {
                 for (YAML::const_iterator provider = meta["providers"].begin();

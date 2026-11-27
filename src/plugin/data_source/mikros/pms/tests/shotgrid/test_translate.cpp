@@ -872,3 +872,25 @@ TEST_CASE("filters for note in version use note_links") {
     CHECK(filters[2]["type"] == "Version");
     CHECK(filters[2]["id"] == 12);
 }
+
+TEST_CASE("update body for version status") {
+    Ir ir;
+    ir.op = Op::Update;
+    ir.entity = "version";
+    ir.id = 12;
+    ir.field = "status";
+    ir.value = Value{std::string{"ip"}};
+    const nlohmann::json body = shotgridUpdateBody(ir, filledMapping());
+    CHECK(body["sg_status_list"] == "ip");
+}
+
+TEST_CASE("update body for artistic status") {
+    Ir ir;
+    ir.op = Op::Update;
+    ir.entity = "version";
+    ir.id = 12;
+    ir.field = "artistic_status";
+    ir.value = Value{std::string{"cmpt"}};
+    const nlohmann::json body = shotgridUpdateBody(ir, filledMapping());
+    CHECK(body["sg_status_artistique"] == "cmpt");
+}

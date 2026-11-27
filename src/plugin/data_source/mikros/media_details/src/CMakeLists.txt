@@ -14,6 +14,7 @@ set(SOURCES
 	utility/home.cpp
 	utility/media_meta.cpp
 	utility/notes_load.cpp
+	utility/status_update.cpp
 	utility/thumbnails.cpp
 	viewModel/media_details.cpp
 	viewModel/version_notes.cpp
@@ -67,6 +68,7 @@ qt_add_qml_module(${PROJECT_NAME}
 		view/DetailLinkText.qml
 		view/DetailFieldRow.qml
 		view/StatusBadge.qml
+		view/StatusMenu.qml
 		view/NotesList.qml
 )
 

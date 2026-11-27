@@ -1735,6 +1735,8 @@ Page FakeBackend::find(const Ir &ir) {
     return page;
 }
 
+void FakeBackend::update(const Ir & /*ir*/) {}
+
 std::size_t FakeBackend::count(const Ir &ir) {
     if (!ir.op || *ir.op != Op::Count) {
         throw Error("fake backend: missing operation");

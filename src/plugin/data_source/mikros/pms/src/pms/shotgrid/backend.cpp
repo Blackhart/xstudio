@@ -24,6 +24,7 @@ constexpr const char *kApiRoot = "/api/v1.1";
 constexpr const char *kAcceptJson = "application/json";
 constexpr const char *kContentTypeHash = "application/vnd+shotgun.api3_hash+json";
 constexpr const char *kContentTypeArray = "application/vnd+shotgun.api3_array+json";
+constexpr const char *kContentTypeJson = "application/json";
 constexpr int kMaxPageSize = 500;
 
 /**
@@ -44,6 +45,8 @@ std::string findCollectionName(const std::string &typeName) {
         return "playlists";
     } else if (typeName == "Version") {
         return "versions";
+    } else if (typeName == "Note") {
+        return "notes";
     }
     return typeName;
 }
@@ -374,6 +377,57 @@ Page ShotGridBackend::find(const Ir &ir) {
     const nlohmann::json body = buildRequestBody(ir);
     const httplib::Result response = postSearch(url, body);
     return buildPage(response, schema, ir);
+}
+
+std::string ShotGridBackend::buildUpdateUrl(
+    const ShotGridSchema &schema, std::int64_t id) const {
+    return std::string(kApiRoot) + "/entity/" + findCollectionName(schema.shotgridName) + "/" +
+           std::to_string(id);
+}
+
+httplib::Result ShotGridBackend::sendUpdate(
+    const std::string &url, const nlohmann::json &body) {
+    auto client = openHttpClient(site_.base_url);
+    const httplib::Headers headers = {
+        {"Authorization", "Bearer " + *access_token_},
+        {"Accept", kAcceptJson},
+    };
+    return client->Put(url.c_str(), headers, body.dump(), kContentTypeJson);
+}
+
+httplib::Result ShotGridBackend::putUpdate(
+    const std::string &url, const nlohmann::json &body) {
+    logSearch(url, body); ///< Same sink as search: path and body, no token.
+    httplib::Result response = sendUpdate(url, body);
+    if (!response) {
+        throwIfNoHttpResponse("update request failed", response);
+    }
+    if (response->status != 401) {
+        return response;
+    }
+    forgetTokens(); ///< A stale token is not reused for the retry.
+    connectIfNeeded();
+    response = sendUpdate(url, body);
+    if (!response) {
+        throwIfNoHttpResponse("update request failed after re-auth", response);
+    }
+    return response;
+}
+
+void ShotGridBackend::throwIfUpdateFailed(const httplib::Result &response) const {
+    if (response->status < 200 || response->status >= 300) {
+        throw Error(
+            "shotgrid: update HTTP " + std::to_string(response->status) + ": " + response->body);
+    }
+}
+
+void ShotGridBackend::update(const Ir &ir) {
+    const ShotGridSchema &schema = extractSchemaFromIR(ir);
+    connectIfNeeded();
+    const std::string url = buildUpdateUrl(schema, ir.id);
+    const nlohmann::json body = shotgridUpdateBody(ir, mapping_);
+    const httplib::Result response = putUpdate(url, body);
+    throwIfUpdateFailed(response); ///< A 2xx confirms the code that was sent.
 }
 
 std::size_t ShotGridBackend::count(const Ir &ir) {

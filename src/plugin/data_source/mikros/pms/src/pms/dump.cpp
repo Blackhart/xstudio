@@ -203,6 +203,19 @@ void writeExpr(std::ostringstream &out, const ExprNode &node, int indent) {
     out << node.key << ' ' << exprOpName(node.op) << ' ' << dumpValue(*node.value) << '\n';
 }
 
+/**
+ * @brief Writes the id, field, and value of an update.
+ * @param out Destination. Each line ends with a newline.
+ * @param ir Update query. `value` may be empty.
+ */
+void writeUpdate(std::ostringstream &out, const Ir &ir) {
+    out << "id: " << ir.id << '\n';
+    out << "field: " << ir.field << '\n';
+    if (ir.value) {
+        out << "value: " << dumpValue(*ir.value) << '\n';
+    }
+}
+
 } // namespace
 
 std::string dump(const Ir &ir) {
@@ -213,6 +226,8 @@ std::string dump(const Ir &ir) {
             out << " find";
         } else if (*ir.op == Op::Count) {
             out << " count";
+        } else if (*ir.op == Op::Update) {
+            out << " update";
         } else {
             throw Error("dump: unsupported operation");
         }
@@ -237,6 +252,9 @@ std::string dump(const Ir &ir) {
             out << ' ' << key;
         }
         out << '\n';
+    }
+    if (ir.op && *ir.op == Op::Update) {
+        writeUpdate(out, ir); ///< Id, field, and value sit after the find clauses.
     }
     return out.str();
 }

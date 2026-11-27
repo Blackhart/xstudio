@@ -10,6 +10,8 @@
 #include "xstudio/plugin_manager/plugin_base.hpp"
 #include "xstudio/utility/media_reference.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <QObject>
 
 #include <caf/message_handler.hpp>
@@ -148,6 +150,18 @@ class MediaDetails : public QObject {
     void openShotgridUrl(const std::string &url);
 
     /**
+     * @brief Starts a status write when QML sends an entity, id, field, and code.
+     * @param edit JSON object. An object without `entity` is the clear before a repeat choice.
+     */
+    void submitStatusEdit(const nlohmann::json &edit);
+
+    /**
+     * @brief Writes the confirmed code into the published DetailJson.
+     * @param payload `{entity, id, field, code}` from the worker.
+     */
+    void applyStatusPatch(const nlohmann::json &payload);
+
+    /**
      * @brief Creates the detail attributes, including OpenShotgridUrl and StatusStyles.
      * @param panel Panel actor that owns the attributes.
      */
@@ -180,6 +194,9 @@ class MediaDetails : public QObject {
     module::StringAttribute *shotgrid_base_url_ = nullptr; ///< Pref for ShotGrid links. Empty uses the env URL.
     module::StringAttribute *shotgrid_env_url_ = nullptr;  ///< `SHOTGRID_URL`, used when the pref is empty.
     module::StringAttribute *open_shotgrid_url_ = nullptr; ///< URL QML writes on a link click.
+    module::JsonAttribute *status_edit_ = nullptr; ///< `{entity,id,field,code}` QML writes on a choice.
+    module::StringAttribute *status_edit_error_ = nullptr; ///< Update error. Empty after a new choice.
+    module::BooleanAttribute *status_edit_busy_ = nullptr; ///< True while a status write is in flight.
     std::atomic<std::uint64_t> generation_{0}; ///< Bumped on each on_screen_media_changed.
 };
 

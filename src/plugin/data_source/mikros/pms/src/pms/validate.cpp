@@ -424,11 +424,48 @@ void checkIn(const ExprNode &node, const EntitySpec &entity, const Schema &schem
     }
 }
 
+/**
+ * @brief Checks one Update IR against the schema.
+ * @param ir Query with `op` set to Update.
+ * @param schema Domain schema.
+ * @throw Error When the id, the field, or the code is illegal.
+ */
+void checkUpdate(const Ir &ir, const Schema &schema) {
+    if (ir.id <= 0) {
+        throw Error("update: id must be greater than zero");
+    }
+    if (ir.field.empty() || !ir.value) {
+        throw Error("update: missing field");
+    }
+    const EntitySpec *entity = schema.entity(ir.entity);
+    if (!entity) {
+        throw Error("unknown entity \"" + ir.entity + "\"");
+    }
+    const FieldSpec *spec = entity->field(ir.field);
+    if (!spec) {
+        throw Error("update: unknown field \"" + ir.entity + "." + ir.field + "\"");
+    }
+    if (!spec->editable) {
+        throw Error("update: field \"" + ir.entity + "." + ir.field + "\" is not editable");
+    }
+    const auto *text = std::get_if<std::string>(&*ir.value);
+    if (!text) {
+        throw Error("update: value of \"" + ir.field + "\" is not a string");
+    }
+    if (!spec->labels.empty() && spec->labels.find(*text) == spec->labels.end()) {
+        throw Error("update: value \"" + *text + "\" is not a code of \"" + ir.field + "\"");
+    }
+}
+
 } // namespace
 
 void validate(const Ir &ir, const Schema &schema) {
     if (!ir.op) {
         throw Error("missing operation");
+    }
+    if (*ir.op == Op::Update) {
+        checkUpdate(ir, schema);
+        return; ///< An update has no filter and no page.
     }
     if (*ir.op != Op::Find && *ir.op != Op::Count) {
         throw Error("missing operation");

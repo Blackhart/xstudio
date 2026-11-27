@@ -18,6 +18,7 @@
 #include "pms/session.hpp"
 #include "pms/shared_session.hpp"
 #include "pms/shotgrid/backend.hpp"
+#include "pms/update.hpp"
 #include "pms/shotgrid/mapping.hpp"
 
 /**

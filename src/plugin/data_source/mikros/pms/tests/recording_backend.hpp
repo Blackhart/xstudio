@@ -46,6 +46,12 @@ class RecordingBackend : public Backend {
         calls.push_back(ir);
         return next_count;
     }
+
+    /**
+     * @brief Records `ir`. Does not change `next`.
+     * @param ir Validated update query.
+     */
+    void update(const Ir &ir) override { calls.push_back(ir); }
 };
 
 } // namespace pms

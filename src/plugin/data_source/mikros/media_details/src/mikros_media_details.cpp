@@ -47,6 +47,9 @@ void MikrosMediaDetails::attribute_changed(
     if (media_details_) {
         media_details_->attribute_changed(attr_uuid, role);
     }
+    if (version_notes_) {
+        version_notes_->attribute_changed(attr_uuid, role);
+    }
     plugin::StandardPlugin::attribute_changed(attr_uuid, role);
 }
 
@@ -68,7 +71,7 @@ caf::message_handler MikrosMediaDetails::message_handler_extensions() {
             std::uint64_t generation,
             const std::string &catalog,
             const utility::JsonStore &payload) {
-            if (catalog.rfind("version_notes", 0) == 0) {
+            if (catalog.rfind("version_notes", 0) == 0 || catalog.rfind("note_status_", 0) == 0) {
                 if (version_notes_) {
                     version_notes_->applyWorkerPage(generation, catalog, payload);
                 }

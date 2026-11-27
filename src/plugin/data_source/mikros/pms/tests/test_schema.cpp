@@ -277,6 +277,7 @@ TEST_CASE("schema shelf flags and note status colours") {
     CHECK(status->labels.at("artrev") == "Pending Art Director");
     CHECK(status->labels.size() == 10);
     CHECK(status->defaultColor == "#546e7a");
+    CHECK(status->editable);
 
     const FieldSpec *sequenceStatus = schema.entity("sequence")->field("status");
     REQUIRE(sequenceStatus != nullptr);
@@ -303,4 +304,16 @@ TEST_CASE("schema shelf flags and note status colours") {
     const FieldSpec *attachments = note->field("attachments");
     REQUIRE(attachments != nullptr);
     CHECK(attachments->filter);
+}
+
+TEST_CASE("schema marks status fields editable") {
+    const Schema schema = Schema::load(PMS_SCHEMA_PATH);
+    CHECK(schema.entity("sequence")->field("status")->editable);
+    CHECK(schema.entity("shot")->field("status")->editable);
+    CHECK(schema.entity("asset")->field("status")->editable);
+    CHECK(schema.entity("version")->field("status")->editable);
+    CHECK(schema.entity("version")->field("artistic_status")->editable);
+    CHECK(schema.entity("note")->field("status")->editable);
+    CHECK_FALSE(schema.entity("version")->field("name")->editable);
+    CHECK_FALSE(schema.entity("project")->field("status")->editable);
 }

@@ -25,6 +25,13 @@ Item {
     property var statusLabels: ({})
     property string statusDefaultColor: ""
     property var statusStyles: ({})
+    property var onStatusEdit: null
+    property bool statusEditBusy: false
+    property string statusEditError: ""
+    property bool noteStatusEditable: false
+    property bool noteStatusBusy: false
+    property string noteStatusError: ""
+    property var onNoteStatusEdit: null
 
     signal pageSelected(int index)
 
@@ -110,7 +117,7 @@ Item {
         let base = String(shotgridBaseUrl)
         if (base.endsWith("/"))
             base = base.slice(0, -1)
-        return base + "/Detail/" + entityType + "/" + String(entityId)
+        return base + "/detail/" + entityType + "/" + String(entityId)
     }
 
     function openUrl(url) {
@@ -273,18 +280,29 @@ Item {
         return hasNumber(value) ? String(value) + " s" : ""
     }
 
-    component StatusField: RowLayout {
-        id: statusField
+    component StatusEditor: RowLayout {
+        id: editor
 
         property string entityName: ""
         property string fieldKey: "status"
         property string code: ""
+        property var recordId: 0
+        property bool showCaption: true
 
-        Layout.fillWidth: true
+        readonly property var style: root.styleOf(entityName, fieldKey)
+        readonly property bool editable: style && style.editable === true
+        readonly property var codes: {
+            if (!style || !style.labels)
+                return []
+            return Object.keys(style.labels)
+        }
+
+        Layout.fillWidth: showCaption
         spacing: 8
-        visible: root.hasText(code)
+        visible: root.hasText(code) || editable
 
         Text {
+            visible: editor.showCaption
             Layout.preferredWidth: 88
             text: "Status"
             color: XsStyleSheet.secondaryTextColor
@@ -293,9 +311,30 @@ Item {
         }
 
         StatusBadge {
-            code: statusField.code
-            label: root.statusLabel(statusField.entityName, statusField.fieldKey, statusField.code)
-            tone: root.statusColor(statusField.entityName, statusField.fieldKey, statusField.code)
+            visible: !editor.editable
+            code: editor.code
+            label: root.statusLabel(editor.entityName, editor.fieldKey, editor.code)
+            tone: root.statusColor(editor.entityName, editor.fieldKey, editor.code)
+        }
+
+        StatusMenu {
+            visible: editor.editable
+            code: editor.code
+            label: root.statusLabel(editor.entityName, editor.fieldKey, editor.code)
+            tone: root.statusColor(editor.entityName, editor.fieldKey, editor.code)
+            editable: true
+            busy: root.statusEditBusy
+            codes: editor.codes
+            labelOf: function(key) {
+                return root.statusLabel(editor.entityName, editor.fieldKey, key)
+            }
+            toneOf: function(key) {
+                return root.statusColor(editor.entityName, editor.fieldKey, key)
+            }
+            onChosen: function(next) {
+                if (root.onStatusEdit)
+                    root.onStatusEdit(editor.entityName, editor.recordId, editor.fieldKey, next)
+            }
         }
     }
 
@@ -480,18 +519,33 @@ Item {
                         Flow {
                             Layout.fillWidth: true
                             spacing: 6
-                            StatusBadge {
-                                visible: hasText(status.technical)
+                            StatusEditor {
+                                showCaption: false
+                                entityName: "version"
+                                fieldKey: "status"
                                 code: hasText(status.technical) ? String(status.technical) : ""
-                                label: root.statusLabel("version", "status", status.technical)
-                                tone: root.statusColor("version", "status", status.technical)
+                                recordId: version.id
                             }
-                            StatusBadge {
-                                visible: hasText(status.artistic)
+                            StatusEditor {
+                                showCaption: false
+                                entityName: "version"
+                                fieldKey: "artistic_status"
                                 code: hasText(status.artistic) ? String(status.artistic) : ""
-                                label: root.statusLabel("version", "artistic_status", status.artistic)
-                                tone: root.statusColor("version", "artistic_status", status.artistic)
+                                recordId: version.id
                             }
+                        }
+                        Text {
+                            visible: root.statusEditError !== ""
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            text: root.statusEditError
+                            color: XsStyleSheet.secondaryTextColor
+                            font.pixelSize: XsStyleSheet.fontSize
+                            font.family: XsStyleSheet.fontFamily
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 6
                             Rectangle {
                                 visible: hasText(version.step)
                                 implicitHeight: XsStyleSheet.widgetStdHeight - 4
@@ -762,9 +816,10 @@ Item {
                             font.bold: true
                             onEntityClicked: function(type, id) { root.openEntity(type, id) }
                         }
-                        StatusField {
+                        StatusEditor {
                             entityName: "shot"
                             code: root.textOrEmpty(shot.status)
+                            recordId: shot.id
                         }
                         DetailFieldRow {
                             label: "Description"
@@ -810,9 +865,10 @@ Item {
                             font.bold: true
                             onEntityClicked: function(type, id) { root.openEntity(type, id) }
                         }
-                        StatusField {
+                        StatusEditor {
                             entityName: "asset"
                             code: root.textOrEmpty(asset.status)
+                            recordId: asset.id
                         }
                         DetailFieldRow {
                             label: "Description"
@@ -846,9 +902,10 @@ Item {
                             font.bold: true
                             onEntityClicked: function(type, id) { root.openEntity(type, id) }
                         }
-                        StatusField {
+                        StatusEditor {
                             entityName: "sequence"
                             code: root.textOrEmpty(sequence.status)
+                            recordId: sequence.id
                         }
                         DetailFieldRow {
                             label: "Description"
@@ -1085,6 +1142,10 @@ Item {
             statusDefaultColor: root.statusDefaultColor
             shotgridBaseUrl: root.shotgridBaseUrl
             onShotgridLink: root.onShotgridLink
+            noteStatusEditable: root.noteStatusEditable
+            noteStatusBusy: root.noteStatusBusy
+            noteStatusError: root.noteStatusError
+            onNoteStatusEdit: root.onNoteStatusEdit
         }
     }
 }
