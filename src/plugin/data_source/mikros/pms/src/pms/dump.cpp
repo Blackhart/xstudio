@@ -146,10 +146,6 @@ const char *exprOpName(ExprOp op) {
         return "in_last";
     case ExprOp::NotInLast:
         return "not_in_last";
-    case ExprOp::InNext:
-        return "in_next";
-    case ExprOp::NotInNext:
-        return "not_in_next";
     case ExprOp::InCalendarDay:
         return "in_calendar_day";
     case ExprOp::InCalendarWeek:

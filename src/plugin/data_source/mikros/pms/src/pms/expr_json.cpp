@@ -49,10 +49,6 @@ const char *opName(ExprOp op) {
         return "in_last";
     case ExprOp::NotInLast:
         return "not_in_last";
-    case ExprOp::InNext:
-        return "in_next";
-    case ExprOp::NotInNext:
-        return "not_in_next";
     case ExprOp::InCalendarDay:
         return "in_calendar_day";
     case ExprOp::InCalendarWeek:
@@ -129,12 +125,6 @@ ExprOp opFromName(const std::string &text) {
     }
     if (text == "not_in_last") {
         return ExprOp::NotInLast;
-    }
-    if (text == "in_next") {
-        return ExprOp::InNext;
-    }
-    if (text == "not_in_next") {
-        return ExprOp::NotInNext;
     }
     if (text == "in_calendar_day") {
         return ExprOp::InCalendarDay;

@@ -593,16 +593,31 @@ Item {
             }
         }
 
-        ScrollView {
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: visible
+            Layout.minimumHeight: 0
             visible: root.isReady && (!root.showTabs || root.pageIndex === 0)
             clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-            ColumnLayout {
-                width: root.width
-                spacing: 0
+            Flickable {
+                id: detailFlick
+                anchors.fill: parent
+                contentWidth: width
+                contentHeight: detailBody.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                flickDeceleration: 100000
+                maximumFlickVelocity: 800
+
+                // Leave room for the vertical scrollbar so rows are not clipped.
+                property int rightSpacing: height < contentHeight ? 12 : 0
+
+                ColumnLayout {
+                    id: detailBody
+                    width: detailFlick.width - detailFlick.rightSpacing
+                    height: implicitHeight
+                    spacing: 0
 
                 Rectangle {
                     Layout.fillWidth: true
@@ -1035,6 +1050,25 @@ Item {
                 Item {
                     Layout.preferredHeight: XsStyleSheet.panelPadding * 2
                 }
+                }
+
+                // One row per wheel notch, and the flick stops at once.
+                WheelHandler {
+                    onWheel: function(event) {
+                        const row = XsStyleSheet.widgetStdHeight
+                        const step = event.angleDelta.y !== 0
+                                     ? (event.angleDelta.y / 120) * row
+                                     : Math.max(-row, Math.min(row, event.pixelDelta.y))
+                        const limit = Math.max(0, detailFlick.contentHeight - detailFlick.height)
+                        detailFlick.contentY = Math.max(0, Math.min(detailFlick.contentY - step, limit))
+                        event.accepted = true
+                    }
+                }
+
+                ScrollBar.vertical: XsScrollBar {
+                    visible: detailFlick.height < detailFlick.contentHeight
+                    policy: ScrollBar.AsNeeded
+                }
             }
         }
 
@@ -1042,6 +1076,7 @@ Item {
             visible: root.showTabs && root.pageIndex === 1
             Layout.fillWidth: true
             Layout.fillHeight: visible
+            Layout.minimumHeight: 0
             notesJson: root.notesJson
             notesState: root.notesState
             notesError: root.notesError

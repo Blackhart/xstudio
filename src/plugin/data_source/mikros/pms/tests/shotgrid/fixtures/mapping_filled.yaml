@@ -5,7 +5,7 @@ types:
   status_list:  { ops: [eq, ne, in, not_in] }
   number:       { ops: [eq, ne, gt, lt, between, not_between, in, not_in] }
   float:        { ops: [eq, ne, gt, lt, between, in, not_in] }
-  date_time:    { ops: [eq, ne, gt, lt, between, in, not_in, in_last, not_in_last, in_next, not_in_next, in_calendar_day, in_calendar_week, in_calendar_month, in_calendar_year] }
+  date_time:    { ops: [eq, ne, gt, lt, between, in, not_in, in_last, not_in_last, in_calendar_day, in_calendar_week, in_calendar_month, in_calendar_year] }
   checkbox:     { ops: [eq, ne] }
   entity:       { ops: [eq, ne, type_is, type_is_not, name_contains, name_not_contains, name_is, in, not_in] }
   multi_entity: { ops: [eq, ne, type_is, type_is_not, name_contains, name_not_contains, in, not_in] }

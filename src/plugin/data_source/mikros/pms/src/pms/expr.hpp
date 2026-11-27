@@ -414,34 +414,6 @@ FieldExpr<Entity> notInLast(
 }
 
 /**
- * @brief Tests whether a datetime field falls in a coming period.
- * @tparam Entity Entity tag that owns the field.
- * @param field Datetime proxy on the left.
- * @param count Positive number of units.
- * @param unit `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR`.
- * @return A period leaf with `op` InNext.
- */
-template <typename Entity>
-FieldExpr<Entity> inNext(
-    const Field<Entity, DateTime> &field, std::int64_t count, const std::string &unit) {
-    return makeComparison(field, ExprOp::InNext, Value{Period{count, unit}});
-}
-
-/**
- * @brief Tests whether a datetime field falls outside a coming period.
- * @tparam Entity Entity tag that owns the field.
- * @param field Datetime proxy on the left.
- * @param count Positive number of units.
- * @param unit `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR`.
- * @return A period leaf with `op` NotInNext.
- */
-template <typename Entity>
-FieldExpr<Entity> notInNext(
-    const Field<Entity, DateTime> &field, std::int64_t count, const std::string &unit) {
-    return makeComparison(field, ExprOp::NotInNext, Value{Period{count, unit}});
-}
-
-/**
  * @brief Tests whether an int field lies in an inclusive range.
  * @tparam Entity Entity tag that owns the field.
  * @param field Int proxy on the left.

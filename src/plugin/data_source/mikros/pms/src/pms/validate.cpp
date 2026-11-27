@@ -48,10 +48,6 @@ const char *comparisonName(ExprOp op) {
         return "in_last";
     case ExprOp::NotInLast:
         return "not_in_last";
-    case ExprOp::InNext:
-        return "in_next";
-    case ExprOp::NotInNext:
-        return "not_in_next";
     case ExprOp::InCalendarDay:
         return "in_calendar_day";
     case ExprOp::InCalendarWeek:
@@ -280,8 +276,7 @@ bool leafValueOk(const std::string &type, ExprOp op, const Value &value) {
         }
         return false;
     }
-    if (op == ExprOp::InLast || op == ExprOp::NotInLast || op == ExprOp::InNext ||
-        op == ExprOp::NotInNext) {
+    if (op == ExprOp::InLast || op == ExprOp::NotInLast) {
         return type == "date_time" && isPeriod(value);
     }
     if (op == ExprOp::InCalendarDay || op == ExprOp::InCalendarWeek ||

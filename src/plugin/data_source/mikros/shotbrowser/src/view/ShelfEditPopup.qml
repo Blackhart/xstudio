@@ -139,6 +139,21 @@ XsPopup {
         return String(value)
     }
 
+    // Same calendar as pms::parseDate: the text is YYYY-MM-DD and the day exists.
+    function isCalendarDay(text) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
+        if (!match)
+            return false
+        const year = Number(match[1])
+        const month = Number(match[2])
+        const day = Number(match[3])
+        if (month < 1 || month > 12)
+            return false
+        const leap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)
+        const days = [0, 31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        return day >= 1 && day <= days[month]
+    }
+
     function encodeValue(entity, key, op, text) {
         const raw = String(text).trim()
         if (op === "in" || op === "not_in") {
@@ -186,7 +201,7 @@ XsPopup {
                 return [low, high]
             }
             if (type === "date_time") {
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(parts[0]) || !/^\d{4}-\d{2}-\d{2}$/.test(parts[1]))
+                if (!root.isCalendarDay(parts[0]) || !root.isCalendarDay(parts[1]))
                     return null
                 if (parts[0] > parts[1])
                     return null
@@ -194,7 +209,7 @@ XsPopup {
             }
             return null
         }
-        if (op === "in_last" || op === "not_in_last" || op === "in_next" || op === "not_in_next") {
+        if (op === "in_last" || op === "not_in_last") {
             const match = /^(\d+)\s+(HOUR|DAY|WEEK|MONTH|YEAR)$/.exec(raw)
             if (!match || Number(match[1]) < 1)
                 return null
@@ -208,7 +223,7 @@ XsPopup {
         }
         const type = root.fieldType(entity, key)
         if (type === "date_time" && (op === "eq" || op === "ne" || op === "gt" || op === "lt")) {
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(raw))
+            if (!root.isCalendarDay(raw))
                 return null
             return raw
         }
@@ -497,7 +512,7 @@ XsPopup {
                 return "0.5 .. 2"
             return "2024-01-01 .. 2024-03-01"
         }
-        if (op === "in_last" || op === "not_in_last" || op === "in_next" || op === "not_in_next")
+        if (op === "in_last" || op === "not_in_last")
             return "7 DAY"
         if (op === "in_calendar_day" || op === "in_calendar_week" || op === "in_calendar_month" ||
                 op === "in_calendar_year")
@@ -628,11 +643,9 @@ XsPopup {
             value = "Lower and upper bounds"
             format = type === "number" ? "low .. high (integers)" :
                      type === "float" ? "low .. high (decimals)" : "YYYY-MM-DD .. YYYY-MM-DD"
-        } else if (op === "in_last" || op === "not_in_last" || op === "in_next" || op === "not_in_next") {
+        } else if (op === "in_last" || op === "not_in_last") {
             meaning = op === "in_last" ? "Matches when the datetime falls in the past period." :
-                      op === "not_in_last" ? "Matches when the datetime falls outside the past period." :
-                      op === "in_next" ? "Matches when the datetime falls in the coming period." :
-                      "Matches when the datetime falls outside the coming period."
+                      "Matches when the datetime falls outside the past period."
             value = "A positive count and a unit"
             format = "N HOUR|DAY|WEEK|MONTH|YEAR"
         } else if (op === "in_calendar_day") {

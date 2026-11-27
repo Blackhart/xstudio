@@ -41,8 +41,6 @@ enum class ExprOp {
     NotBetween,      ///< Field lies outside the inclusive [low, high] bounds.
     InLast,          ///< Datetime is inside a past period.
     NotInLast,       ///< Datetime is outside a past period.
-    InNext,          ///< Datetime is inside a coming period.
-    NotInNext,       ///< Datetime is outside a coming period.
     InCalendarDay,   ///< Datetime falls on a day offset from today.
     InCalendarWeek,  ///< Datetime falls in a week offset from this week.
     InCalendarMonth, ///< Datetime falls in a month offset from this month.

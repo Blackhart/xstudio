@@ -129,14 +129,24 @@ Item {
         font.family: XsStyleSheet.fontFamily
     }
 
-    ScrollView {
+    Flickable {
+        id: notesFlick
         anchors.fill: parent
         visible: notesState === "ready" && root.noteRows.length > 0
+        contentWidth: width
+        contentHeight: notesColumn.implicitHeight
         clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        boundsBehavior: Flickable.StopAtBounds
+        flickDeceleration: 100000
+        maximumFlickVelocity: 800
+
+        // Leave room for the vertical scrollbar so notes are not clipped.
+        property int rightSpacing: height < contentHeight ? 12 : 0
 
         Column {
-            width: root.width
+            id: notesColumn
+            width: notesFlick.width - notesFlick.rightSpacing
+            height: implicitHeight
             spacing: 0
 
             Repeater {
@@ -144,7 +154,7 @@ Item {
 
                 delegate: Column {
                     x: XsStyleSheet.panelPadding
-                    width: root.width - XsStyleSheet.panelPadding * 2
+                    width: notesColumn.width - XsStyleSheet.panelPadding * 2
                     spacing: 4
 
                     required property var modelData
@@ -264,6 +274,24 @@ Item {
                     }
                 }
             }
+        }
+
+        // One row per wheel notch, and the flick stops at once.
+        WheelHandler {
+            onWheel: function(event) {
+                const row = XsStyleSheet.widgetStdHeight
+                const step = event.angleDelta.y !== 0
+                             ? (event.angleDelta.y / 120) * row
+                             : Math.max(-row, Math.min(row, event.pixelDelta.y))
+                const limit = Math.max(0, notesFlick.contentHeight - notesFlick.height)
+                notesFlick.contentY = Math.max(0, Math.min(notesFlick.contentY - step, limit))
+                event.accepted = true
+            }
+        }
+
+        ScrollBar.vertical: XsScrollBar {
+            visible: notesFlick.height < notesFlick.contentHeight
+            policy: ScrollBar.AsNeeded
         }
     }
 
